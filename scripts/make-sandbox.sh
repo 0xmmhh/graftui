@@ -4,7 +4,8 @@
 # Re-run any time to reset it — the old sandbox is deleted first.
 set -euo pipefail
 
-DIR="${1:-$(dirname "$0")/../../graft-sandbox}"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DIR="${1:-$REPO_ROOT/../graft-sandbox}"
 rm -rf "$DIR"
 mkdir -p "$DIR"
 DIR="$(cd "$DIR" && pwd)"
