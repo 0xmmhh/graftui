@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace Graft.Git;
@@ -24,14 +25,28 @@ public sealed class GitClient(string repoPath)
         foreach (var arg in args)
             psi.ArgumentList.Add(arg);
 
+        // Don't let an inherited environment redirect git to a different repo.
+        psi.Environment.Remove("GIT_DIR");
+        psi.Environment.Remove("GIT_WORK_TREE");
+        psi.Environment.Remove("GIT_INDEX_FILE");
+
         // Keep git from opening an editor or pager and blocking the TUI.
         psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
         psi.Environment["GIT_EDITOR"] = "true";
         psi.Environment["GIT_PAGER"] = "cat";
         psi.Environment["GIT_MERGE_AUTOEDIT"] = "no";
 
-        using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Could not start git. Is it installed and on PATH?");
+        Process process;
+        try
+        {
+            process = Process.Start(psi) ?? throw new GitNotFoundException();
+        }
+        catch (Win32Exception ex)
+        {
+            throw new GitNotFoundException(ex);
+        }
+
+        using var _ = process;
 
         // Git (or hooks, signing helpers) must never read the TUI's raw stdin.
         process.StandardInput.Close();
@@ -55,7 +70,11 @@ public sealed class GitClient(string repoPath)
     }
 
     /// <summary>Name of the checked-out branch (empty when HEAD is detached).</summary>
-    public string GetCurrentBranch() => Run("branch", "--show-current").StdOut.Trim();
+    public string GetCurrentBranch()
+    {
+        var result = Run("symbolic-ref", "-q", "--short", "HEAD");
+        return result.Success ? result.StdOut.Trim() : "";
+    }
 
     /// <summary>All local branches with their short commit hash.</summary>
     public IReadOnlyList<Branch> GetBranches()
@@ -78,3 +97,7 @@ public sealed class GitClient(string repoPath)
         return result.Success && string.IsNullOrWhiteSpace(result.StdOut);
     }
 }
+
+/// <summary>git could not be launched (not installed or not on PATH).</summary>
+public sealed class GitNotFoundException(Exception? inner = null)
+    : Exception("could not start git (is it on PATH?)", inner);

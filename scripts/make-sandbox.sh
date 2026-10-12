@@ -40,5 +40,15 @@ git switch -q -c feature/fast-forward
 commit ff.txt "fast" "Add ff file"
 git switch -q main
 
+# fast-forward onto a merge commit: main is an ancestor of the tip, and the tip is itself a merge
+git switch -q -c feature/ff-to-merge
+commit ffm.txt "ffm" "Add ffm file"
+git switch -q -c side-for-ffm
+commit side.txt "side" "Add side file"
+git switch -q feature/ff-to-merge
+git merge -q --no-ff --no-edit side-for-ffm
+git branch -q -d side-for-ffm
+git switch -q main
+
 echo "Sandbox ready at $DIR"
 git log --oneline --graph --all

@@ -11,21 +11,31 @@ using Terminal.Gui.Views;
 // During development, point this at the sandbox (scripts/make-sandbox.sh), not at graft itself.
 var git = new GitClient(args.Length > 0 ? args[0] : Directory.GetCurrentDirectory());
 
-if (!git.IsRepository())
+var merger = new Merger(git);
+IReadOnlyList<Branch> branches;
+try
 {
-    Console.Error.WriteLine($"graft: not a git repository: {git.RepoPath}");
+    if (!git.IsRepository())
+    {
+        Console.Error.WriteLine($"graft: not a git repository: {git.RepoPath}");
+        return 1;
+    }
+
+    branches = git.GetBranches();
+}
+catch (GitNotFoundException ex)
+{
+    Console.Error.WriteLine($"graft: {ex.Message}");
     return 1;
 }
 
-var merger = new Merger(git);
-IReadOnlyList<Branch> branches = git.GetBranches();
+IApplication app = Application.Create().Init();
 
-using IApplication app = Application.Create().Init();
-
-using Window window = new() { Title = $"graft — {git.RepoPath} (Esc to quit)" };
-
-// Branch names, file names and git output may contain '_'; don't treat it as a hotkey marker.
+// Branch names, file names and git output may contain '_' (the title shows the repo path);
+// don't treat it as a hotkey marker.
 var noHotKey = (Rune)'\xffff';
+
+Window window = new() { Title = $"graft — {git.RepoPath} (Esc to quit)", HotKeySpecifier = noHotKey };
 
 var status = new Label { X = 0, Y = 0, Width = Dim.Fill(), HotKeySpecifier = noHotKey };
 var hint = new Label
@@ -136,7 +146,8 @@ void SetArt(string text)
 
 var busy = false;
 MergeOutcome? pending = null;
-Task? mergeTask = null;
+Task<MergeOutcome>? mergeTask = null;
+var outcomeShown = false; // true once the outcome was drawn in the UI
 
 void StartMerge()
 {
@@ -160,10 +171,16 @@ void StartMerge()
     var name = b.Name;
     SetArt(MergeArt.Frame(0, into, name));
 
+    outcomeShown = false;
+    var started = DateTime.UtcNow;
+    var warned = false;
+
     mergeTask = Task.Run(() =>
     {
         var o = merger.Merge(name, into);
-        app.Invoke(() => pending = o);
+        try { app.Invoke(() => pending = o); }
+        catch (Exception) { /* UI already gone (Esc mid-merge); the outcome is returned instead */ }
+        return o;
     });
 
     app.AddTimeout(TimeSpan.FromMilliseconds(50), () =>
@@ -176,7 +193,16 @@ void StartMerge()
         }
 
         if (pending is null)
-            return true; // hold the pre-join frame while git runs
+        {
+            // Hold the pre-join frame while git runs; flag a merge that seems stuck.
+            if (!warned && DateTime.UtcNow - started > TimeSpan.FromSeconds(5))
+            {
+                warned = true;
+                SetArt(MergeArt.Frame(MergeArt.Steps, into, name,
+                    "git is still running (waiting for a password prompt or hook?)"));
+            }
+            return true;
+        }
 
         SetArt(MergeArt.Final(pending));
         var mergeIndex = LogCommands(pending.Commands);
@@ -190,6 +216,7 @@ void StartMerge()
             logView.Viewport = viewport with { Y = Math.Min(mergeIndex, maxTop) };
         }
         Refresh();
+        outcomeShown = true;
         busy = false;
         pending = null;
         return false;
@@ -212,6 +239,34 @@ if (rows.Count > 0)
 
 window.Add(status, hint, list, art, cmdFrame);
 list.SetFocus();
-app.Run(window);
-mergeTask?.Wait();
+try
+{
+    app.Run(window);
+}
+finally
+{
+    // Restore the terminal before anything is printed or waited on.
+    window.Dispose();
+    app.Dispose();
+}
+
+if (mergeTask is null)
+    return 0;
+
+if (!mergeTask.IsCompleted)
+{
+    Console.WriteLine("graft: waiting for git merge to finish...");
+    mergeTask.Wait();
+}
+
+if (!outcomeShown && mergeTask.IsCompletedSuccessfully)
+{
+    var o = mergeTask.Result;
+    Console.WriteLine($"graft: merge {o.Branch} into {o.Into}: {o.Kind} ({o.Message})");
+    if (o.ConflictFiles.Count > 0)
+        Console.WriteLine("Conflicting files: " + string.Join(", ", o.ConflictFiles));
+    foreach (var r in o.Commands)
+        Console.WriteLine($"$ {r.Command}  [exit {r.ExitCode}]");
+}
+
 return 0;

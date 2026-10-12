@@ -8,12 +8,12 @@ public static class MergeArt
     public const int Width = 44;
     public const int Steps = 20; // 20 x 50 ms ~ 1 s
 
-    public static string Frame(int step, string into, string branch)
+    public static string Frame(int step, string into, string branch, string? caption = null)
     {
         var g = 19 * Math.Clamp(step, 0, Steps) / Steps;
         var gap = Width - 2 - 2 * g;
         var line = "●" + new string('━', g) + new string(' ', gap) + new string('━', g) + "●";
-        return string.Join('\n', Header(into, branch), line, $"Merging {branch} into {into}...");
+        return string.Join('\n', Header(into, branch), line, caption ?? $"Merging {branch} into {into}...");
     }
 
     public static string Final(MergeOutcome o)

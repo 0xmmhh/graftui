@@ -14,10 +14,16 @@ public sealed class Merger(GitClient git)
         var log = new List<GitResult>();
         GitResult Run(params string[] a) { var r = git.Run(a); log.Add(r); return r; }
 
-        var current = Run("branch", "--show-current");
+        // symbolic-ref exits 1 (quietly) on a detached HEAD; any other failure is a real error.
+        var current = Run("symbolic-ref", "-q", "--short", "HEAD");
         var name = current.StdOut.Trim();
-        if (current.Success && name.Length == 0)
-            return new MergeCheck("", "HEAD is detached", log);
+        if (!current.Success || name.Length == 0)
+        {
+            var reason = current.ExitCode is 0 or 1 || string.IsNullOrWhiteSpace(current.StdErr)
+                ? "HEAD is detached"
+                : current.StdErr.Trim();
+            return new MergeCheck("", reason, log);
+        }
 
         if (branch == name)
             return new MergeCheck(name, $"cannot merge {name} into itself", log);
@@ -44,10 +50,16 @@ public sealed class Merger(GitClient git)
         try
         {
             var oldHead = Run("rev-parse", "HEAD").StdOut.Trim();
+            var tipResult = Run("rev-parse", "--verify", branch + "^{commit}");
+            var branchTip = tipResult.StdOut.Trim();
+            if (!tipResult.Success || branchTip.Length == 0)
+                return Done(MergeKind.Failed, null, NoFiles, $"could not resolve branch {branch}");
+
             var merge = Run("merge", "--no-edit", branch);
 
             if (merge.Success)
             {
+                // First token is HEAD, the rest are its parents.
                 var tokens = Run("rev-list", "--parents", "-n", "1", "HEAD").StdOut
                     .Split([' ', '\n'], StringSplitOptions.RemoveEmptyEntries);
                 var head = tokens.Length > 0 ? tokens[0] : null;
@@ -55,9 +67,11 @@ public sealed class Merger(GitClient git)
                     return Done(MergeKind.Failed, null, NoFiles, "could not read HEAD after merge");
                 if (head == oldHead)
                     return Done(MergeKind.UpToDate, head, NoFiles, "already up to date");
-                return tokens.Length >= 3
-                    ? Done(MergeKind.MergeCommit, head, NoFiles, "merge commit created")
-                    : Done(MergeKind.FastForward, head, NoFiles, "fast-forward");
+                if (head == branchTip)
+                    return Done(MergeKind.FastForward, head, NoFiles, "fast-forward");
+                if (tokens.Length >= 3 && tokens[1] == oldHead)
+                    return Done(MergeKind.MergeCommit, head, NoFiles, "merge commit created");
+                return Done(MergeKind.Failed, head, NoFiles, "merge finished with an unexpected result");
             }
 
             var files = Run("diff", "--name-only", "--diff-filter=U").StdOut
