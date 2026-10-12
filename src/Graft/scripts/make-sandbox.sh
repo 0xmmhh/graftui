@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Creates a throwaway repo with branches covering every merge outcome graft handles.
+# Usage: scripts/make-sandbox.sh [path]   (default: ../graft-sandbox)
+# Re-run any time to reset it — the old sandbox is deleted first.
+set -euo pipefail
+
+DIR="${1:-$(dirname "$0")/../../graft-sandbox}"
+rm -rf "$DIR"
+mkdir -p "$DIR"
+DIR="$(cd "$DIR" && pwd)"
+cd "$DIR"
+
+git init -q -b main
+git config user.name "graft sandbox"
+git config user.email "sandbox@example.invalid"
+
+commit() { echo "$2" >> "$1"; git add "$1"; git commit -q -m "$3"; }
+
+commit README.md "# sandbox" "Initial commit"
+commit app.txt   "line 1"    "Add app"
+
+# conflict: edits the same line of app.txt as main will
+git switch -q -c feature/conflict
+sed -i.bak 's/line 1/line 1 (from conflict branch)/' app.txt && rm app.txt.bak
+git commit -q -am "Change line 1 on branch"
+git switch -q main
+
+# main moves on, so the next two can't fast-forward
+sed -i.bak 's/line 1/line 1 (from main)/' app.txt && rm app.txt.bak
+git commit -q -am "Change line 1 on main"
+
+# merge commit: diverged, but touches a different file
+git switch -q -c feature/merge-commit HEAD~1
+commit other.txt "other" "Add other file"
+git switch -q main
+
+# fast-forward: branches off main's final tip, so main is its ancestor
+git switch -q -c feature/fast-forward
+commit ff.txt "fast" "Add ff file"
+git switch -q main
+
+echo "Sandbox ready at $DIR"
+git log --oneline --graph --all
