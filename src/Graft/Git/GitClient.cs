@@ -18,6 +18,7 @@ public sealed class GitClient(string repoPath)
             WorkingDirectory = RepoPath,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             UseShellExecute = false,
         };
         foreach (var arg in args)
@@ -27,9 +28,13 @@ public sealed class GitClient(string repoPath)
         psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
         psi.Environment["GIT_EDITOR"] = "true";
         psi.Environment["GIT_PAGER"] = "cat";
+        psi.Environment["GIT_MERGE_AUTOEDIT"] = "no";
 
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start git. Is it installed and on PATH?");
+
+        // Git (or hooks, signing helpers) must never read the TUI's raw stdin.
+        process.StandardInput.Close();
 
         // Read both streams concurrently so a full pipe can't deadlock.
         var stdOut = process.StandardOutput.ReadToEndAsync();
