@@ -23,9 +23,9 @@ try
 
     branches = git.GetBranches();
 }
-catch (Exception ex) when (ex is GitNotFoundException or DirectoryNotFoundException)
+catch (Exception ex) when (ex is GitNotFoundException or DirectoryNotFoundException or InvalidOperationException)
 {
-    Console.Error.WriteLine($"graft: {ex.Message}");
+    Console.Error.WriteLine($"graft: {(ex is InvalidOperationException ? "git error: " : "")}{ex.Message}");
     return 1;
 }
 
@@ -34,11 +34,14 @@ Task<MergeOutcome>? mergeTask = null;
 IApplication? applicationHandle = null;
 Window? windowHandle = null;
 var exitCode = 0;
+Exception? uiError = null;
 
 try
 {
-    IApplication app = Application.Create().Init();
+    // Keep the handle before Init() so an Init that throws is still disposed.
+    IApplication app = Application.Create();
     applicationHandle = app;
+    app.Init();
 
     // Branch names, file names and git output may contain '_' (the title shows the repo path);
     // don't treat it as a hotkey marker.
@@ -253,12 +256,13 @@ try
             var mergeIndex = LogCommands(done.Commands);
             if (done.ConflictFiles.Count > 0)
                 Log("Conflicting files: " + string.Join(", ", done.ConflictFiles));
-            // The log pane is short: scroll so the `git merge` line is the top row when it all fits.
+            // The log pane is short: put the `git merge` line at the top when everything after it fits,
+            // otherwise scroll to the end so the last line (e.g. the conflicting files) stays visible.
             if (mergeIndex >= 0)
             {
                 var viewport = logView.Viewport;
                 var maxTop = Math.Max(0, logLines.Count - viewport.Height);
-                logView.Viewport = viewport with { Y = Math.Min(mergeIndex, maxTop) };
+                logView.Viewport = viewport with { Y = Math.Max(mergeIndex, maxTop) };
             }
             Refresh();
             return false;
@@ -283,14 +287,24 @@ try
     list.SetFocus();
     app.Run(window);
 }
+catch (Exception ex)
+{
+    uiError = ex;
+}
 finally
 {
     // Restore the terminal before anything is printed or waited on.
-    try { windowHandle?.Dispose(); }
-    finally { applicationHandle?.Dispose(); }
+    try { windowHandle?.Dispose(); } catch { /* terminal teardown is best effort */ }
+    try { applicationHandle?.Dispose(); } catch { /* terminal teardown is best effort */ }
+}
 
-    // Runs even if the UI threw, so a running merge is always waited for and reported.
-    exitCode = FinishMerge();
+// Always runs, after the terminal is restored, so a running merge is waited for and reported.
+exitCode = FinishMerge();
+
+if (uiError is not null)
+{
+    Console.Error.WriteLine($"graft: UI error: {uiError}");
+    return 1;
 }
 
 return exitCode;

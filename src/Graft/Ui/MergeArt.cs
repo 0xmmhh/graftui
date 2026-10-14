@@ -41,10 +41,21 @@ public static class MergeArt
             MergeKind.FastForward => $"Fast-forward: {o.Into} is now at {head}",
             MergeKind.MergeCommit => $"Merge commit {head} created on {o.Into}",
             MergeKind.UpToDate => "Already up to date",
-            MergeKind.Conflict => $"CONFLICT: merge aborted, {o.Into} unchanged",
+            MergeKind.Conflict => $"CONFLICT{ConflictFiles(o.ConflictFiles)}: merge aborted, {o.Into} unchanged",
             _ => $"Merge failed: {o.Message}",
         };
         return string.Join('\n', Header(o.Into, o.Branch), new string(chars), caption);
+    }
+
+    // " in app.txt" / " in app.txt +2 more"; long names are shortened so the caption stays near the art width.
+    private static string ConflictFiles(IReadOnlyList<string> files)
+    {
+        if (files.Count == 0)
+            return "";
+        var first = files[0];
+        if (first.Length > 24)
+            first = "…" + first[^23..];
+        return $" in {first}" + (files.Count > 1 ? $" +{files.Count - 1} more" : "");
     }
 
     public static string Refused(string reason) => "Refused: " + reason;

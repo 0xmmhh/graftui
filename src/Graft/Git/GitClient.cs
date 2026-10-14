@@ -81,11 +81,17 @@ public sealed class GitClient(string repoPath)
     public IReadOnlyList<Branch> GetBranches()
     {
         var current = GetCurrentBranch();
-        var result = Run("for-each-ref", "--format=%(refname)|%(objectname:short)", "refs/heads");
+        var result = Run("for-each-ref", "--format=%(refname)%00%(objectname:short)", "refs/heads");
+        if (!result.Success)
+        {
+            var detail = result.StdErr.Trim();
+            throw new InvalidOperationException(detail.Length > 0 ? detail : $"git for-each-ref exited with {result.ExitCode}");
+        }
 
+        // Branch names may contain '|', so fields are NUL-separated.
         return result.StdOut
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => line.Split('|'))
+            .Select(line => line.Split('\0'))
             .Where(parts => parts.Length == 2)
             .Select(parts => new Branch(StripHeads(parts[0]), parts[1], StripHeads(parts[0]) == current))
             .ToList();
