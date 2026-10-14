@@ -14,6 +14,7 @@ cd "$DIR"
 git init -q -b main
 git config user.name "graft sandbox"
 git config user.email "sandbox@example.invalid"
+git config commit.gpgsign false
 
 commit() { echo "$2" >> "$1"; git add "$1"; git commit -q -m "$3"; }
 

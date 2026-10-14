@@ -15,8 +15,8 @@ public sealed class Merger(GitClient git)
         GitResult Run(params string[] a) { var r = git.Run(a); log.Add(r); return r; }
 
         // symbolic-ref exits 1 (quietly) on a detached HEAD; any other failure is a real error.
-        var current = Run("symbolic-ref", "-q", "--short", "HEAD");
-        var name = current.StdOut.Trim();
+        var current = Run("symbolic-ref", "-q", "HEAD");
+        var name = GitClient.StripHeads(current.StdOut.Trim());
         if (!current.Success || name.Length == 0)
         {
             var reason = current.ExitCode is 0 or 1 || string.IsNullOrWhiteSpace(current.StdErr)
@@ -50,10 +50,17 @@ public sealed class Merger(GitClient git)
         try
         {
             var oldHead = Run("rev-parse", "HEAD").StdOut.Trim();
-            var tipResult = Run("rev-parse", "--verify", branch + "^{commit}");
+            var tipResult = Run("rev-parse", "--verify", "refs/heads/" + branch + "^{commit}");
             var branchTip = tipResult.StdOut.Trim();
             if (!tipResult.Success || branchTip.Length == 0)
                 return Done(MergeKind.Failed, null, NoFiles, $"could not resolve branch {branch}");
+
+            // `git merge refs/heads/x` would record "Merge branch 'refs/heads/x'", so merge by plain name,
+            // but refuse if that name resolves to something else (e.g. a tag shadowing the branch).
+            var plainTip = Run("rev-parse", "--verify", branch + "^{commit}").StdOut.Trim();
+            if (plainTip != branchTip)
+                return Done(MergeKind.Failed, null, NoFiles,
+                    $"'{branch}' is ambiguous (a tag or other ref shadows the branch); refusing to merge");
 
             var merge = Run("merge", "--no-edit", branch);
 
