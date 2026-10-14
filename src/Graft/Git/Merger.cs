@@ -54,7 +54,11 @@ public sealed class Merger(GitClient git)
         var oldHead = "";
         try
         {
-            oldHead = Run("rev-parse", "HEAD").StdOut.Trim();
+            var headResult = Run("rev-parse", "-q", "--verify", "HEAD");
+            oldHead = headResult.Success ? headResult.StdOut.Trim() : "";
+            if (oldHead.Length == 0)
+                return Done(MergeKind.Failed, null, NoFiles, "HEAD has no commits yet");
+
             var tipResult = Run("rev-parse", "--verify", "refs/heads/" + branch + "^{commit}");
             var branchTip = tipResult.StdOut.Trim();
             if (!tipResult.Success || branchTip.Length == 0)
@@ -67,32 +71,50 @@ public sealed class Merger(GitClient git)
                 return Done(MergeKind.Failed, null, NoFiles,
                     $"'{branch}' is ambiguous (a tag or other ref shadows the branch); refusing to merge");
 
+            // Re-check right before merging: if anything changed the tree since Check, don't merge, so a
+            // later rollback can never be asked to clean up changes that weren't the merge's own.
+            var preflight = Run("status", "--porcelain");
+            if (!preflight.Success || !string.IsNullOrWhiteSpace(preflight.StdOut))
+                return Done(MergeKind.Failed, null, NoFiles,
+                    "working tree changed before the merge started; nothing was merged");
+
             var merge = Run("merge", "--no-edit", branch);
 
-            if (merge.Success)
+            // Classifies a merge that finished, by looking at HEAD and its parents (never at git's text).
+            MergeOutcome Classify(string suffix)
             {
                 // First token is HEAD, the rest are its parents.
                 var tokens = Run("rev-list", "--parents", "-n", "1", "HEAD").StdOut
                     .Split([' ', '\n'], StringSplitOptions.RemoveEmptyEntries);
                 var head = tokens.Length > 0 ? tokens[0] : null;
                 if (head is null)
-                    return Done(MergeKind.Failed, null, NoFiles, "could not read HEAD after merge");
+                    return Done(MergeKind.Failed, null, NoFiles, "could not read HEAD after merge" + suffix);
                 if (head == oldHead)
-                    return Done(MergeKind.UpToDate, head, NoFiles, "already up to date");
+                    return Done(MergeKind.UpToDate, head, NoFiles, "already up to date" + suffix);
                 if (head == branchTip)
-                    return Done(MergeKind.FastForward, head, NoFiles, "fast-forward");
+                    return Done(MergeKind.FastForward, head, NoFiles, "fast-forward" + suffix);
                 if (tokens.Length >= 3 && tokens[1] == oldHead)
-                    return Done(MergeKind.MergeCommit, head, NoFiles, "merge commit created");
-                return Done(MergeKind.Failed, head, NoFiles, "merge finished with an unexpected result");
+                    return Done(MergeKind.MergeCommit, head, NoFiles, "merge commit created" + suffix);
+                return Done(MergeKind.Failed, head, NoFiles, "merge finished with an unexpected result" + suffix);
             }
+
+            if (merge.Success)
+                return Classify("");
 
             var files = Run("diff", "--name-only", "--diff-filter=U").StdOut
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList();
 
-            var leftover = RollBack(Run, oldHead);
+            // Exit codes >= 128 mean git was killed by a signal (e.g. 130 = SIGINT).
+            var leftover = RollBack(Run, oldHead, merge.ExitCode >= 128);
             if (leftover is not null)
                 return Done(MergeKind.Failed, null, files, leftover);
+
+            // The repo is clean and not mid-merge. If HEAD still moved, the merge did complete even though
+            // git exited non-zero (e.g. interrupted just after the commit), so don't report it as unchanged.
+            var now = Run("rev-parse", "-q", "--verify", "HEAD");
+            if (now.Success && now.StdOut.Trim() != oldHead)
+                return Classify($" (git exited {merge.ExitCode} after completing the merge)");
 
             if (files.Count > 0)
                 return Done(MergeKind.Conflict, null, files, "merge aborted");
@@ -105,30 +127,43 @@ public sealed class Merger(GitClient git)
         catch (Exception ex)
         {
             string? leftover = null;
-            try { leftover = RollBack(Run, oldHead); } catch { /* best effort */ }
-            return Done(MergeKind.Failed, null, NoFiles, leftover is null ? ex.Message : $"{ex.Message}; {leftover}");
+            var rollbackFailed = false;
+            try { leftover = RollBack(Run, oldHead, false); } catch { rollbackFailed = true; }
+            var message = leftover is null ? ex.Message : $"{ex.Message}; {leftover}";
+            if (rollbackFailed)
+                message += "; repo state unknown, run git status";
+            return Done(MergeKind.Failed, null, NoFiles, message);
         }
     }
 
     /// <summary>
-    /// Undoes whatever a failed or interrupted merge left behind. Returns null when the repo is clean and
+    /// Undoes whatever a failed or interrupted merge left behind. Returns null when nothing is left to undo or when the repo is clean and
     /// not mid-merge afterwards, otherwise an accurate description of what is left.
     /// </summary>
-    private static string? RollBack(Func<string[], GitResult> run, string oldHead)
+    private static string? RollBack(Func<string[], GitResult> run, string oldHead, bool interrupted)
     {
+        // The merge only counts as started if git left MERGE_HEAD behind or was killed mid-run. A normal
+        // non-zero exit without MERGE_HEAD is a refusal before anything was touched.
+        var mergeStarted = interrupted || run(["rev-parse", "-q", "--verify", "MERGE_HEAD"]).Success;
         AbortIfMerging(run);
+
+        // Nothing of the merge's own to undo: any changes now belong to the user, so never reset them.
+        if (!mergeStarted)
+            return null;
 
         var (dirty, merging) = Inspect(run);
         if (!dirty && !merging)
             return null;
 
         // An interrupted merge (e.g. Ctrl+C while a pre-merge-commit hook runs) can leave staged changes
-        // without MERGE_HEAD, which `git merge --abort` cannot undo. `git reset --merge` is safe here:
-        // Check verified a clean tree and index immediately before graft started this merge, so every
-        // change present now was made by the merge itself and none of the user's work can be lost.
-        // Only do it while HEAD is still where the merge started; if HEAD moved, leave the repo alone.
+        // without MERGE_HEAD, which `git merge --abort` cannot undo. `git reset --merge` is only used when
+        // the merge actually started (see above) and HEAD is still where it began. The tree was verified
+        // clean immediately before `git merge` ran, so changes present then came from the merge, barring
+        // something else editing the repo during those few moments.
+        if (oldHead.Length == 0)
+            return "starting HEAD unknown; not rolling back, inspect with git status";
         var head = run(["rev-parse", "HEAD"]).StdOut.Trim();
-        if (oldHead.Length == 0 || head != oldHead)
+        if (head != oldHead)
             return $"HEAD moved during an interrupted merge ({Short(oldHead)} to {Short(head)}); not rolling back, inspect with git status";
 
         run(["reset", "--merge"]);
@@ -144,7 +179,9 @@ public sealed class Merger(GitClient git)
 
     private static (bool Dirty, bool Merging) Inspect(Func<string[], GitResult> run)
     {
-        var dirty = !string.IsNullOrWhiteSpace(run(["status", "--porcelain"]).StdOut);
+        // A failed status means the state is unknown, which is treated as dirty.
+        var status = run(["status", "--porcelain"]);
+        var dirty = !status.Success || !string.IsNullOrWhiteSpace(status.StdOut);
         var merging = run(["rev-parse", "-q", "--verify", "MERGE_HEAD"]).Success;
         return (dirty, merging);
     }
