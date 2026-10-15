@@ -1,3 +1,3 @@
 namespace Graft.Git;
 
-public sealed record Branch(string Name, string ShortHash, bool IsCurrent);
+public sealed record Branch(string Name, string Hash, string ShortHash, bool IsCurrent);
