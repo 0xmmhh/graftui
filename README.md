@@ -156,5 +156,3 @@ Layout:
 - `src/Graft/Git/`: `GitClient` (all git CLI access), `Merger` (checks, merge, rollback) and their records
 - `src/Graft/Ui/MergeArt.cs`: the animation frames, as plain strings
 - `scripts/make-sandbox.sh`: builds the sandbox repo
-
-
