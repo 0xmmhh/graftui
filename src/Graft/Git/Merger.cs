@@ -52,6 +52,7 @@ public sealed class Merger(GitClient git)
             new(kind, branch, into, head, files, message, log);
 
         var oldHead = "";
+        var mergeRan = false;
         try
         {
             var headResult = Run("rev-parse", "-q", "--verify", "HEAD");
@@ -78,6 +79,7 @@ public sealed class Merger(GitClient git)
                 return Done(MergeKind.Failed, null, NoFiles,
                     "working tree changed before the merge started; nothing was merged");
 
+            mergeRan = true;
             var merge = Run("merge", "--no-edit", branch);
 
             // Classifies a merge that finished, by looking at HEAD and its parents (never at git's text).
@@ -105,15 +107,16 @@ public sealed class Merger(GitClient git)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList();
 
-            // Exit codes >= 128 mean git was killed by a signal (e.g. 130 = SIGINT).
-            var leftover = RollBack(Run, oldHead, merge.ExitCode >= 128);
+            // Signals arrive as 128+N (130 = SIGINT); exactly 128 is git's own die(), not a signal.
+            var (leftover, mergeStarted) = RollBack(Run, oldHead, merge.ExitCode > 128);
             if (leftover is not null)
                 return Done(MergeKind.Failed, null, files, leftover);
 
-            // The repo is clean and not mid-merge. If HEAD still moved, the merge did complete even though
-            // git exited non-zero (e.g. interrupted just after the commit), so don't report it as unchanged.
+            // The repo is clean and not mid-merge. If the merge had started and HEAD still moved, it did complete
+            // even though git exited non-zero (e.g. interrupted just after the commit). If it never started, a
+            // moved HEAD came from elsewhere and is not ours to classify.
             var now = Run("rev-parse", "-q", "--verify", "HEAD");
-            if (now.Success && now.StdOut.Trim() != oldHead)
+            if (mergeStarted && now.Success && now.StdOut.Trim() != oldHead)
                 return Classify($" (git exited {merge.ExitCode} after completing the merge)");
 
             if (files.Count > 0)
@@ -126,9 +129,12 @@ public sealed class Merger(GitClient git)
         }
         catch (Exception ex)
         {
+            // Before `git merge` ran there is nothing to roll back or to doubt.
+            if (!mergeRan)
+                return Done(MergeKind.Failed, null, NoFiles, ex.Message);
             string? leftover = null;
             var rollbackFailed = false;
-            try { leftover = RollBack(Run, oldHead, false); } catch { rollbackFailed = true; }
+            try { leftover = RollBack(Run, oldHead, false).Leftover; } catch { rollbackFailed = true; }
             var message = leftover is null ? ex.Message : $"{ex.Message}; {leftover}";
             if (rollbackFailed)
                 message += "; repo state unknown, run git status";
@@ -138,22 +144,23 @@ public sealed class Merger(GitClient git)
 
     /// <summary>
     /// Undoes whatever a failed or interrupted merge left behind. Returns null when nothing is left to undo or when the repo is clean and
-    /// not mid-merge afterwards, otherwise an accurate description of what is left.
+    /// not mid-merge afterwards, otherwise an accurate description of what is left. MergeStarted tells whether
+    /// the merge actually began (MERGE_HEAD present or git killed by a signal).
     /// </summary>
-    private static string? RollBack(Func<string[], GitResult> run, string oldHead, bool interrupted)
+    private static (string? Leftover, bool MergeStarted) RollBack(Func<string[], GitResult> run, string oldHead, bool interrupted)
     {
         // The merge only counts as started if git left MERGE_HEAD behind or was killed mid-run. A normal
         // non-zero exit without MERGE_HEAD is a refusal before anything was touched.
         var mergeStarted = interrupted || run(["rev-parse", "-q", "--verify", "MERGE_HEAD"]).Success;
         AbortIfMerging(run);
 
-        // Nothing of the merge's own to undo: any changes now belong to the user, so never reset them.
-        if (!mergeStarted)
-            return null;
-
         var (dirty, merging) = Inspect(run);
         if (!dirty && !merging)
-            return null;
+            return (null, mergeStarted);
+
+        // Nothing of the merge's own to undo: any changes now belong to the user or something else, so never reset them.
+        if (!mergeStarted)
+            return ("working tree not clean after git merge failed; graft did not touch it, inspect with git status", false);
 
         // An interrupted merge (e.g. Ctrl+C while a pre-merge-commit hook runs) can leave staged changes
         // without MERGE_HEAD, which `git merge --abort` cannot undo. `git reset --merge` is only used when
@@ -161,18 +168,18 @@ public sealed class Merger(GitClient git)
         // clean immediately before `git merge` ran, so changes present then came from the merge, barring
         // something else editing the repo during those few moments.
         if (oldHead.Length == 0)
-            return "starting HEAD unknown; not rolling back, inspect with git status";
+            return ("starting HEAD unknown; not rolling back, inspect with git status", true);
         var head = run(["rev-parse", "HEAD"]).StdOut.Trim();
         if (head != oldHead)
-            return $"HEAD moved during an interrupted merge ({Short(oldHead)} to {Short(head)}); not rolling back, inspect with git status";
+            return ($"HEAD moved during an interrupted merge ({Short(oldHead)} to {Short(head)}); not rolling back, inspect with git status", true);
 
         run(["reset", "--merge"]);
         (dirty, merging) = Inspect(run);
         if (merging)
-            return "repo is still mid-merge, run git merge --abort";
+            return ("repo is still mid-merge, run git merge --abort", true);
         if (dirty)
-            return "working tree left dirty by an interrupted merge; inspect with git status";
-        return null;
+            return ("working tree left dirty by an interrupted merge; inspect with git status", true);
+        return (null, true);
     }
 
     private static string Short(string hash) => hash.Length > 7 ? hash[..7] : hash.Length == 0 ? "unknown" : hash;
