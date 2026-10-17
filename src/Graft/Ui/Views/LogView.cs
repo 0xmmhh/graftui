@@ -32,9 +32,14 @@ public sealed class LogView : PaneView
         if (_lines.Count > MaxLines)
             _lines.RemoveRange(0, _lines.Count - MaxLines);
         ClearAnchor();
+        SetNeedsDraw();
     }
 
-    public void SetAnchor(int index) => _anchor = Math.Clamp(index, 0, Math.Max(0, _lines.Count - 1));
+    public void SetAnchor(int index)
+    {
+        _anchor = Math.Clamp(index, 0, Math.Max(0, _lines.Count - 1));
+        SetNeedsDraw();
+    }
 
     public void ClearAnchor() => _anchor = -1;
 
