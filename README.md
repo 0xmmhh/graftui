@@ -4,8 +4,8 @@ An animated git TUI. Pick a branch, press `m`, and watch two limbs grow together
 
 ```
 main                                    feature/merge-commit
-●━━━━━━━━━━━━━━━━━━━━━◆━━━━━━━━━━━━━━━━━━━━●
-Merge commit 41c083c created on main
+●━━━━━━━━━━━━━━━━━━━━◉━━━━━━━━━━━━━━━━━━━━●
+✔ Merge commit 41c083c created on main
 ```
 
 graft is a thin, safety-first layer over the git CLI. It never reimplements git: every action is a real `git` command, and every command it runs is shown on screen with its exit code.
@@ -52,13 +52,17 @@ Re-run the same command after pulling changes to update.
 
 ```
 graft [path-to-repo]
+graft --sandbox
+graft --help
 ```
 
 | Argument | Meaning |
 |---|---|
 | `path-to-repo` | The repository to work on. Optional; defaults to the current directory. |
+| `--sandbox` | Rebuild the practice repo at `~/.graft/sandbox` and open it. Nothing else is touched. |
+| `--help`, `-h` | Print the usage and exit. |
 
-There are no other options yet.
+An unknown option, or more than one argument, prints an error and exits with code `2`.
 
 ### Keys
 
@@ -70,20 +74,23 @@ There are no other options yet.
 
 ### Screen
 
-- **Status line:** the current branch and whether the working tree is clean.
-- **Branch list:** all local branches; `*` marks the current one. It grows with the terminal and scrolls.
-- **Animation:** the two branches growing together, then the outcome.
+- **Status bar (top):** the repository, the current branch, and whether the working tree is clean. When merging is disabled, the bar says why.
+- **Branches (left):** every local branch, with `*` on the current one and the highlighted row for the selection. `↑2` means the branch has 2 commits the current branch lacks; `↓1` means the current branch has 1 commit the branch lacks. The short hash is shown when there is room.
+- **Preview and animation (right):** the direction line (`feature/x is 1 ahead, 1 behind main (current)`), the picture of the two branches, a caption, and the commits involved. Before you merge it shows the relationship; during the merge the two lines grow together; afterwards it shows the result.
 - **Commands:** every git command graft ran, with its exit code and the output of `git merge`.
+- **Key bar (bottom):** the keys that work right now.
+
+The terminal must be at least 64×22. Smaller than that, graft shows the size it needs and ignores `m` until the window is big enough again. Names that don't fit are cut with `…`.
 
 ## What a merge can do
 
 | Outcome | What you see | What happens in the repo |
 |---|---|---|
-| Fast-forward | `Fast-forward: main is now at 1a2b3c4` (joined ◆) | The current branch moves to the selected branch's tip |
-| Merge commit | `Merge commit 1a2b3c4 created on main` (joined ◆) | A merge commit is created with git's default message |
-| Already up to date | `Already up to date` | Nothing |
-| Conflict | `CONFLICT in app.txt: merge aborted, main unchanged` (broken ╳) | graft runs `git merge --abort` and lists the conflicting files. The repo is back where it was |
-| Failed | `Merge failed: <reason>` (broken ╳) | git refused or something went wrong; graft reports what state the repo is in |
+| Fast-forward | `✔ Fast-forward: main is now at 1a2b3c4 (+1 commit, no merge commit)` | The current branch moves to the selected branch's tip |
+| Merge commit | `✔ Merge commit 1a2b3c4 created on main` (gold `◉` at the join) | A merge commit is created with git's default message |
+| Already up to date | `Already up to date: feature/x is already part of main` | Nothing |
+| Conflict | `✕ CONFLICT in app.txt: merge aborted, main unchanged` (red `✕`) | graft runs `git merge --abort` and lists the conflicting files. The repo is back where it was |
+| Failed | `✕ Merge failed: <reason>` (red `✕`) | git refused or something went wrong; graft reports what state the repo is in |
 
 graft classifies outcomes from the commit graph (did `HEAD` move, to which commit, with how many parents), not by parsing git's localised output.
 
@@ -112,8 +119,9 @@ graft refuses, without running `git merge`, when:
 
 | Code | Meaning |
 |---|---|
-| `0` | Normal exit |
-| `1` | Startup error (not a repository, folder not found, git not on `PATH`), a UI error, or a merge that finished after you quit and ended in a conflict or failure |
+| `0` | Normal exit, `--help`, or a merge that succeeded |
+| `1` | Startup error (not a repository, folder not found, git not on `PATH`, `--sandbox` refused), a UI error, or a merge that finished after you quit and ended in a conflict or failure |
+| `2` | Bad command line (unknown option, too many arguments) |
 
 ## Known limitations
 
@@ -132,13 +140,14 @@ v1 is merge only. These are ideas for later versions, not commitments:
 - **Previews:** show the commits and files a merge would bring in before pressing `m`, and a dry-run mode.
 - **Confirmation and options:** an optional confirm step, `--no-ff` / `--ff-only` toggles, a custom merge message.
 - **Better views:** a commit graph, a scrollable and copyable command log, remote branches.
-- **Distribution:** packaged releases (Homebrew, `dotnet tool install -g graft`), command-line flags such as `--version` and `--help`.
+- **Distribution:** packaged releases (Homebrew, `dotnet tool install -g graft`), a `--version` flag.
 
 ## Development
 
 ```sh
 scripts/make-sandbox.sh                          # (re)build ../graft-sandbox
 dotnet run --project src/Graft -- ../graft-sandbox
+dotnet run --project src/Graft -- --sandbox      # rebuild and open ~/.graft/sandbox
 ```
 
 Never run graft against the graft repo itself during development. The sandbox has one branch per outcome:
@@ -149,10 +158,15 @@ Never run graft against the graft repo itself during development. The sandbox ha
 | `feature/ff-to-merge` | Fast-forward onto a merge commit |
 | `feature/merge-commit` | Merge commit |
 | `feature/conflict` | Conflict (aborted) |
+| `feature/picks` | Merge commit (diverged, 3 commits ahead; three independent commits for later cherry-pick work) |
+
+`graft --sandbox` builds the same repo at `~/.graft/sandbox` and opens it. It only deletes a folder that graft itself created (marked by `.git/graft-sandbox`); anything else there is left alone and graft refuses to start.
 
 Layout:
 
-- `src/Graft/Program.cs`: entry point, UI wiring, merge driver
-- `src/Graft/Git/`: `GitClient` (all git CLI access), `Merger` (checks, merge, rollback) and their records
-- `src/Graft/Ui/MergeArt.cs`: the animation frames, as plain strings
-- `scripts/make-sandbox.sh`: builds the sandbox repo
+- `src/Graft/Program.cs`: arguments, startup, terminal teardown, the exit code after a merge
+- `src/Graft/Git/`: `GitClient` (all git CLI access), `RepoReader` (read-only queries for the screen), `Merger` (checks, merge, rollback), `Sandbox` (builds `~/.graft/sandbox`) and their records
+- `src/Graft/Ui/`: `GraftApp` (controller), the pure drawing and animation code (`MergeScenes`, `MergeAnimation`, `ArtGrid`, `CommitLists`, `DirectionLine`, `TextFit`)
+- `src/Graft/Ui/Views/`: the Terminal.Gui views and `Palette`
+- `scripts/make-sandbox.sh`: builds `../graft-sandbox`
+
