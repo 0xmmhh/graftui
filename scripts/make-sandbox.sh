@@ -51,5 +51,12 @@ git merge -q --no-ff --no-edit side-for-ffm
 git branch -q -d side-for-ffm
 git switch -q main
 
+# picks: three independent commits off main~1 (for cherry-pick later; merges as a merge commit)
+git switch -q -c feature/picks main~1
+printf '# Sandbox\n' > README.md && git commit -q -am "Fix typo in README"
+commit log.txt "log" "Add logging"
+commit VERSION "0.3" "Bump version to 0.3"
+git switch -q main
+
 echo "Sandbox ready at $DIR"
 git log --oneline --graph --all

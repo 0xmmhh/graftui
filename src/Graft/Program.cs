@@ -7,9 +7,56 @@ using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
-// Repo to operate on: first argument, or the current directory.
+const string HelpText = """
+graft: an animated git TUI
+
+Usage:
+  graft [path-to-repo]   open a repository (default: the current directory)
+  graft --sandbox        rebuild the practice repo at ~/.graft/sandbox and open it
+  graft --help           show this help
+
+Keys: ↑/↓ select · m merge the selected branch into the current one · Esc quit
+
+""";
+
+if (args.Length > 1)
+{
+    Console.Error.WriteLine("graft: too many arguments");
+    Console.Error.WriteLine("Try 'graft --help'.");
+    return 2;
+}
+
+var argument = args.Length == 1 ? args[0] : null;
+if (argument is "--help" or "-h")
+{
+    Console.Out.Write(HelpText);
+    return 0;
+}
+
+if (argument is not null && argument.StartsWith('-') && argument != "--sandbox")
+{
+    Console.Error.WriteLine($"graft: unknown option '{argument}'");
+    Console.Error.WriteLine("Try 'graft --help'.");
+    return 2;
+}
+
+// Repo to operate on: the given path, the practice sandbox, or the current directory.
 // During development, point this at the sandbox (scripts/make-sandbox.sh), not at graft itself.
-var git = new GitClient(args.Length > 0 ? args[0] : Directory.GetCurrentDirectory());
+var sandboxMode = argument == "--sandbox";
+if (sandboxMode)
+{
+    try
+    {
+        Sandbox.Rebuild(Sandbox.DefaultPath, Console.Out);
+    }
+    catch (Exception ex) when (ex is SandboxRefusedException or InvalidOperationException or GitNotFoundException or IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"graft: {ex.Message}");
+        return 1;
+    }
+}
+
+var git = new GitClient(sandboxMode ? Sandbox.DefaultPath : argument ?? Directory.GetCurrentDirectory());
 
 var merger = new Merger(git);
 IReadOnlyList<Branch> branches;
