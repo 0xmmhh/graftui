@@ -1,4 +1,4 @@
-namespace Graft.Ui;
+namespace Graft.Ui.Text;
 
 public enum LogKind { Command, Output, Message }
 

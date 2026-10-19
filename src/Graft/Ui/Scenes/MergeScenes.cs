@@ -1,6 +1,7 @@
-using Graft.Git;
+using Graft.Model;
+using Graft.Ui.Text;
 
-namespace Graft.Ui;
+namespace Graft.Ui.Scenes;
 
 /// <summary>A rendered frame: the art grid and the caption under it (null when the scene has none).</summary>
 public sealed record SceneFrame(ArtGrid Grid, Caption? Caption);

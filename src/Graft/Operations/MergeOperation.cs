@@ -1,10 +1,13 @@
-namespace Graft.Git;
+using Graft.Git;
+using Graft.Model;
+
+namespace Graft.Operations;
 
 /// <summary>
 /// Runs a merge safely: checks preconditions, merges, classifies the result structurally
 /// (never by parsing localised text) and always aborts a conflicted merge.
 /// </summary>
-public sealed class Merger(GitClient git)
+public sealed class MergeOperation(GitClient git)
 {
     private static readonly string[] NoFiles = [];
 

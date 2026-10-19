@@ -1,7 +1,8 @@
 using System.Text;
+using Graft.Ui.Text;
 using Terminal.Gui.Text;
 
-namespace Graft.Ui;
+namespace Graft.Ui.Scenes;
 
 public readonly record struct Cell(char Ch, Style Style);
 

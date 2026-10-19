@@ -1,4 +1,4 @@
-namespace Graft.Ui;
+namespace Graft.Ui.Scenes;
 
 /// <summary>
 /// Where things sit in the art grid. Step is the horizontal distance between commits; A and B are the two

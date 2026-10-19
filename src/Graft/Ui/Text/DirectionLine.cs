@@ -1,6 +1,6 @@
-using Graft.Git;
+using Graft.Model;
 
-namespace Graft.Ui;
+namespace Graft.Ui.Text;
 
 /// <summary>The one-line sentence above the art: what is being compared or merged. Names are cut so the line fits.</summary>
 public static class DirectionLine

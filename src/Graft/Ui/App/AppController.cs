@@ -1,5 +1,9 @@
 using System.Diagnostics;
 using Graft.Git;
+using Graft.Model;
+using Graft.Operations;
+using Graft.Ui.Scenes;
+using Graft.Ui.Text;
 using Graft.Ui.Views;
 using Terminal.Gui.App;
 using Terminal.Gui.Drawing;
@@ -7,7 +11,7 @@ using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
-namespace Graft.Ui;
+namespace Graft.Ui.App;
 
 /// <summary>
 /// Controller: owns the state (snapshot, selection, running merge) and wires the views to git.
@@ -23,7 +27,7 @@ public sealed class GraftApp
     private readonly IApplication _app;
     private readonly GitClient _git;
     private readonly RepoReader _reader;
-    private readonly Merger _merger;
+    private readonly MergeOperation _merger;
     private readonly string _repoDisplay;
     private readonly bool _sandboxMode;
 
@@ -62,7 +66,7 @@ public sealed class GraftApp
         _app = app;
         _git = git;
         _reader = new RepoReader(git);
-        _merger = new Merger(git);
+        _merger = new MergeOperation(git);
         _snapshot = initial;
         _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
         _repoDisplay = repoDisplay;

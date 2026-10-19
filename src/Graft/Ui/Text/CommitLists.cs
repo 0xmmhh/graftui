@@ -1,6 +1,7 @@
-using Graft.Git;
+using Graft.Model;
+using Graft.Ui.Scenes;
 
-namespace Graft.Ui;
+namespace Graft.Ui.Text;
 
 /// <summary>One row of the commit list: a dot, a short hash and a subject, each in its own style.</summary>
 public sealed record CommitRow(char Dot, Style DotStyle, string Hash, Style HashStyle, string Subject, Style SubjectStyle);

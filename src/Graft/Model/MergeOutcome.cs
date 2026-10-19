@@ -1,4 +1,6 @@
-namespace Graft.Git;
+using Graft.Git;
+
+namespace Graft.Model;
 
 public enum MergeKind { FastForward, MergeCommit, UpToDate, Conflict, Failed }
 

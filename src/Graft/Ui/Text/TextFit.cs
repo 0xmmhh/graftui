@@ -1,7 +1,7 @@
 using System.Text;
 using Terminal.Gui.Text;
 
-namespace Graft.Ui;
+namespace Graft.Ui.Text;
 
 /// <summary>Column-aware truncation. Every piece of text that can be wider than its pane goes through here.</summary>
 public static class TextFit

@@ -1,3 +1,5 @@
+using Graft.Model;
+
 namespace Graft.Git;
 
 /// <summary>

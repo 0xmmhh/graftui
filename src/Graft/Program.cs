@@ -1,5 +1,6 @@
 using Graft.Git;
-using Graft.Ui;
+using Graft.Model;
+using Graft.Ui.App;
 using Terminal.Gui.App;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;

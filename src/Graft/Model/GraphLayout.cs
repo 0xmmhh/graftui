@@ -1,4 +1,4 @@
-namespace Graft.Git;
+namespace Graft.Model;
 
 /// <summary>How the current branch and the selected branch relate. Drives which scene is drawn.</summary>
 public enum GraphKind { Same, UpToDate, FastForward, Diverged, Unrelated }
