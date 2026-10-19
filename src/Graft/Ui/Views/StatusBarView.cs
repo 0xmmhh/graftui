@@ -16,6 +16,9 @@ public sealed class StatusBarView : View
 
     public string? ErrorText { get; set; }
 
+    // Column where the path starts: after "graft" and its two spaces.
+    private const int LeftEnd = 8;
+
     protected override bool OnDrawingContent(DrawContext? context)
     {
         Paint.ClearAll(this);
@@ -23,15 +26,16 @@ public sealed class StatusBarView : View
         if (w <= 0)
             return true;
 
+        // "graft" and two spaces (columns 1 to 7) are never overwritten: when the window is too narrow, the right side is cut instead.
         var right = RightSegs();
         var rightCols = right.Sum(s => TextFit.Columns(s.Text));
-        var rightStart = Math.Max(1, w - 2 - rightCols);
+        var rightStart = Math.Max(LeftEnd, w - 2 - rightCols);
 
         // "graft" and two spaces, then the path. The path is cut so it stops three columns before the right side.
         Paint.Text(this, 1, 0, "graft", 5, Name);
         Paint.Text(this, 6, 0, "  ", 2, Fg);
-        var pathMax = Math.Max(0, rightStart - 3 - 8);
-        Paint.Text(this, 8, 0, RepoDisplay, pathMax, Dim);
+        var pathMax = Math.Max(0, rightStart - 3 - LeftEnd);
+        Paint.Text(this, LeftEnd, 0, RepoDisplay, pathMax, Dim);
 
         Paint.Segs(this, rightStart, 0, right, w - 1 - rightStart);
         return true;

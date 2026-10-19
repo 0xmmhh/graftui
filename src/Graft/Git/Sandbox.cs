@@ -38,7 +38,18 @@ public static class Sandbox
 
         Directory.CreateDirectory(full);
         progress.WriteLine($"graft: rebuilding practice repo at {full}");
-        Build(full);
+        try
+        {
+            Build(full);
+        }
+        catch
+        {
+            // Before the marker is written the folder is not recognisable as ours, so it would block every later run.
+            // It was created by this run, so it is removed. A marked folder is kept: the next launch rebuilds it.
+            if (!File.Exists(Path.Combine(full, ".git", MarkerFile)))
+                TryDeleteTree(full);
+            throw;
+        }
     }
 
     private static void CheckRefusals(string sandbox)
@@ -48,6 +59,10 @@ public static class Sandbox
             throw new SandboxRefusedException($"{Display(graftDir)} exists but is not a plain folder; move it away or delete it yourself");
 
         if (!Exists(sandbox))
+            return;
+
+        // An empty folder is what a failed build leaves behind when git never wrote anything. It holds nothing to lose.
+        if (!IsLink(sandbox) && Directory.Exists(sandbox) && !Directory.EnumerateFileSystemEntries(sandbox).Any())
             return;
 
         var marker = Path.Combine(sandbox, ".git", MarkerFile);
@@ -156,6 +171,22 @@ public static class Sandbox
         var status = Git("status", "--porcelain");
         if (!string.IsNullOrWhiteSpace(status.StdOut))
             throw new InvalidOperationException("sandbox: work tree is not clean after building");
+    }
+
+    private static void TryDeleteTree(string p)
+    {
+        try
+        {
+            Directory.Delete(p, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Left in place; the next run refuses it with a clear message.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Left in place; the next run refuses it with a clear message.
+        }
     }
 
     private static bool Exists(string p) => File.Exists(p) || Directory.Exists(p) || IsLink(p);

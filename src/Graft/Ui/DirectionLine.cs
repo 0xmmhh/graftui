@@ -13,7 +13,8 @@ public static class DirectionLine
     {
         var cur = L.Detached ? "HEAD" : L.Current;
         var curExtra = L.Detached ? " (detached)" : " (current)";
-        if (L.Kind == GraphKind.Same)
+        // Only the current branch itself gets the short form. Another branch on the same commit is named like any other.
+        if (L.Kind == GraphKind.Same && L.Selected == L.Current)
         {
             var limit = NameLimit(maxCols, curExtra);
             return [new Seg(TextFit.Fit(cur, limit), CurB), new Seg(curExtra, Dim)];

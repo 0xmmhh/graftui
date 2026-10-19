@@ -16,7 +16,8 @@ public sealed class LogView : PaneView
     private static readonly Style Ok = new(Ink.Ok), Bad = new(Ink.Bad);
 
     private readonly List<LogLine> _lines = [];
-    private int _anchor = -1;
+    private int _anchor = -1;   // index into _lines
+    private int _dropped;       // lines trimmed from the front so far
 
     public LogView()
     {
@@ -25,19 +26,30 @@ public sealed class LogView : PaneView
 
     public int Count => _lines.Count;
 
+    /// <summary>
+    /// Position of the next line in the whole log, counting trimmed lines too. Positions never change when
+    /// old lines are dropped, so a position taken now still names the same line later.
+    /// </summary>
+    public int Position => _dropped + _lines.Count;
+
     /// <summary>Appends a line. Drops the oldest lines beyond the limit. Clears any anchor.</summary>
     public void Add(LogLine line)
     {
         _lines.Add(line);
         if (_lines.Count > MaxLines)
-            _lines.RemoveRange(0, _lines.Count - MaxLines);
+        {
+            var excess = _lines.Count - MaxLines;
+            _lines.RemoveRange(0, excess);
+            _dropped += excess;
+        }
         ClearAnchor();
         SetNeedsDraw();
     }
 
-    public void SetAnchor(int index)
+    /// <summary>Anchors the view at a <see cref="Position"/>. A position that has already been trimmed anchors at the oldest line kept.</summary>
+    public void SetAnchor(int position)
     {
-        _anchor = Math.Clamp(index, 0, Math.Max(0, _lines.Count - 1));
+        _anchor = Math.Clamp(position - _dropped, 0, Math.Max(0, _lines.Count - 1));
         SetNeedsDraw();
     }
 

@@ -48,8 +48,9 @@ public static class MergeScenes
                 CurLabel(grid, g, g.TipX(L.CurrentOwn.Count), g.A, L);
                 SelLabel(grid, g, g.XB, g.A, L);
                 break;
-            default: // Same
+            default: // Same: both labels sit on the one commit when the selected branch is a different name
                 CurLabel(grid, g, g.XB, g.A, L);
+                SelLabel(grid, g, g.XB, g.A, L);
                 break;
         }
         return new SceneFrame(grid, null);
@@ -367,7 +368,8 @@ public static class MergeScenes
 
     private static void SelLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L)
     {
-        if (L.Kind == GraphKind.Same)
+        // The selected branch is the current one: its label is the current label already. Another branch at the same commit gets its own.
+        if (L.Kind == GraphKind.Same && L.Selected == L.Current)
             return;
         Label(grid, g, x, row, up: false, L.Selected, extra: null, Ink.Inc);
     }

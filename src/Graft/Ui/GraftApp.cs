@@ -27,11 +27,16 @@ public sealed class GraftApp
     private readonly string _repoDisplay;
     private readonly bool _sandboxMode;
 
-    private readonly Dictionary<(string Head, string Tip, bool Clean), GraphLayout> _cache = new();
+    // Keyed by the selected branch's name as well as its tip: branches that share a commit have different layouts.
+    private readonly Dictionary<(string Current, string Head, string Name, string Tip, bool Clean), GraphLayout> _cache = new();
+
+    // Guards the transition from "not quitting" to "merge may start". MarkQuitting takes the same lock.
+    private readonly object _gate = new();
 
     private RepoSnapshot _snapshot;
     private int _selected;
     private int _snapshotSeq;
+    private int _wantedBranchWidth;
     private bool _busy;
     private string? _result;
     private CancellationTokenSource? _previewCts;
@@ -59,6 +64,7 @@ public sealed class GraftApp
         _reader = new RepoReader(git);
         _merger = new Merger(git);
         _snapshot = initial;
+        _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
         _repoDisplay = repoDisplay;
         _sandboxMode = sandboxMode;
         _selected = FirstNonCurrent(initial);
@@ -71,11 +77,15 @@ public sealed class GraftApp
     public bool OutcomeShown => _outcomeShown;
 
     /// <summary>Stops a merge that has not started yet. Called when the UI is shutting down.</summary>
-    public void MarkQuitting() => _quitting = true;
+    public void MarkQuitting()
+    {
+        lock (_gate)
+            _quitting = true;
+    }
 
     public Window BuildWindow()
     {
-        ScreenLayout Layout() => ScreenLayout.Compute(_app.Screen.Width, _app.Screen.Height);
+        ScreenLayout Layout() => ScreenLayout.Compute(_app.Screen.Width, _app.Screen.Height, _wantedBranchWidth);
 
         var window = new Window { BorderStyle = LineStyle.None };
         window.SetScheme(Palette.RootScheme);
@@ -177,7 +187,7 @@ public sealed class GraftApp
 
     private void StartMerge()
     {
-        var layout = ScreenLayout.Compute(_app.Screen.Width, _app.Screen.Height);
+        var layout = ScreenLayout.Compute(_app.Screen.Width, _app.Screen.Height, _wantedBranchWidth);
         if (_busy || layout.TooSmall || _snapshot.Branches.Count == 0)
             return;
 
@@ -195,18 +205,23 @@ public sealed class GraftApp
         {
             try
             {
+                // The layout is read first, so that Check is the last git work before the merge.
+                var loaded = cached ?? TryLoadLayout(snap, b);
                 var check = _merger.Check(b.Name);
                 if (!check.CanMerge)
                 {
-                    Ui(() => ShowRefused(check, b.Name, cached));
+                    Ui(() => ShowRefused(check, b.Name, loaded));
                     return null;
                 }
 
-                var layoutNow = cached ?? TryLoadLayout(snap, b)
-                    ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, b.Name, snap.HeadHash ?? "", b.Hash);
-                if (_quitting)
-                    return null;
+                lock (_gate)
+                {
+                    if (_quitting)
+                        return null;
+                }
 
+                var layoutNow = loaded
+                    ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, b.Name, snap.HeadHash ?? "", b.Hash);
                 Ui(() => BeginAnimation(check, layoutNow));
 
                 var o = _merger.Merge(b.Name, check.CurrentBranch);
@@ -236,6 +251,12 @@ public sealed class GraftApp
         if (_snapshot.Branches.Count == 0)
             return;
 
+        // Any request still in flight is stale now, even when the answer is cached: its result must not overwrite this one.
+        _previewCts?.Cancel();
+        _previewCts = new CancellationTokenSource();
+        var ct = _previewCts.Token;
+        var seq = ++_previewSeq;
+
         var snap = _snapshot;
         var b = snap.Branches[_selected];
         var key = CacheKey(snap, b);
@@ -246,10 +267,6 @@ public sealed class GraftApp
             return;
         }
 
-        _previewCts?.Cancel();
-        _previewCts = new CancellationTokenSource();
-        var ct = _previewCts.Token;
-        var seq = ++_previewSeq;
         if (!_busy && _result is null)
             ShowLoading(b);
 
@@ -305,6 +322,9 @@ public sealed class GraftApp
     private void ShowPreview(GraphLayout layout)
     {
         var clean = _snapshot.Clean;
+        // A preview that loaded is proof that git answers again, so an earlier preview error no longer applies.
+        _status.ErrorText = null;
+        _status.SetNeedsDraw();
         _art.Title = "Preview";
         _art.Direction = cols => DirectionLine.Browse(layout, cols);
         _art.Commits = CommitLists.Idle(layout);
@@ -325,7 +345,12 @@ public sealed class GraftApp
                 caption = new Caption("Commit or stash your changes first", Warn);
             }
             else if (layout.Kind == GraphKind.Same)
-                caption = new Caption($"{layout.Current} is the current branch", Muted);
+            {
+                // Same tip hash is not the same branch: another branch can point at the current commit.
+                caption = layout.Selected == layout.Current
+                    ? new Caption($"{layout.Current} is the current branch", Muted)
+                    : new Caption($"{layout.Selected} points at the same commit as {(layout.Detached ? "HEAD" : layout.Current)}: nothing to merge", Muted);
+            }
             else if (layout.Kind == GraphKind.Unrelated)
                 caption = new Caption($"{layout.Selected} and {layout.Current} have no common history", Muted);
             return new SceneFrame(grid, caption);
@@ -360,6 +385,10 @@ public sealed class GraftApp
         _keys.Busy = false;
         _keys.SetNeedsDraw();
         _art.SetNeedsDraw();
+
+        // Starting a merge bumped the snapshot sequence, which drops an in-flight counts load. Nothing merged, so
+        // reload the counts and the status (clean or dirty, branch) from git.
+        ReloadCountsAsync();
     }
 
     private void BeginAnimation(MergeCheck check, GraphLayout layout)
@@ -444,6 +473,8 @@ public sealed class GraftApp
         _snapshot = s;
         _snapshotSeq++;
         _cache.Clear();
+        _wantedBranchWidth = BranchesView.WantedWidth(s.Branches, s.Counts);
+        _window?.SetNeedsLayout();
 
         // Keep the selection on the same branch name; if that branch is gone, keep the index (clamped).
         var kept = -1;
@@ -472,7 +503,7 @@ public sealed class GraftApp
         LogMessage("git error: " + ex.Message, Bad);
     }
 
-    /// <summary>Logs each command, its exit code, and the output of `git merge` commands. Returns the log index of the first `git merge` line, or -1.</summary>
+    /// <summary>Logs each command, its exit code, and the output of `git merge` commands. Returns the log position of the first `git merge` line, or -1.</summary>
     private int LogCommands(IEnumerable<GitResult> results)
     {
         var mergeIndex = -1;
@@ -480,7 +511,7 @@ public sealed class GraftApp
         {
             var isMerge = r.Command.StartsWith("git merge", StringComparison.Ordinal);
             if (mergeIndex < 0 && isMerge)
-                mergeIndex = _log.Count;
+                mergeIndex = _log.Position;
             _log.Add(new LogLine(LogKind.Command, r.Command, r.ExitCode));
             if (!isMerge)
                 continue;
@@ -571,8 +602,8 @@ public sealed class GraftApp
         }
     }
 
-    private static (string Head, string Tip, bool Clean) CacheKey(RepoSnapshot snap, Branch b) =>
-        (snap.HeadHash ?? "", b.Hash, snap.Clean);
+    private static (string Current, string Head, string Name, string Tip, bool Clean) CacheKey(RepoSnapshot snap, Branch b) =>
+        (snap.CurrentBranch, snap.HeadHash ?? "", b.Name, b.Hash, snap.Clean);
 
     private static int FirstNonCurrent(RepoSnapshot s)
     {

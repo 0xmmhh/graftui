@@ -43,11 +43,7 @@ public sealed class BranchesView : PaneView
             _top = sel - innerH + 1;
         _top = Math.Clamp(_top, 0, Math.Max(0, Branches.Count - innerH));
 
-        // Width of the "↑a↓b" column: wide enough for every branch that has counts.
-        var abW = 4;
-        foreach (var b in Branches)
-            if (!b.IsCurrent && Counts.TryGetValue(b.Name, out var c))
-                abW = Math.Max(abW, TextFit.Columns(AbText(c)));
+        var abW = AbWidth(Branches, Counts);
 
         // mark + space + name + space + ab + space + hash(7) = 11 columns beyond the name and ab.
         var nameW = innerW - 2 - 1 - abW - 1 - 7;
@@ -103,4 +99,27 @@ public sealed class BranchesView : PaneView
     }
 
     private static string AbText((int Ahead, int Behind) c) => $"↑{c.Ahead}↓{c.Behind}";
+
+    // Width of the "↑a↓b" column: wide enough for every branch that has counts, and at least 4.
+    private static int AbWidth(IReadOnlyList<Branch> branches, IReadOnlyDictionary<string, (int Ahead, int Behind)> counts)
+    {
+        var abW = 4;
+        foreach (var b in branches)
+            if (!b.IsCurrent && counts.TryGetValue(b.Name, out var c))
+                abW = Math.Max(abW, TextFit.Columns(AbText(c)));
+        return abW;
+    }
+
+    /// <summary>
+    /// Pane width (border included) that shows the longest branch name in full, with its mark, the ↑↓ column and the hash.
+    /// The layout clamps this to its own bounds; a narrower pane truncates names.
+    /// </summary>
+    public static int WantedWidth(IReadOnlyList<Branch> branches, IReadOnlyDictionary<string, (int Ahead, int Behind)> counts)
+    {
+        var longest = 0;
+        foreach (var b in branches)
+            longest = Math.Max(longest, TextFit.Columns(TextFit.Sanitize(b.Name)));
+        // border 2 + mark and space 2 + name + space 1 + ab + space 1 + hash 7
+        return 2 + 2 + longest + 1 + AbWidth(branches, counts) + 1 + 7;
+    }
 }
