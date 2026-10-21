@@ -75,7 +75,7 @@ catch (Exception ex) when (ex is GitNotFoundException or DirectoryNotFoundExcept
 }
 
 var repoDisplay = ShortenHome(git.RepoPath);
-GraftApp? gui = null;
+AppController? gui = null;
 IApplication? applicationHandle = null;
 Window? windowHandle = null;
 Exception? uiError = null;
@@ -87,7 +87,7 @@ try
     applicationHandle = app;
     app.Init();
 
-    gui = new GraftApp(app, git, snapshot, repoDisplay, sandboxMode);
+    gui = new AppController(app, git, snapshot, repoDisplay, sandboxMode);
     var window = gui.BuildWindow();
     windowHandle = window;
     app.Run(window);
