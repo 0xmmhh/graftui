@@ -211,7 +211,7 @@ public sealed class GraftApp
             {
                 // The layout is read first, so that Check is the last git work before the merge.
                 var loaded = cached ?? TryLoadLayout(snap, b);
-                var check = _merger.Check(b.Name);
+                var check = _merger.Check(new MergeRequest(b.Name));
                 if (!check.CanMerge)
                 {
                     Ui(() => ShowRefused(check, b.Name, loaded));
@@ -228,7 +228,7 @@ public sealed class GraftApp
                     ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, b.Name, snap.HeadHash ?? "", b.Hash);
                 Ui(() => BeginAnimation(check, layoutNow));
 
-                var o = _merger.Merge(b.Name, check.CurrentBranch);
+                var o = _merger.Run(new MergeRequest(b.Name), check);
                 var after = TryLoadSnapshot();
                 var mergeCommit = o.Kind == MergeKind.MergeCommit && o.NewHead is { } head ? TryGetCommit(head) : null;
                 Ui(() => _pending = (o, after, mergeCommit));
