@@ -39,7 +39,7 @@ if (argument is not null && argument.StartsWith('-') && argument != "--sandbox")
 }
 
 // Repo to operate on: the given path, the practice sandbox, or the current directory.
-// During development, point this at the sandbox (scripts/make-sandbox.sh), not at graft itself.
+// During development, point this at the sandbox (graft --sandbox), not at graft itself.
 var sandboxMode = argument == "--sandbox";
 if (sandboxMode)
 {
