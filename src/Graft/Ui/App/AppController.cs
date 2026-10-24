@@ -78,8 +78,6 @@ public sealed class AppController
 
     public Window BuildWindow()
     {
-        ScreenLayout Layout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _wantedBranchWidth);
-
         var window = new Window { BorderStyle = LineStyle.None };
         window.SetScheme(Palette.RootScheme);
         _window = window;
@@ -89,22 +87,22 @@ public sealed class AppController
         {
             X = 0,
             Y = 1,
-            Width = Dim.Func(_ => Layout().TooSmall ? 0 : Layout().BranchWidth),
-            Height = Dim.Func(_ => Layout().TooSmall ? 0 : Layout().TopHeight),
+            Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().BranchWidth),
+            Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
         };
         Art = new ArtPaneView
         {
-            X = Pos.Func(_ => Layout().BranchWidth),
+            X = Pos.Func(_ => CurrentLayout().BranchWidth),
             Y = 1,
-            Width = Dim.Func(_ => Layout().TooSmall ? 0 : Layout().Cols - Layout().BranchWidth),
-            Height = Dim.Func(_ => Layout().TooSmall ? 0 : Layout().TopHeight),
+            Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().Cols - CurrentLayout().BranchWidth),
+            Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
         };
         Log = new LogView
         {
             X = 0,
-            Y = Pos.Func(_ => 1 + Layout().TopHeight),
+            Y = Pos.Func(_ => 1 + CurrentLayout().TopHeight),
             Width = Dim.Fill(),
-            Height = Dim.Func(_ => Layout().TooSmall ? 0 : Layout().LogHeight),
+            Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().LogHeight),
         };
         Keys = new KeyBarView { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1, SandboxMode = _sandboxMode };
         _tooSmall = new TooSmallView
@@ -112,7 +110,7 @@ public sealed class AppController
             X = 0,
             Y = 1,
             Width = Dim.Fill(),
-            Height = Dim.Func(_ => Layout().TooSmall ? Math.Max(0, Layout().Rows - 2) : 0),
+            Height = Dim.Func(_ => CurrentLayout().TooSmall ? Math.Max(0, CurrentLayout().Rows - 2) : 0),
         };
 
         Status.RepoDisplay = _repoDisplay;

@@ -64,6 +64,8 @@ public class MergeSafetyTests
     [Fact]
     public void An_interrupted_merge_is_rolled_back_to_the_starting_commit()
     {
+        // Needs git >= 2.24 (pre-merge-commit hook). git exec's the hook directly, so $PPID is git,
+        // and the temp dir must not be mounted noexec or the hook cannot run.
         using var repo = TempRepo.Diverged(conflict: false);
         // git runs this hook just before it commits a clean merge; interrupting it leaves the merge staged.
         repo.WriteHook("pre-merge-commit", "#!/bin/sh\nkill -INT $PPID\nsleep 1\n");

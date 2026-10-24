@@ -161,7 +161,7 @@ Never run graft against the graft repo itself during development. The sandbox ha
 | `feature/conflict` | Conflict (aborted) |
 | `feature/picks` | Merge commit (diverged, 3 commits ahead; three independent commits for later cherry-pick work) |
 
-`graft --sandbox` builds the same repo at `~/.graft/sandbox` and opens it. It only deletes a folder that graft itself created (marked by `.git/graft-sandbox`); anything else there is left alone and graft refuses to start.
+`graft --sandbox` builds a practice repo at `~/.graft/sandbox` and opens it. It only deletes a folder that graft itself created (marked by `.git/graft-sandbox`); anything else there is left alone and graft refuses to start.
 
 Layout:
 

@@ -12,7 +12,16 @@ public class RepoReaderSandboxTests : IDisposable
 
     public RepoReaderSandboxTests()
     {
-        Sandbox.RebuildAt(_dir, TextWriter.Null);
+        try
+        {
+            Sandbox.RebuildAt(_dir, TextWriter.Null);
+        }
+        catch
+        {
+            // Dispose never runs when the constructor throws, so clean up the temp root here.
+            TempRepo.DeleteSandboxRoot(_dir);
+            throw;
+        }
         _git = new GitClient(_dir);
         _reader = new RepoReader(_git);
     }
