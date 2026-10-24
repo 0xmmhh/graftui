@@ -1,6 +1,6 @@
-using Graft.Git;
+using Graft.Model;
 
-namespace Graft.Ui;
+namespace Graft.Ui.Scenes;
 
 /// <summary>
 /// Drives one merge's animation. Before git answers, the scene is predicted from the layout and held at its

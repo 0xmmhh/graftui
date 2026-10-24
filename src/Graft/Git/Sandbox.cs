@@ -27,10 +27,16 @@ public static class Sandbox
         if (string.IsNullOrEmpty(Home))
             throw new SandboxRefusedException("HOME is not set; cannot find ~/.graft");
 
-        var full = Path.GetFullPath(path);
-        if (full != Path.GetFullPath(DefaultPath))
+        if (Path.GetFullPath(path) != Path.GetFullPath(DefaultPath))
             throw new SandboxRefusedException("the sandbox can only be rebuilt at ~/.graft/sandbox");
 
+        RebuildAt(path, progress);
+    }
+
+    /// <summary>Test-only: builds at any path, still behind the marker-file guard. Never called from Program.</summary>
+    internal static void RebuildAt(string path, TextWriter progress)
+    {
+        var full = Path.GetFullPath(path);
         CheckRefusals(full);
 
         if (Directory.Exists(full))

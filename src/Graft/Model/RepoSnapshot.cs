@@ -1,4 +1,4 @@
-namespace Graft.Git;
+namespace Graft.Model;
 
 /// <summary>
 /// The branch list and working-tree state at one moment.

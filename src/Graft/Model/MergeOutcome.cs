@@ -1,6 +1,10 @@
-namespace Graft.Git;
+using Graft.Git;
+
+namespace Graft.Model;
 
 public enum MergeKind { FastForward, MergeCommit, UpToDate, Conflict, Failed }
+
+public sealed record MergeRequest(string Branch);
 
 public sealed record MergeOutcome(
     MergeKind Kind,
@@ -9,7 +13,8 @@ public sealed record MergeOutcome(
     string? NewHead,
     IReadOnlyList<string> ConflictFiles,
     string Message,
-    IReadOnlyList<GitResult> Commands);
+    IReadOnlyList<GitResult> Commands,
+    UndoRecord? Undo = null);
 
 public sealed record MergeCheck(string CurrentBranch, string? Refusal, IReadOnlyList<GitResult> Commands)
 {

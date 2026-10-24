@@ -145,9 +145,10 @@ v1 is merge only. These are ideas for later versions, not commitments:
 ## Development
 
 ```sh
-scripts/make-sandbox.sh                          # (re)build ../graft-sandbox
-dotnet run --project src/Graft -- ../graft-sandbox
-dotnet run --project src/Graft -- --sandbox      # rebuild and open ~/.graft/sandbox
+dotnet build
+dotnet test
+dotnet run --project src/Graft -- --sandbox          # rebuild and open ~/.graft/sandbox
+dotnet run --project src/Graft -- ~/.graft/sandbox   # reopen without rebuilding
 ```
 
 Never run graft against the graft repo itself during development. The sandbox has one branch per outcome:
@@ -160,13 +161,16 @@ Never run graft against the graft repo itself during development. The sandbox ha
 | `feature/conflict` | Conflict (aborted) |
 | `feature/picks` | Merge commit (diverged, 3 commits ahead; three independent commits for later cherry-pick work) |
 
-`graft --sandbox` builds the same repo at `~/.graft/sandbox` and opens it. It only deletes a folder that graft itself created (marked by `.git/graft-sandbox`); anything else there is left alone and graft refuses to start.
+`graft --sandbox` builds a practice repo at `~/.graft/sandbox` and opens it. It only deletes a folder that graft itself created (marked by `.git/graft-sandbox`); anything else there is left alone and graft refuses to start.
 
 Layout:
 
 - `src/Graft/Program.cs`: arguments, startup, terminal teardown, the exit code after a merge
-- `src/Graft/Git/`: `GitClient` (all git CLI access), `RepoReader` (read-only queries for the screen), `Merger` (checks, merge, rollback), `Sandbox` (builds `~/.graft/sandbox`) and their records
-- `src/Graft/Ui/`: `GraftApp` (controller), the pure drawing and animation code (`MergeScenes`, `MergeAnimation`, `ArtGrid`, `CommitLists`, `DirectionLine`, `TextFit`)
+- `src/Graft/Git/`: `GitClient` (all git CLI access), `RepoReader` (read-only queries for the screen), `Sandbox` (builds `~/.graft/sandbox`)
+- `src/Graft/Model/`: the plain records (branches, commits, layouts, merge outcomes)
+- `src/Graft/Operations/`: the shared operation shape (`IGitOperation`) and `MergeOperation` (checks, merge, rollback)
+- `src/Graft/Ui/App/`: `AppController` (wires the views to git), `BranchesTab`, `Animator`, `QuitGate`
+- `src/Graft/Ui/Scenes/` and `src/Graft/Ui/Text/`: the pure drawing, animation and text code (`MergeScenes`, `MergeAnimation`, `ArtGrid`, `CommitLists`, `DirectionLine`, `TextFit`)
 - `src/Graft/Ui/Views/`: the Terminal.Gui views and `Palette`
-- `scripts/make-sandbox.sh`: builds `../graft-sandbox`
+- `tests/Graft.Tests/`: the xUnit tests, including the git safety tests (run in temp repos)
 

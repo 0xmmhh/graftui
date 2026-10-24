@@ -1,16 +1,21 @@
-namespace Graft.Git;
+using Graft.Git;
+using Graft.Model;
+
+namespace Graft.Operations;
 
 /// <summary>
 /// Runs a merge safely: checks preconditions, merges, classifies the result structurally
 /// (never by parsing localised text) and always aborts a conflicted merge.
+/// Stages: Check = Check; Run = preflight + git merge; Verify = Verify; Rollback = Rollback.
 /// </summary>
-public sealed class Merger(GitClient git)
+public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, MergeCheck, MergeOutcome>
 {
     private static readonly string[] NoFiles = [];
 
-    /// <summary>Preconditions for merging <paramref name="branch"/> into the current branch.</summary>
-    public MergeCheck Check(string branch)
+    /// <summary>Preconditions for merging <paramref name="request"/>.Branch into the current branch.</summary>
+    public MergeCheck Check(MergeRequest request)
     {
+        var branch = request.Branch;
         var log = new List<GitResult>();
         GitResult Run(params string[] a) { var r = git.Run(a); log.Add(r); return r; }
 
@@ -44,15 +49,18 @@ public sealed class Merger(GitClient git)
     }
 
     /// <summary>Blocking merge for a worker thread. Never throws.</summary>
-    public MergeOutcome Merge(string branch, string into)
+    public MergeOutcome Run(MergeRequest request, MergeCheck check)
     {
+        var branch = request.Branch;
+        var into = check.CurrentBranch;
         var log = new List<GitResult>();
         GitResult Run(params string[] a) { var r = git.Run(a); log.Add(r); return r; }
-        MergeOutcome Done(MergeKind kind, string? head, IReadOnlyList<string> files, string message) =>
-            new(kind, branch, into, head, files, message, log);
+        MergeOutcome Done(MergeKind kind, string? head, IReadOnlyList<string> files, string message, UndoRecord? undo = null) =>
+            new(kind, branch, into, head, files, message, log, undo);
 
         var oldHead = "";
         var mergeRan = false;
+        UndoRecord Moved(string head) => new("merge", [new RefChange("refs/heads/" + into, oldHead, head)]);
         try
         {
             var headResult = Run("rev-parse", "-q", "--verify", "HEAD");
@@ -83,7 +91,7 @@ public sealed class Merger(GitClient git)
             var merge = Run("merge", "--no-edit", branch);
 
             // Classifies a merge that finished, by looking at HEAD and its parents (never at git's text).
-            MergeOutcome Classify(string suffix)
+            MergeOutcome Verify(string suffix)
             {
                 // First token is HEAD, the rest are its parents.
                 var tokens = Run("rev-list", "--parents", "-n", "1", "HEAD").StdOut
@@ -94,21 +102,21 @@ public sealed class Merger(GitClient git)
                 if (head == oldHead)
                     return Done(MergeKind.UpToDate, head, NoFiles, "already up to date" + suffix);
                 if (head == branchTip)
-                    return Done(MergeKind.FastForward, head, NoFiles, "fast-forward" + suffix);
+                    return Done(MergeKind.FastForward, head, NoFiles, "fast-forward" + suffix, Moved(head));
                 if (tokens.Length >= 3 && tokens[1] == oldHead)
-                    return Done(MergeKind.MergeCommit, head, NoFiles, "merge commit created" + suffix);
+                    return Done(MergeKind.MergeCommit, head, NoFiles, "merge commit created" + suffix, Moved(head));
                 return Done(MergeKind.Failed, head, NoFiles, "merge finished with an unexpected result" + suffix);
             }
 
             if (merge.Success)
-                return Classify("");
+                return Verify("");
 
             var files = Run("diff", "--name-only", "--diff-filter=U").StdOut
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList();
 
             // Signals arrive as 128+N (130 = SIGINT); exactly 128 is git's own die(), not a signal.
-            var (leftover, mergeStarted) = RollBack(Run, oldHead, merge.ExitCode > 128);
+            var (leftover, mergeStarted) = Rollback(Run, oldHead, merge.ExitCode > 128);
             if (leftover is not null)
                 return Done(MergeKind.Failed, null, files, leftover);
 
@@ -117,7 +125,7 @@ public sealed class Merger(GitClient git)
             // moved HEAD came from elsewhere and is not ours to classify.
             var now = Run("rev-parse", "-q", "--verify", "HEAD");
             if (mergeStarted && now.Success && now.StdOut.Trim() != oldHead)
-                return Classify($" (git exited {merge.ExitCode} after completing the merge)");
+                return Verify($" (git exited {merge.ExitCode} after completing the merge)");
 
             if (files.Count > 0)
                 return Done(MergeKind.Conflict, null, files, "merge aborted");
@@ -134,7 +142,7 @@ public sealed class Merger(GitClient git)
                 return Done(MergeKind.Failed, null, NoFiles, ex.Message);
             string? leftover = null;
             var rollbackFailed = false;
-            try { leftover = RollBack(Run, oldHead, false).Leftover; } catch { rollbackFailed = true; }
+            try { leftover = Rollback(Run, oldHead, false).Leftover; } catch { rollbackFailed = true; }
             var message = leftover is null ? ex.Message : $"{ex.Message}; {leftover}";
             if (rollbackFailed)
                 message += "; repo state unknown, run git status";
@@ -147,7 +155,7 @@ public sealed class Merger(GitClient git)
     /// not mid-merge afterwards, otherwise an accurate description of what is left. MergeStarted tells whether
     /// the merge actually began (MERGE_HEAD present or git killed by a signal).
     /// </summary>
-    private static (string? Leftover, bool MergeStarted) RollBack(Func<string[], GitResult> run, string oldHead, bool interrupted)
+    private static (string? Leftover, bool MergeStarted) Rollback(Func<string[], GitResult> run, string oldHead, bool interrupted)
     {
         // The merge only counts as started if git left MERGE_HEAD behind or was killed mid-run. A normal
         // non-zero exit without MERGE_HEAD is a refusal before anything was touched.

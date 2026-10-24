@@ -1,5 +1,5 @@
-using Graft.Git;
-using Graft.Ui;
+using Graft.Ui.Scenes;
+using Graft.Ui.Text;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Drawing;
 

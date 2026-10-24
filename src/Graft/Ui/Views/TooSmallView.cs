@@ -1,4 +1,4 @@
-using Graft.Ui;
+using Graft.Ui.Text;
 using Terminal.Gui.ViewBase;
 
 namespace Graft.Ui.Views;

@@ -1,4 +1,4 @@
-namespace Graft.Ui;
+namespace Graft.Ui.Text;
 
 /// <summary>Row and column budget for the panes. TopHeight holds the branches and the art; LogHeight is the Commands pane.</summary>
 public sealed record ScreenLayout(bool TooSmall, int Cols, int Rows, int BranchWidth, int TopHeight, int LogHeight)

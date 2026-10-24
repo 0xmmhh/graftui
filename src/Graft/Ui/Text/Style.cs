@@ -1,4 +1,4 @@
-namespace Graft.Ui;
+namespace Graft.Ui.Text;
 
 /// <summary>Semantic colour roles. The actual colours live in the Views layer (Palette), so this stays testable.</summary>
 public enum Ink : byte { Fg, Dim, Cur, Inc, Mrg, Ok, Bad, Warn, Hash, Frame }
