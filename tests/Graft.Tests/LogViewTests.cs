@@ -35,9 +35,8 @@ public class LogViewTests
     }
 
     [Fact]
-    public void Zero_rows_does_not_throw()
+    public void Zero_rows_keeps_the_anchor()
     {
-        var ex = Record.Exception(() => LogView.TopLine(count: 10, rows: 0, anchor: 4));
-        Assert.Null(ex);
+        Assert.Equal(4, LogView.TopLine(count: 10, rows: 0, anchor: 4));
     }
 }
