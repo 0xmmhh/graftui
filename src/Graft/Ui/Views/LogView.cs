@@ -66,11 +66,20 @@ public sealed class LogView : PaneView
         if (rows <= 0 || maxCols <= 0)
             return true;
 
-        var bottom = Math.Max(0, _lines.Count - rows);
-        var top = _anchor >= 0 ? Math.Max(_anchor, bottom) : bottom;
+        var top = TopLine(_lines.Count, rows, _anchor);
         for (var i = 0; i < rows && top + i < _lines.Count; i++)
             DrawLine(2, 1 + i, _lines[top + i], maxCols);
         return true;
+    }
+
+    /// <summary>
+    /// Index of the first visible line. Without an anchor (anchor &lt; 0) that is the newest lines. With one, the
+    /// anchor is the top line, but never past the newest lines (no blank space below the log).
+    /// </summary>
+    internal static int TopLine(int count, int rows, int anchor)
+    {
+        var bottom = Math.Max(0, count - rows);
+        return anchor >= 0 ? Math.Min(anchor, bottom) : bottom;
     }
 
     private void DrawLine(int x, int y, LogLine l, int maxCols)
