@@ -1,0 +1,34 @@
+using graftui.Ui.Scenes;
+
+namespace graftui.Tests;
+
+public class ArtGeometryTests
+{
+    [Fact]
+    public void Eleven_rows_at_80_columns_uses_the_widest_step()
+    {
+        Assert.Equal(new ArtGeometry(80, 11, 6, 3, 7, 16), ArtGeometry.For(80, 11));
+    }
+
+    [Fact]
+    public void Unsupported_height_has_no_geometry()
+    {
+        Assert.Null(ArtGeometry.For(80, 9));
+    }
+
+    [Fact]
+    public void Narrow_grid_falls_back_to_a_smaller_step()
+    {
+        var g = ArtGeometry.For(25, 8);
+
+        Assert.NotNull(g);
+        Assert.Equal(3, g.Step);
+        Assert.Equal(10, g.XB);
+    }
+
+    [Fact]
+    public void Too_narrow_for_any_step_has_no_geometry()
+    {
+        Assert.Null(ArtGeometry.For(22, 8));
+    }
+}

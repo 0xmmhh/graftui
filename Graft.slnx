@@ -1,8 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/Graft/Graft.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Graft.Tests/Graft.Tests.csproj" />
-  </Folder>
-</Solution>

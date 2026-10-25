@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/graftui/graftui.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/graftui.Tests/graftui.Tests.csproj" />
+  </Folder>
+</Solution>
