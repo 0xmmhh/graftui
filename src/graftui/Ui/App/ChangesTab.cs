@@ -293,6 +293,8 @@ internal sealed partial class ChangesTab
             _app.ChangesAnimator.SetPending(failed, [], $"{verb} failed: {ex.Message}", () => AfterChange(false, _ => 0, null, null));
             return;
         }
+        // The error is on screen now (the status bar), so the exit path need not print this change's line again.
+        _app.MarkChangeOutcomeShown();
         EndBusy();
         RequestRefresh();
     }
