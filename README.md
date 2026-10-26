@@ -1,51 +1,86 @@
-# graftui
+<div align="center">
 
-An animated git TUI. Pick a branch, press `m`, and watch two limbs grow together while the real `git merge` runs underneath.
+<h1>graftui</h1>
 
+<p><b>Watch your branches grow together.</b><br/>
+An animated git TUI: pick a branch, press <code>m</code>, and see the real <code>git merge</code> happen.</p>
+
+<p>
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"/>&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square" alt=".NET 10"/>&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/Terminal.Gui-v2-2ea44f?style=flat-square" alt="Terminal.Gui v2"/>&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform: macOS | Linux"/>
+</p>
+
+<p>
+  <a href="#install">Install</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#usage">Usage</a> ·
+  <a href="#safety">Safety</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
+
+<img src="assets/demo.gif" alt="graftui demo: a merge commit, then a conflict that is aborted automatically" width="760"/>
+
+</div>
+
+<br/>
+
+graftui is a thin, safety-first layer over the git CLI. It never reimplements git: every action is a real `git` command, and every command it runs is shown on screen with its exit code. You see what git actually did, not a guess.
+
+## What it does
+
+- **Animated merges.** Every outcome has its own animation: fast-forward, merge commit, already up to date, conflict and refused
+- **Branch overview.** Local branches with ahead/behind counts and a preview of how each one relates to the current branch
+- **Nothing hidden.** A live log of every git command that ran, with its exit code and git's output
+- **Safe by default.** Refuses to merge over uncommitted work or a detached HEAD, and aborts conflicts automatically so the repo is never left mid-merge
+- **Practice sandbox.** `graftui --sandbox` builds a throwaway repo with one branch per merge outcome
+- **Tested against real git.** Every safety rule has a test that runs git in a throwaway repository
+
+## Install
+
+There are no packaged releases yet; graftui builds into a single executable. You need git and the [.NET 10 SDK](https://dotnet.microsoft.com/download).
+
+1. Clone it:
+   ```bash
+   git clone https://github.com/0xmmhh/graftui.git && cd graftui
+   ```
+2. Publish it into a folder on your `PATH`:
+   ```bash
+   dotnet publish src/graftui -c Release -r osx-arm64 --self-contained false \
+     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
+     -o ~/.local/bin
+   ```
+3. Check that `~/.local/bin` is on your `PATH` (e.g. `export PATH="$HOME/.local/bin:$PATH"` in `~/.zshrc`), then run `graftui --help`.
+
+To update, pull and run step 2 again. On another platform, change the runtime: `-r osx-x64`, `-r linux-x64`, `-r linux-arm64` or `-r win-x64` (Windows is untested). Add `--self-contained true` for a binary that doesn't need .NET installed (≈90 MB instead of ≈11 MB).
+
+## Quick start
+
+Try it on the practice repo first:
+
+```bash
+graftui --sandbox
 ```
-main                                    feature/merge-commit
-●━━━━━━━━━━━━━━━━━━━━◉━━━━━━━━━━━━━━━━━━━━●
-✔ Merge commit 41c083c created on main
-```
 
-graftui is a thin, safety-first layer over the git CLI. It never reimplements git: every action is a real `git` command, and every command it runs is shown on screen with its exit code.
+This builds a repository at `~/.graftui/sandbox` and opens it. Each branch gives a different outcome when merged into `main`:
 
-Built with C# / .NET 10 and [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) v2.
-
-**Status: v1, merge only.**
-
-## Requirements
-
-- git on your `PATH`
-- macOS or Linux terminal. Windows should work but is untested.
-- To build: the .NET 10 SDK. To run a published binary: the .NET 10 runtime, or nothing at all with a self-contained build (see [Install](#install-as-a-single-command)).
-
-## Install as a single command
-
-Publish graftui as one executable and put it on your `PATH`:
-
-```sh
-dotnet publish src/graftui -c Release -r osx-arm64 --self-contained false \
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
-  -o ~/.local/bin
-```
-
-Then, from inside any git repository:
-
-```sh
-graftui
-```
-
-Make sure `~/.local/bin` is on your `PATH` (e.g. `export PATH="$HOME/.local/bin:$PATH"` in `~/.zshrc`).
-
-Variants:
-
-| Want | Change |
+| Branch | Merging it gives |
 |---|---|
-| No .NET runtime needed on the machine (≈90 MB instead of ≈11 MB) | `--self-contained true` |
-| Intel Mac / Linux / Windows | `-r osx-x64`, `-r linux-x64`, `-r linux-arm64`, `-r win-x64` |
+| `feature/fast-forward` | Fast-forward |
+| `feature/ff-to-merge` | Fast-forward onto a merge commit |
+| `feature/merge-commit` | Merge commit |
+| `feature/conflict` | Conflict (aborted automatically) |
+| `feature/picks` | Merge commit (three commits ahead) |
 
-Re-run the same command after pulling changes to update.
+Run `--sandbox` again any time to reset it. graftui only ever deletes a folder it created itself (marked by `.git/graftui-sandbox`).
+
+Then, in any repository of your own:
+
+```bash
+graftui                 # the repo in the current directory
+graftui path/to/repo    # or a specific one
+```
 
 ## Usage
 
@@ -55,45 +90,42 @@ graftui --sandbox
 graftui --help
 ```
 
-| Argument | Meaning |
-|---|---|
-| `path-to-repo` | The repository to work on. Optional; defaults to the current directory. |
-| `--sandbox` | Rebuild the practice repo at `~/.graftui/sandbox` and open it. Nothing else is touched. |
-| `--help`, `-h` | Print the usage and exit. |
-
-An unknown option, or more than one argument, prints an error and exits with code `2`.
-
-### Keys
-
 | Key | Action |
 |---|---|
 | `↑` / `↓` | Select a branch |
 | `m` | Merge the selected branch into the current branch |
 | `Esc` | Quit (if a merge is running, graftui waits for it to finish first) |
 
-### Screen
+<details>
+<summary>The screen</summary>
 
 - **Status bar (top):** the repository, the current branch, and whether the working tree is clean. When merging is disabled, the bar says why.
-- **Branches (left):** every local branch, with `*` on the current one and the highlighted row for the selection. `↑2` means the branch has 2 commits the current branch lacks; `↓1` means the current branch has 1 commit the branch lacks. The short hash is shown when there is room.
-- **Preview and animation (right):** the direction line (`feature/x is 1 ahead, 1 behind main (current)`), the picture of the two branches, a caption, and the commits involved. Before you merge it shows the relationship; during the merge the two lines grow together; afterwards it shows the result.
+- **Branches (left):** every local branch, with `*` on the current one. `↑2` means the branch has 2 commits the current branch lacks; `↓1` means the current branch has 1 commit the branch lacks.
+- **Preview and animation (right):** how the selected branch relates to the current one, a picture of the two branches, a caption and the commits involved. During a merge the two lines grow together; afterwards it shows the result.
 - **Commands:** every git command graftui ran, with its exit code and the output of `git merge`.
 - **Key bar (bottom):** the keys that work right now.
 
-The terminal must be at least 64×22. Smaller than that, graftui shows the size it needs and ignores `m` until the window is big enough again. Names that don't fit are cut with `…`.
+The terminal must be at least 64×22. Names that don't fit are cut with `…`.
 
-## What a merge can do
+</details>
+
+<details>
+<summary>What a merge can do</summary>
 
 | Outcome | What you see | What happens in the repo |
 |---|---|---|
 | Fast-forward | `✔ Fast-forward: main is now at 1a2b3c4 (+1 commit, no merge commit)` | The current branch moves to the selected branch's tip |
 | Merge commit | `✔ Merge commit 1a2b3c4 created on main` (gold `◉` at the join) | A merge commit is created with git's default message |
 | Already up to date | `Already up to date: feature/x is already part of main` | Nothing |
-| Conflict | `✕ CONFLICT in app.txt: merge aborted, main unchanged` (red `✕`) | graftui runs `git merge --abort` and lists the conflicting files. The repo is back where it was |
-| Failed | `✕ Merge failed: <reason>` (red `✕`) | git refused or something went wrong; graftui reports what state the repo is in |
+| Conflict | `✕ CONFLICT in app.txt: merge aborted, main unchanged` | graftui runs `git merge --abort` and lists the conflicting files. The repo is back where it was |
+| Failed | `✕ Merge failed: <reason>` | git refused or something went wrong; graftui reports what state the repo is in |
 
-graftui classifies outcomes from the commit graph (did `HEAD` move, to which commit, with how many parents), not by parsing git's localised output.
+graftui works out the outcome from the commit graph (did `HEAD` move, to which commit, with how many parents), not by parsing git's localised output.
 
-### When graftui refuses to merge
+</details>
+
+<details>
+<summary>When graftui refuses to merge</summary>
 
 graftui refuses, without running `git merge`, when:
 
@@ -105,16 +137,10 @@ graftui refuses, without running `git merge`, when:
 - the branch name is shadowed by a tag or other ref of the same name
 - the branch name starts with `-`
 
-## Safety guarantees
+</details>
 
-- **Never left mid-merge.** On conflict, graftui always runs `git merge --abort` (falling back to `git reset --merge`) and then verifies the tree is clean with no `MERGE_HEAD`.
-- **Never resets your work.** The rollback only runs when graftui's own merge actually started and `HEAD` hasn't moved. Changes graftui didn't make are reported, never discarded.
-- **Never waits on an editor, pager or prompt.** graftui sets `GIT_EDITOR=true`, `GIT_PAGER=cat`, `GIT_TERMINAL_PROMPT=0` and `GIT_MERGE_AUTOEDIT=no`, uses `--no-edit`, and closes git's stdin.
-- **Interrupted merges are rolled back.** If you press `Esc` during a merge, graftui restores the terminal, prints `waiting for git merge to finish...`, then prints the outcome and every command. `Ctrl+C` at that point interrupts git, and graftui rolls back the partial merge.
-- **Slow git is visible.** If a merge takes more than about 5 seconds (a signing passphrase prompt or a slow hook), the caption says `git is still running`.
-- **Ignores stray git environment variables.** `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` are removed, so graftui always works on the repo you gave it.
-
-## Exit codes
+<details>
+<summary>Exit codes</summary>
 
 | Code | Meaning |
 |---|---|
@@ -122,7 +148,19 @@ graftui refuses, without running `git merge`, when:
 | `1` | Startup error (not a repository, folder not found, git not on `PATH`, `--sandbox` refused), a UI error, or a merge that finished after you quit and ended in a conflict or failure |
 | `2` | Bad command line (unknown option, too many arguments) |
 
-## Known limitations
+</details>
+
+## Safety
+
+- **Never left mid-merge.** On conflict, graftui always runs `git merge --abort` (falling back to `git reset --merge`) and then checks that the tree is clean with no `MERGE_HEAD`.
+- **Never resets your work.** The rollback only runs when graftui's own merge actually started and `HEAD` hasn't moved. Changes graftui didn't make are reported, never discarded.
+- **Never waits on an editor, pager or prompt.** graftui sets `GIT_EDITOR=true`, `GIT_PAGER=cat`, `GIT_TERMINAL_PROMPT=0` and `GIT_MERGE_AUTOEDIT=no`, uses `--no-edit`, and closes git's stdin.
+- **Interrupted merges are rolled back.** Quit during a merge and graftui waits for git, then prints the outcome and every command. `Ctrl+C` at that point interrupts git, and graftui rolls back the partial merge.
+- **Slow git is visible.** If a merge takes more than about 5 seconds (a signing prompt or a slow hook), the caption says `git is still running`.
+- **Ignores stray git environment variables.** `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` are removed, so graftui always works on the repo you gave it.
+
+<details>
+<summary>Known limitations</summary>
 
 - `m` merges immediately; there is no confirmation step.
 - Your git config applies. `merge.ff=only` turns diverged merges into failures; `merge.ff=false` turns fast-forwards into merge commits. Commit signing with a passphrase-protected key and no agent will show a prompt over the TUI.
@@ -130,46 +168,52 @@ graftui refuses, without running `git merge`, when:
 - The command log follows the latest output and can't be scrolled by hand.
 - Non-ASCII file names in the conflict list are shown git-quoted.
 
-## Roadmap
+</details>
 
-v1 is merge only. These are ideas for later versions, not commitments:
+## Status and plans
 
-- **More operations, each with its own animation:** rebase (a limb being re-grafted), cherry-pick, branch create / delete / rename, switch, fetch and pull.
-- **Conflict handling inside graftui:** keep the merge open and resolve files one by one, instead of aborting.
-- **Previews:** show the commits and files a merge would bring in before pressing `m`, and a dry-run mode.
-- **Confirmation and options:** an optional confirm step, `--no-ff` / `--ff-only` toggles, a custom merge message.
-- **Better views:** a commit graph, a scrollable and copyable command log, remote branches.
-- **Distribution:** packaged releases (Homebrew, `dotnet tool install -g graftui`), a `--version` flag.
+Early, and deliberately narrow: **graftui does merges, and does them safely.** Planned next, roughly in this order (ideas, not promises):
+
+1. **Everyday local work** - a Changes view with diffs, stage and unstage, commit and amend, discard (always recoverable), stash, and switch, create, rename and delete branches, each with its own animation
+2. **Remotes** - fetch, pull (fast-forward first) and push (never forced), with ahead/behind against `origin`
+3. **History tools** - cherry-pick, rebase, undo, and a choice of merge types (no-ff, ff-only, squash, linear)
+4. **The smart layer** - a forecast of what each key would do, resolving conflicts inside graftui, interactive rebase, a whole-repo graph view, and plain-English explanations of each command
 
 ## Development
 
-```sh
-dotnet build
-dotnet test
-dotnet run --project src/graftui -- --sandbox          # rebuild and open ~/.graftui/sandbox
+```bash
+dotnet build graftui.slnx
+dotnet test graftui.slnx
+dotnet run --project src/graftui -- --sandbox            # rebuild and open ~/.graftui/sandbox
 dotnet run --project src/graftui -- ~/.graftui/sandbox   # reopen without rebuilding
 ```
 
-Never run graftui against the graftui repo itself during development. The sandbox has one branch per outcome:
+Develop against the sandbox, never against the graftui repository itself. Warnings are errors and nullable reference types are on for every project. The demo GIF is recorded with [vhs](https://github.com/charmbracelet/vhs): `vhs assets/demo.tape`.
 
-| Branch | Merging it into `main` gives |
-|---|---|
-| `feature/fast-forward` | Fast-forward |
-| `feature/ff-to-merge` | Fast-forward onto a merge commit |
-| `feature/merge-commit` | Merge commit |
-| `feature/conflict` | Conflict (aborted) |
-| `feature/picks` | Merge commit (diverged, 3 commits ahead; three independent commits for later cherry-pick work) |
+<details>
+<summary>Project layout</summary>
 
-`graftui --sandbox` builds a practice repo at `~/.graftui/sandbox` and opens it. It only deletes a folder that graftui itself created (marked by `.git/graftui-sandbox`); anything else there is left alone and graftui refuses to start.
+- `src/graftui/Program.cs` - arguments, startup, terminal teardown, the exit code after a merge
+- `src/graftui/Git/` - `GitClient` (all git CLI access), `RepoReader` (read-only queries for the screen), `Sandbox` (builds `~/.graftui/sandbox`)
+- `src/graftui/Model/` - plain records (branches, commits, layouts, merge outcomes, undo records)
+- `src/graftui/Operations/` - the shared operation shape (`IGitOperation`: check, run, verify, roll back) and `MergeOperation`
+- `src/graftui/Ui/App/` - `AppController` (wires the views to git), `BranchesTab`, `Animator`, `QuitGate`
+- `src/graftui/Ui/Scenes/` and `src/graftui/Ui/Text/` - pure drawing, animation and text code, unit-tested without a terminal
+- `src/graftui/Ui/Views/` - the Terminal.Gui views and `Palette`
+- `tests/graftui.Tests/` - xUnit tests, including the git safety tests (run in temp repositories)
 
-Layout:
+</details>
 
-- `src/graftui/Program.cs`: arguments, startup, terminal teardown, the exit code after a merge
-- `src/graftui/Git/`: `GitClient` (all git CLI access), `RepoReader` (read-only queries for the screen), `Sandbox` (builds `~/.graftui/sandbox`)
-- `src/graftui/Model/`: the plain records (branches, commits, layouts, merge outcomes)
-- `src/graftui/Operations/`: the shared operation shape (`IGitOperation`) and `MergeOperation` (checks, merge, rollback)
-- `src/graftui/Ui/App/`: `AppController` (wires the views to git), `BranchesTab`, `Animator`, `QuitGate`
-- `src/graftui/Ui/Scenes/` and `src/graftui/Ui/Text/`: the pure drawing, animation and text code (`MergeScenes`, `MergeAnimation`, `ArtGrid`, `CommitLists`, `DirectionLine`, `TextFit`)
-- `src/graftui/Ui/Views/`: the Terminal.Gui views and `Palette`
-- `tests/graftui.Tests/`: the xUnit tests, including the git safety tests (run in temp repos)
+## Contributing
 
+Contributions are welcome: bug reports, ideas and pull requests.
+
+- **Found a bug?** [Open an issue](https://github.com/0xmmhh/graftui/issues) with what you did, what you expected and what happened. Include the Commands pane output if it's relevant: it lists every git command graftui ran.
+- **Have an idea?** Open an issue before starting anything big, so we can agree on the approach first. The plans above are a good place to start.
+- **Sending a pull request?** Keep it focused on one change, make sure `dotnet build` has no warnings and `dotnet test` passes, and add a test for anything that changes how graftui touches a repository.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the setup, the safety rules every change must keep, and how to test.
+
+## License
+
+[MIT](LICENSE)
