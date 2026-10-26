@@ -23,7 +23,7 @@ public static class MergeScenes
     private static readonly Style Hash = new(Ink.Hash);
 
     private const string SpinFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
-    private const string WaitingText = "! git is still running (waiting for a password prompt or hook?)";
+    internal const string WaitingText = "! git is still running (waiting for a password prompt or hook?)";
 
     /// <summary>Both branches drawn at rest, no animation. Used for the preview and as the base of every scene.</summary>
     public static SceneFrame Preview(ArtGeometry g, GraphLayout L)
@@ -58,14 +58,17 @@ public static class MergeScenes
     }
 
     /// <summary>Dims the art and draws a box with the reason. Used for refusals (detached HEAD, dirty tree, ...).</summary>
-    public static void RefusedOverlay(ArtGrid grid, string reason)
+    public static void RefusedOverlay(ArtGrid grid, string reason) => MessageOverlay(grid, "Refused", reason);
+
+    /// <summary>Dims the art and draws a box with a title and a message. Refusals use "Refused"; failed changes use "Failed".</summary>
+    public static void MessageOverlay(ArtGrid grid, string title, string text)
     {
         grid.DimAll();
         var w0 = grid.Width;
         var h0 = grid.Height;
 
         var maxLine = Math.Max(10, w0 - 10);
-        var lines = Wrap(TextFit.Sanitize(reason), maxLine);
+        var lines = Wrap(TextFit.Sanitize(text), maxLine);
         var inner = Math.Max(7, lines.Select(TextFit.Columns).DefaultIfEmpty(0).Max());
         var w = inner + 4;
         if (w > w0)
@@ -83,7 +86,7 @@ public static class MergeScenes
         grid.Clear(Math.Max(0, x0 - 2), Math.Min(w0 - 1, x0 + w + 1), y0, y0 + h - 1);
 
         grid.Text(x0, y0, "┌" + new string('─', w - 2) + "┐", Warn);
-        grid.Text(x0, y0 + 1, "│ " + Pad("Refused", inner) + " │", WarnB);
+        grid.Text(x0, y0 + 1, "│ " + Pad(title, inner) + " │", WarnB);
         for (var i = 0; i < lines.Count; i++)
             grid.Text(x0, y0 + 2 + i, "│ " + Pad(lines[i], inner) + " │", Warn);
         grid.Text(x0, y0 + h - 1, "└" + new string('─', w - 2) + "┘", Warn);
