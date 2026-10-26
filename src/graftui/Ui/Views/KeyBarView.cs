@@ -23,6 +23,9 @@ public sealed class KeyBarView : View
     /// <summary>What Space does on the Changes tab: "stage" or "unstage", by the selected row.</summary>
     public string SpaceLabel { get; set; } = "stage";
 
+    /// <summary>The digit that answers the amend question on screen ("1", "2" or "3").</summary>
+    public string AskKey { get; set; } = "1";
+
     protected override bool OnDrawingContent(DrawContext? context)
     {
         Paint.ClearAll(this);
@@ -85,8 +88,8 @@ public sealed class KeyBarView : View
         ],
         KeyBarMode.Ask =>
         [
-            ("y", " yes"),
-            ("n", " no"),
+            (AskKey, " continue"),
+            ("n", " cancel"),
         ],
         _ =>
         [

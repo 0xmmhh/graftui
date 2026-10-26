@@ -95,38 +95,46 @@ internal sealed partial class ChangesTab
         // Anything else is left unhandled, so the focused field edits.
     }
 
-    /// <summary>Keys while the pushed-amend questions are shown: y moves on, n or Esc cancels; every key is taken.</summary>
+    /// <summary>
+    /// Keys while the pushed-amend questions are shown. Every key is taken. The state machine decides what a key does:
+    /// the answer for the question on screen is that question's digit, after a quiet gap. Only a third answer opens the box.
+    /// </summary>
     internal void HandleAskKey(Key e)
     {
         e.Handled = true;
-        if (e == Key.Y)
+        var key = e == Key.Esc ? PushedAmendQuestions.EscapeKey : CharOf(e);
+        switch (_questions.Press(key, _askClock.ElapsedMilliseconds))
         {
-            // A y that arrives right after a screen appeared (key repeat, typed ahead) must not skip it.
-            if (_askShown.ElapsedMilliseconds < YesIgnoredMs || _askCheck is null)
-                return;
-            if (_askStep < PushedWarnings)
-            {
-                _askStep++;
+            case QuestionResult.Advanced:
                 ShowAsk();
-                return;
-            }
-            var check = _askCheck;
-            _askCheck = null;
-            var (subject, body) = FormText(check, amend: true);
-            OpenForm(amend: true, check, subject, body, pushedConfirmed: true);
-            return;
+                break;
+            case QuestionResult.Confirmed:
+                var check = _askCheck!;
+                _askCheck = null;
+                var (subject, body) = FormText(check, amend: true);
+                OpenForm(amend: true, check, subject, body, pushedConfirmed: true);
+                break;
+            case QuestionResult.Cancelled:
+                CancelAsk();
+                break;
         }
+    }
 
-        if (e == Key.N || e == Key.Esc)
-        {
-            _askCheck = null;
-            Mode = ChangesMode.Browse;
-            _app.Keys.Mode = KeyBarMode.Changes;
-            _app.Keys.SetNeedsDraw();
-            _app.LogMessage("Amend cancelled", Dim);
-            _flash = new Caption("Amend cancelled: nothing changed", Dim);
-            ShowBrowse();
-        }
+    private void CancelAsk()
+    {
+        _askCheck = null;
+        Mode = ChangesMode.Browse;
+        _app.Keys.Mode = KeyBarMode.Changes;
+        _app.Keys.SetNeedsDraw();
+        _app.LogMessage("Amend cancelled", Dim);
+        _flash = new Caption("Amend cancelled: nothing changed", Dim);
+        ShowBrowse();
+    }
+
+    private static char CharOf(Key e)
+    {
+        var rune = e.AsRune;
+        return rune.Value is > 0 and < 0x10000 ? (char)rune.Value : '\0';
     }
 
     /// <summary>Starts the three questions for amending a commit that a remote branch already has.</summary>
@@ -134,9 +142,9 @@ internal sealed partial class ChangesTab
     {
         Mode = ChangesMode.Ask;
         _app.Keys.Mode = KeyBarMode.Ask;
-        _app.Keys.SetNeedsDraw();
         _askCheck = check;
-        _askStep = 1;
+        _askClock.Restart();
+        _questions.Start(_askClock.ElapsedMilliseconds);
         var remote = AskRemote(check);
         _app.LogMessage($"Warning: {Short(check.OldHead)} is already on {remote}", WarnB);
         ShowAsk();
@@ -150,14 +158,18 @@ internal sealed partial class ChangesTab
         var remote = AskRemote(check);
         var subject = check.OldCommit?.Subject ?? "";
 
-        var (text, caption) = _askStep switch
+        var step = _questions.Step;
+        var answer = _questions.AnswerKey;
+        var (text, caption) = step switch
         {
-            1 => ($"This commit is already on {remote}; amending it means you'd have to force-push.", "y continues · n or Esc cancels"),
-            2 => ($"Anyone who already has {remote} keeps the old commit {shortHash}. After a force-push, their history no longer matches yours.", "y continues · n or Esc cancels"),
-            _ => ($"Last check: graftui never force-pushes. You will have to run git push --force-with-lease yourself. Amend {shortHash} anyway?", "y opens the message box · n or Esc cancels"),
+            1 => ($"This commit is already on {remote}; amending it means you'd have to force-push.", $"{answer} continues · n or Esc cancels"),
+            2 => ($"Anyone who already has {remote} keeps the old commit {shortHash}. After a force-push, their history no longer matches yours.", $"{answer} continues · n or Esc cancels"),
+            _ => ($"Last check: graftui never force-pushes. You will have to run git push --force-with-lease yourself. Amend {shortHash} anyway?", $"{answer} opens the message box · n or Esc cancels"),
         };
+        _app.Keys.AskKey = answer.ToString();
+        _app.Keys.SetNeedsDraw();
 
-        art.Title = $"Amend pushed commit? ({_askStep}/{PushedWarnings})";
+        art.Title = $"Amend pushed commit? ({step}/{PushedAmendQuestions.Count})";
         art.Direction = cols => [new Seg("amend        ", Dim), new Seg(TextFit.Fit($"{shortHash} {subject}", Math.Max(8, cols - 13)), FgB)];
         art.Below = Summary();
         art.Commits = [];
@@ -168,7 +180,6 @@ internal sealed partial class ChangesTab
             MergeScenes.MessageOverlay(grid, "Warning", text);
             return new SceneFrame(grid, new Caption(caption, Warn));
         };
-        _askShown = Stopwatch.StartNew();
         art.SetNeedsDraw();
     }
 

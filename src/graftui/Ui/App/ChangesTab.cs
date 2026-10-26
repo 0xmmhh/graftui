@@ -22,8 +22,6 @@ internal sealed partial class ChangesTab
     private static readonly Style Dim = new(Ink.Dim), Warn = new(Ink.Warn), WarnB = new(Ink.Warn, true);
     private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true), BadB = new(Ink.Bad, true);
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), CurB = new(Ink.Cur, true);
-    private const int PushedWarnings = 3;
-    private const int YesIgnoredMs = 400;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
     private readonly AppController _app;
@@ -44,10 +42,10 @@ internal sealed partial class ChangesTab
     private bool _formPushedConfirmed;
     private string? _formError;
 
-    // The amend confirmations: the screen shown (1 to 3), when it appeared, and the check they are about.
+    // The amend confirmations: the check they are about, their state (which question, the quiet gap), and the clock the gap uses.
     private CommitCheck? _askCheck;
-    private int _askStep;
-    private Stopwatch _askShown = new();
+    private readonly PushedAmendQuestions _questions = new();
+    private readonly Stopwatch _askClock = new();
 
     // The last change's final frame. It stays on the art until the next Up, Down or Tab, as the mock keeps its result.
     private ChangesAnimation? _result;
