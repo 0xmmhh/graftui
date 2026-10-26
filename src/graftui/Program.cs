@@ -108,6 +108,7 @@ finally
 
 // Always runs, after the terminal is restored, so a running merge is waited for and reported.
 var exitCode = FinishMerge();
+WaitForChanges();
 
 if (uiError is not null)
 {
@@ -146,6 +147,19 @@ int FinishMerge()
     foreach (var r in o.Commands)
         Console.WriteLine($"$ {r.Command}  [exit {r.ExitCode}]");
     return o.Kind is MergeKind.Conflict or MergeKind.Failed ? 1 : 0;
+}
+
+// A stage, unstage, commit or amend that is still running is finished before exit. Its exit code is not reported.
+void WaitForChanges()
+{
+    var task = gui?.ChangesTask;
+    if (task is not { IsCompleted: false })
+        return;
+
+    // As for a merge: Ctrl+C reaches git too, and graftui stays up so the change ends in a known state.
+    Console.CancelKeyPress += (_, e) => e.Cancel = true;
+    Console.WriteLine("graftui: waiting for git to finish...");
+    try { task.Wait(); } catch (AggregateException) { /* the change reports its own outcome */ }
 }
 
 string ShortenHome(string path)

@@ -38,12 +38,14 @@ public sealed class AppController
         RootGit = rootGit;
         RootReader = new RepoReader(rootGit);
         MergeOp = new MergeOperation(git);
+        StageOp = new StageOperation(rootGit);
         Snapshot = initial;
         _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
         _repoDisplay = repoDisplay;
         _sandboxMode = sandboxMode;
         BranchesTab = new BranchesTab(this);
         ChangesTab = new ChangesTab(this);
+        ChangesAnimator = new ChangesAnimator(this);
         Animator = new Animator(this);
     }
 
@@ -52,6 +54,9 @@ public sealed class AppController
 
     /// <summary>The merge worker. Null until a merge has been started. Its result is the outcome, or null when nothing merged.</summary>
     public Task<MergeOutcome?>? MergeTask { get; internal set; }
+
+    /// <summary>The latest stage, unstage, commit or amend worker. Null until one has started. Program waits for it before exiting.</summary>
+    public Task? ChangesTask { get; internal set; }
 
     /// <summary>True once the outcome has been drawn in the UI (so the exit path need not print it again).</summary>
     public bool OutcomeShown => _outcomeShown;
@@ -63,6 +68,7 @@ public sealed class AppController
     internal GitClient Git { get; }
     internal RepoReader Reader { get; }
     internal MergeOperation MergeOp { get; }
+    internal StageOperation StageOp { get; }
     internal QuitGate Gate { get; } = new();
 
     /// <summary>The top-level repo. The Changes tab's paths are relative to it, so its reads and writes run here.</summary>
@@ -85,6 +91,7 @@ public sealed class AppController
 
     internal BranchesTab BranchesTab { get; }
     internal ChangesTab ChangesTab { get; }
+    internal ChangesAnimator ChangesAnimator { get; }
     internal Animator Animator { get; }
 
     internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _wantedBranchWidth);
@@ -258,17 +265,24 @@ public sealed class AppController
         LogMessage("git error: " + ex.Message, Bad);
     }
 
-    /// <summary>Logs each command, its exit code, and the output of `git merge` commands. Returns the log position of the first `git merge` line, or -1.</summary>
-    internal int LogCommands(IEnumerable<GitResult> results)
+    /// <summary>
+    /// Logs each command and its exit code, and the output of the commands that <paramref name="showOutput"/> picks (by default
+    /// the `git merge` commands). Returns the log position of the first command that <paramref name="anchorOn"/> picks (by default
+    /// the first `git merge`), or -1.
+    /// </summary>
+    internal int LogCommands(IEnumerable<GitResult> results, Func<GitResult, bool>? showOutput = null, Func<GitResult, bool>? anchorOn = null)
     {
+        var merges = (GitResult r) => r.Command.StartsWith("git merge", StringComparison.Ordinal);
+        showOutput ??= merges;
+        anchorOn ??= merges;
+
         var mergeIndex = -1;
         foreach (var r in results)
         {
-            var isMerge = r.Command.StartsWith("git merge", StringComparison.Ordinal);
-            if (mergeIndex < 0 && isMerge)
+            if (mergeIndex < 0 && anchorOn(r))
                 mergeIndex = Log.Position;
             Log.Add(new LogLine(LogKind.Command, r.Command, r.ExitCode));
-            if (!isMerge)
+            if (!showOutput(r))
                 continue;
 
             foreach (var line in (r.StdOut + "\n" + r.StdErr).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
