@@ -43,8 +43,41 @@ public class CommitSafetyTests
         Assert.Equal("refs/heads/main", change.Ref);
         Assert.Equal(oldHead, change.Before);
         Assert.Equal(repo.Head, change.After);
-        Assert.Contains(outcome.Commands, c => c.Command == "git commit -F .git/GRAFTUI_MSG" && c.ExitCode == 0);
+        Assert.Contains(outcome.Commands, c => c.Command == "git commit --cleanup=whitespace -F .git/GRAFTUI_MSG" && c.ExitCode == 0);
         AssertNoMessageFile(repo);
+    }
+
+    [Fact]
+    public void A_hash_line_survives_even_when_the_repo_asks_git_to_strip_comments()
+    {
+        using var repo = TempRepo.Create();
+        repo.Run("config", "commit.cleanup", "strip");
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Write("app.txt", "line 1 (edited)\n");
+        StageAll(repo);
+        var op = new CommitOperation(repo.Git);
+
+        var outcome = Run(op, Commit("# Heading that starts with a hash", "# and a body line"));
+        Assert.Equal(CommitKind.Committed, outcome.Kind);
+        Assert.Equal("# Heading that starts with a hash", repo.Run("log", "-1", "--format=%s"));
+        Assert.Equal("# and a body line", repo.Run("log", "-1", "--format=%b"));
+    }
+
+    [Fact]
+    public void Amend_keeps_a_hash_line_under_strip_too()
+    {
+        using var repo = TempRepo.Create();
+        repo.Run("config", "commit.cleanup", "strip");
+        repo.Commit("app.txt", "line 1\n", "Old");
+        var oldHead = repo.Head;
+        var op = new CommitOperation(repo.Git);
+        var request = new CommitRequest(true, "# Kept", "", oldHead, false);
+
+        var outcome = Run(op, request);
+
+        Assert.Equal(CommitKind.Amended, outcome.Kind);
+        Assert.Equal("# Kept", repo.Run("log", "-1", "--format=%s"));
+        Assert.Contains(outcome.Commands, c => c.Command == "git commit --amend --cleanup=whitespace -F .git/GRAFTUI_MSG");
     }
 
     [Fact]
@@ -66,7 +99,7 @@ public class CommitSafetyTests
         Assert.Equal(oldHead, repo.Head);
         Assert.Equal(cached, repo.Run("diff", "--cached", "--name-only"));
         Assert.Equal(worktree, File.ReadAllBytes(Path.Combine(repo.Dir, "app.txt")));
-        Assert.Contains(outcome.Commands, c => c.Command == "git commit -F .git/GRAFTUI_MSG" && c.ExitCode == 1);
+        Assert.Contains(outcome.Commands, c => c.Command == "git commit --cleanup=whitespace -F .git/GRAFTUI_MSG" && c.ExitCode == 1);
         AssertNoMessageFile(repo);
     }
 
