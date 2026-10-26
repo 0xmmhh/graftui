@@ -128,4 +128,55 @@ public class RepoReaderChangesTests
         Assert.NotNull(fromSub);
         Assert.Equal(repo.Git.GetTopLevel(), fromSub);
     }
+
+    [Fact]
+    public void A_name_with_a_leading_dash_and_spaces_is_diffed_as_a_file()
+    {
+        using var repo = TempRepo.Create();
+        repo.Write("-old file.txt", "old\n");
+        repo.Run("add", "--", "-old file.txt");
+        repo.Run("commit", "-q", "-m", "Add");
+        repo.Write("-old file.txt", "changed\n");
+        repo.Write("-new file.txt", "new\n");
+        var reader = new RepoReader(repo.Git);
+
+        var modified = reader.LoadDiff(new FileChange("-old file.txt", null, ChangeSide.Unstaged, ChangeKind.Modified), CancellationToken.None);
+        var untracked = reader.LoadDiff(new FileChange("-new file.txt", null, ChangeSide.Unstaged, ChangeKind.Untracked), CancellationToken.None);
+
+        Assert.Contains(new DiffLine(DiffLineKind.Added, "+changed"), modified.Lines);
+        Assert.Contains(new DiffLine(DiffLineKind.Added, "+new"), untracked.Lines);
+    }
+
+    [Fact]
+    public void An_empty_untracked_file_says_so()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("keep.txt", "k\n", "Add keep");
+        File.WriteAllText(Path.Combine(repo.Dir, "empty.txt"), "");
+
+        var diff = new RepoReader(repo.Git).LoadDiff(new FileChange("empty.txt", null, ChangeSide.Unstaged, ChangeKind.Untracked), CancellationToken.None);
+
+        Assert.Equal(new DiffLine(DiffLineKind.Note, "(empty file)"), Assert.Single(diff.Lines));
+    }
+
+    [Fact]
+    public void A_large_untracked_file_is_not_read_for_the_preview()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("keep.txt", "k\n", "Add keep");
+        File.WriteAllBytes(Path.Combine(repo.Dir, "big.bin"), new byte[1_000_001]);
+
+        var diff = new RepoReader(repo.Git).LoadDiff(new FileChange("big.bin", null, ChangeSide.Unstaged, ChangeKind.Untracked), CancellationToken.None);
+
+        Assert.Equal(new DiffLine(DiffLineKind.Note, "new file, 1000001 bytes: too large to preview"), Assert.Single(diff.Lines));
+    }
+
+    [Fact]
+    public void A_nested_repo_is_not_previewed()
+    {
+        using var repo = TempRepo.Create();
+        var diff = new RepoReader(repo.Git).LoadDiff(new FileChange("nested/", null, ChangeSide.Unstaged, ChangeKind.Untracked), CancellationToken.None);
+
+        Assert.Equal(new DiffLine(DiffLineKind.Note, "a separate git repository; not previewed"), Assert.Single(diff.Lines));
+    }
 }

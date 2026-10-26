@@ -337,4 +337,21 @@ public class CommitSafetyTests
             TempRepo.DeleteSandboxRoot(remoteDir);
         }
     }
+
+    [Fact]
+    public void An_amend_during_a_conflicted_merge_is_refused_as_a_merge()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        Assert.False(repo.Git.Run("merge", "feature").Success);
+        try
+        {
+            var check = new CommitOperation(repo.Git).CheckRepo(amend: true);
+
+            Assert.Equal(ChangeRefusals.InProgress("merge"), check.Refusal);
+        }
+        finally
+        {
+            repo.Git.Run("merge", "--abort");
+        }
+    }
 }
