@@ -40,18 +40,60 @@ public class CommitMessageTests
     {
         var message = CommitMessage.Build("Subj", "line one\n\nline three");
 
-        var (subject, body) = CommitMessage.Split(message);
+        var (subject, body, blank) = CommitMessage.Split(message);
 
         Assert.Equal("Subj", subject);
         Assert.Equal("line one\n\nline three", body);
+        Assert.True(blank);
     }
 
     [Fact]
     public void Split_of_a_subject_only_message_has_an_empty_body()
     {
-        var (subject, body) = CommitMessage.Split("only subject\n");
+        var (subject, body, _) = CommitMessage.Split("only subject\n");
 
         Assert.Equal("only subject", subject);
         Assert.Equal("", body);
+    }
+
+    [Theory]
+    [InlineData("s\n")]
+    [InlineData("s\n\nb1\nb2\n")]
+    [InlineData("s\n\nb1\n\nb2\n")]
+    [InlineData("line1\nline2\n\nbody\n")]
+    [InlineData("line1\nline2\nline3\n\nbody\n")]
+    [InlineData("line1\n\nbody\n")]
+    public void Splitting_then_building_gives_back_the_same_message(string message)
+    {
+        var (subject, body, blank) = CommitMessage.Split(message);
+
+        Assert.Equal(message, CommitMessage.Build(subject, body, blank));
+    }
+
+    [Fact]
+    public void A_subject_that_wraps_onto_the_next_line_gets_no_blank_line_when_amended()
+    {
+        // The second line is part of the subject's paragraph. Saving must not insert a blank line after the first line.
+        var (subject, body, blank) = CommitMessage.Split("Fix the parser for long\nsubjects\n\nDetails here\n");
+
+        Assert.Equal("Fix the parser for long", subject);
+        Assert.Equal("subjects\n\nDetails here", body);
+        Assert.False(blank);
+        Assert.Equal("Fix the parser for long\nsubjects\n\nDetails here\n", CommitMessage.Build(subject, body, blank));
+    }
+
+    [Fact]
+    public void Exactly_one_blank_line_after_the_subject_is_removed_from_the_body()
+    {
+        var (_, body, blank) = CommitMessage.Split("s\n\n\nbody");
+
+        Assert.True(blank);
+        Assert.Equal("\nbody", body);
+    }
+
+    [Fact]
+    public void A_typed_body_with_leading_blank_lines_is_built_without_them()
+    {
+        Assert.Equal("s\n\nb\n", CommitMessage.Build("s", "\n\nb"));
     }
 }

@@ -6,7 +6,9 @@ namespace graftui.Model;
 /// A commit or amend request. ExpectedHead is the HEAD the message box was opened on (null skips the check).
 /// PushedConfirmed is set only after the three amend warnings were accepted.
 /// </summary>
-public sealed record CommitRequest(bool Amend, string Subject, string Body, string? ExpectedHead, bool PushedConfirmed);
+/// <summary>BlankAfterSubject is false only when an amend keeps an old message whose subject wraps onto the next line.</summary>
+public sealed record CommitRequest(bool Amend, string Subject, string Body, string? ExpectedHead, bool PushedConfirmed,
+    bool BlankAfterSubject = true);
 
 /// <summary>
 /// The repo state a commit depends on. OldHead is null on an unborn branch. OldParents, OldMessage and PushedTo

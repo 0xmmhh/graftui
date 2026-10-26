@@ -47,8 +47,8 @@ internal sealed partial class ChangesTab
                         BeginAsk(check);
                         return;
                     }
-                    var (subject, body) = FormText(check, amend);
-                    OpenForm(amend, check, subject, body, pushedConfirmed: false);
+                    var (subject, body, blank) = FormText(check, amend);
+                    OpenForm(amend, check, subject, body, pushedConfirmed: false, blankAfterSubject: blank);
                 });
             }
             catch (Exception ex)
@@ -111,8 +111,8 @@ internal sealed partial class ChangesTab
             case QuestionResult.Confirmed:
                 var check = _askCheck!;
                 _askCheck = null;
-                var (subject, body) = FormText(check, amend: true);
-                OpenForm(amend: true, check, subject, body, pushedConfirmed: true);
+                var (subject, body, blank) = FormText(check, amend: true);
+                OpenForm(amend: true, check, subject, body, pushedConfirmed: true, blankAfterSubject: blank);
                 break;
             case QuestionResult.Cancelled:
                 CancelAsk();
@@ -183,9 +183,17 @@ internal sealed partial class ChangesTab
         art.SetNeedsDraw();
     }
 
-    /// <summary>The message box's starting text: an amend starts from the old message; a commit starts empty.</summary>
-    private static (string Subject, string Body) FormText(CommitCheck check, bool amend) =>
-        amend ? CommitMessage.Split(check.OldMessage) : ("", "");
+    /// <summary>
+    /// The message box's starting text: an amend starts from the old message; a commit starts empty. BlankAfterSubject
+    /// tells whether the old message had a blank line after its subject, so saving keeps the message's layout.
+    /// </summary>
+    private static (string Subject, string Body, bool BlankAfterSubject) FormText(CommitCheck check, bool amend)
+    {
+        if (!amend)
+            return ("", "", true);
+        var parts = CommitMessage.Split(check.OldMessage);
+        return (parts.Subject, parts.Body, parts.BlankAfterSubject);
+    }
 
     private static string AskRemote(CommitCheck check) =>
         check.PushedTo.Count > 1 ? $"{check.PushedTo[0]} and {check.PushedTo.Count - 1} more" : check.PushedTo[0];
@@ -194,11 +202,12 @@ internal sealed partial class ChangesTab
     /// Shows the message box: the subject and body fields over the art, with the counters and the hint. The fields take
     /// the focus; the art pane becomes focusable while the box is open.
     /// </summary>
-    private void OpenForm(bool amend, CommitCheck check, string subject, string body, bool pushedConfirmed)
+    private void OpenForm(bool amend, CommitCheck check, string subject, string body, bool pushedConfirmed, bool blankAfterSubject)
     {
         _formCheck = check;
         _formAmend = amend;
         _formPushedConfirmed = pushedConfirmed;
+        _formBlankAfterSubject = blankAfterSubject;
         _formError = null;
         Mode = ChangesMode.Input;
         _app.Keys.Mode = KeyBarMode.Input;
@@ -255,7 +264,8 @@ internal sealed partial class ChangesTab
         }
 
         var check = _formCheck!;
-        var request = new CommitRequest(_formAmend, subject, _app.BodyField.Text ?? "", check.OldHead, _formPushedConfirmed);
+        var request = new CommitRequest(_formAmend, subject, _app.BodyField.Text ?? "", check.OldHead, _formPushedConfirmed,
+            _formBlankAfterSubject);
         CloseForm();
         StartCommit(request);
     }
