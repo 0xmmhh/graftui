@@ -109,6 +109,13 @@ internal sealed class TempRepo : IDisposable
         Run("commit", "-q", "-m", message);
     }
 
+    /// <summary>Writes a file in the work tree without staging it.</summary>
+    public void Write(string file, string content) =>
+        File.WriteAllText(Path.Combine(Dir, file), content, new UTF8Encoding(false));
+
+    /// <summary>`git status --porcelain` lines, untrimmed so the leading space of " M" rows survives.</summary>
+    public string Status() => Git.Run("status", "--porcelain").StdOut.TrimEnd('\n');
+
     /// <summary>Installs an executable hook. core.hooksPath points at .git/hooks, so git runs it.</summary>
     public void WriteHook(string name, string script)
     {
