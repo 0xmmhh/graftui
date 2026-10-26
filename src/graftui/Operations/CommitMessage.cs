@@ -9,15 +9,18 @@ public static class CommitMessage
 {
     /// <summary>
     /// The message to commit. Leading blank lines of the body are dropped and the subject's newlines become spaces.
-    /// <paramref name="blankAfterSubject"/> false keeps a body that continues the subject's paragraph.
+    /// <paramref name="blankAfterSubject"/> false keeps a body that continues the subject's paragraph, unless the body was typed
+    /// with a blank first line: that is a request for the blank line, so it is written.
     /// </summary>
     public static string Build(string subject, string body, bool blankAfterSubject = true)
     {
         var s = Normalize(subject).Replace('\n', ' ').Trim();
-        var b = TrimBody(Normalize(body));
+        var normalized = Normalize(body);
+        var typedBlankFirst = normalized.Trim().Length > 0 && normalized.Split('\n')[0].Trim().Length == 0;
+        var b = TrimBody(normalized);
         if (b.Length == 0)
             return s + "\n";
-        return s + (blankAfterSubject ? "\n\n" : "\n") + b + "\n";
+        return s + (blankAfterSubject || typedBlankFirst ? "\n\n" : "\n") + b + "\n";
     }
 
     /// <summary>
