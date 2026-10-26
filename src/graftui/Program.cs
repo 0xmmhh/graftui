@@ -153,13 +153,20 @@ int FinishMerge()
 void WaitForChanges()
 {
     var task = gui?.ChangesTask;
-    if (task is not { IsCompleted: false })
+    if (task is null)
         return;
 
-    // As for a merge: Ctrl+C reaches git too, and graftui stays up so the change ends in a known state.
-    Console.CancelKeyPress += (_, e) => e.Cancel = true;
-    Console.WriteLine("graftui: waiting for git to finish...");
-    try { task.Wait(); } catch (AggregateException) { /* the change reports its own outcome */ }
+    if (!task.IsCompleted)
+    {
+        // As for a merge: Ctrl+C reaches git too, and graftui stays up so the change ends in a known state.
+        Console.CancelKeyPress += (_, e) => e.Cancel = true;
+        Console.WriteLine("graftui: waiting for git to finish...");
+        try { task.Wait(); } catch (AggregateException) { /* reported below as no line */ }
+    }
+
+    // The change draws its outcome only while the screen is up. If graftui quit first, the user has not seen it: say it here.
+    if (task.IsCompletedSuccessfully && task.Result is { } line && !gui!.ChangeOutcomeShown)
+        Console.WriteLine(line);
 }
 
 string ShortenHome(string path)

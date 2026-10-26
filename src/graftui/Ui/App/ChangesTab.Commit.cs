@@ -312,7 +312,8 @@ internal sealed partial class ChangesTab
 
         ChangesAnimation? anim = null;
         Func<int, IReadOnlyList<Seg>>? direction = null;
-        _app.ChangesTask = Task.Run(() =>
+        _app.BeginChangeOutcome();
+        _app.ChangesTask = Task.Run<string?>(() =>
         {
             try
             {
@@ -329,18 +330,31 @@ internal sealed partial class ChangesTab
                         animator.Begin(anim, direction, below);
                     }));
                 if (o is null)
-                    return;
+                    return null;
 
                 var result = CommitResult(o, before, request);
                 var failureLog = o.Kind == CommitKind.Failed ? $"{(request.Amend ? "Amend" : "Commit")} failed: {o.Message}" : null;
                 _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,
                     () => AfterChange(o.Kind != CommitKind.Failed, _ => 0, anim, direction)));
+                return CommitSummary(o, request);
             }
             catch (Exception ex)
             {
                 _app.Ui(() => FailUnexpectedly(ex, request.Amend ? "Amend" : "Commit"));
+                return $"graftui: {(request.Amend ? "amend" : "commit")} failed: {ex.Message}";
             }
         });
+    }
+
+    /// <summary>The line printed after exit for a commit: what happened, and where HEAD is now.</summary>
+    private static string CommitSummary(CommitOutcome o, CommitRequest request)
+    {
+        var verb = request.Amend ? "amend" : "commit";
+        if (o.Kind == CommitKind.Failed)
+            return $"graftui: {verb} failed: {o.Message}; HEAD unchanged at {HeadText(o.OldHead)}";
+        if (request.Amend)
+            return $"graftui: amended {Short(o.NewHead)} on {o.Branch} (replaces {Short(o.OldHead)}); HEAD is now {Short(o.NewHead)}";
+        return $"graftui: committed {Short(o.NewHead)} on {o.Branch}: {request.Subject.Trim()}; HEAD is now {Short(o.NewHead)}";
     }
 
     /// <summary>The animation's result for a commit outcome: the new areas, and the caption (success or failure).</summary>

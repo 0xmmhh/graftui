@@ -80,7 +80,8 @@ internal sealed partial class ChangesTab
         // Set on the UI thread when the animation starts, read there again when it ends.
         ChangesAnimation? anim = null;
         Func<int, IReadOnlyList<Seg>>? direction = null;
-        _app.ChangesTask = Task.Run(() =>
+        _app.BeginChangeOutcome();
+        _app.ChangesTask = Task.Run<string?>(() =>
         {
             try
             {
@@ -96,7 +97,7 @@ internal sealed partial class ChangesTab
                         animator.Begin(anim, direction, below);
                     }));
                 if (o is null)
-                    return;
+                    return null;
 
                 var moved = ChangesText.What(o.Moved, all);
                 var after = o.Success && o.After is { } s ? new AreasModel(s.Unstaged, s.Staged, snap.Head) : before;
@@ -110,10 +111,16 @@ internal sealed partial class ChangesTab
                 var failureLog = o.Success ? null : $"{verb} failed: {o.Message}";
                 _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,
                     () => AfterChange(o.Success, chooseAfter, anim, direction)));
+
+                var head = HeadText(snap.Head.HeadHash);
+                return o.Success
+                    ? $"graftui: {verb.ToLowerInvariant()}d {moved}; HEAD unchanged at {head}"
+                    : $"graftui: {verb.ToLowerInvariant()} failed: {o.Message}; HEAD unchanged at {head}";
             }
             catch (Exception ex)
             {
                 _app.Ui(() => FailUnexpectedly(ex, verb));
+                return $"graftui: {verb.ToLowerInvariant()} failed: {ex.Message}";
             }
         });
     }

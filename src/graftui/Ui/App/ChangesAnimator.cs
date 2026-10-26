@@ -87,6 +87,9 @@ internal sealed class ChangesAnimator(AppController app)
         app.Keys.Busy = false;
         app.Keys.SetNeedsDraw();
         app.Art.SetNeedsDraw();
+        // Once graftui has begun to quit the terminal is being restored, so a result that lands now was not seen on screen.
+        if (!app.Gate.IsQuitting)
+            app.MarkChangeOutcomeShown();
         pending.OnDone();
     }
 
