@@ -92,9 +92,24 @@ graftui --help
 
 | Key | Action |
 |---|---|
-| `↑` / `↓` | Select a branch |
-| `m` | Merge the selected branch into the current branch |
-| `Esc` | Quit (if a merge is running, graftui waits for it to finish first) |
+| `Tab` | Switch between Branches and Changes |
+| `↑` / `↓` | Select a branch (Branches) or a file (Changes) |
+| `m` | Merge the selected branch into the current branch (Branches) |
+| `Space` | Stage or unstage the selected file (Changes) |
+| `a` / `U` | Stage all / unstage all (Changes) |
+| `c` / `A` | Commit what is staged / amend the last commit (Changes) |
+| `Esc` | Quit (if a merge or a commit is running, graftui waits for it to finish first) |
+
+<details>
+<summary>The Changes tab</summary>
+
+- **Changes (left):** the staged files, then the unstaged ones (`M` modified, `A` added, `D` deleted, `R` renamed, `?` untracked, `U` conflicted). The right pane shows the selected file's diff and a summary of the three areas: the working tree, the staging area and the repository.
+- **Staging** moves a file between the working tree and the staging area. Each move is animated and logged with its `git add`, `git restore --staged` or `git rm --cached`. Nothing is ever discarded: the edit stays in your working tree.
+- **Committing** opens a message box in the art pane. Type a subject, press `Tab` to reach the body, and press `Enter` to commit (Enter in the body adds a line). `Ctrl+Enter` or `Ctrl+J` saves from either field, if your terminal sends them. `Esc` cancels.
+- **Amending** starts from the last commit's message. If that commit is already on a remote branch, graftui asks three questions first. It never force-pushes; after an amend you run `git push --force-with-lease` yourself.
+- **Refusals** are shown in the caption and logged: nothing staged, an empty subject, a conflicted file, a nested repository, an unfinished merge, rebase, cherry-pick or revert, or a detached HEAD.
+
+</details>
 
 <details>
 <summary>The screen</summary>
@@ -154,6 +169,7 @@ graftui refuses, without running `git merge`, when:
 
 - **Never left mid-merge.** On conflict, graftui always runs `git merge --abort` (falling back to `git reset --merge`) and then checks that the tree is clean with no `MERGE_HEAD`.
 - **Never resets your work.** The rollback only runs when graftui's own merge actually started and `HEAD` hasn't moved. Changes graftui didn't make are reported, never discarded.
+- **Staging and committing never discard work.** Stage and unstage only move entries in the index, and the work tree is never touched. A failed commit leaves `HEAD`, the index and your files as they were. graftui never force-pushes.
 - **Never waits on an editor, pager or prompt.** graftui sets `GIT_EDITOR=true`, `GIT_PAGER=cat`, `GIT_TERMINAL_PROMPT=0` and `GIT_MERGE_AUTOEDIT=no`, uses `--no-edit`, and closes git's stdin.
 - **Interrupted merges are rolled back.** Quit during a merge and graftui waits for git, then prints the outcome and every command. `Ctrl+C` at that point interrupts git, and graftui rolls back the partial merge.
 - **Slow git is visible.** If a merge takes more than about 5 seconds (a signing prompt or a slow hook), the caption says `git is still running`.
@@ -196,8 +212,8 @@ Develop against the sandbox, never against the graftui repository itself. Warnin
 - `src/graftui/Program.cs` - arguments, startup, terminal teardown, the exit code after a merge
 - `src/graftui/Git/` - `GitClient` (all git CLI access), `RepoReader` (read-only queries for the screen), `Sandbox` (builds `~/.graftui/sandbox`)
 - `src/graftui/Model/` - plain records (branches, commits, layouts, merge outcomes, undo records)
-- `src/graftui/Operations/` - the shared operation shape (`IGitOperation`: check, run, verify, roll back) and `MergeOperation`
-- `src/graftui/Ui/App/` - `AppController` (wires the views to git), `BranchesTab`, `Animator`, `QuitGate`
+- `src/graftui/Operations/` - the shared operation shape (`IGitOperation`: check, run, verify, roll back), `MergeOperation`, `StageOperation` and `CommitOperation`
+- `src/graftui/Ui/App/` - `AppController` (wires the views to git), `BranchesTab`, `Animator`, `QuitGate`, `ChangesTab` (the Changes tab, in three files) and `ChangesAnimator`
 - `src/graftui/Ui/Scenes/` and `src/graftui/Ui/Text/` - pure drawing, animation and text code, unit-tested without a terminal
 - `src/graftui/Ui/Views/` - the Terminal.Gui views and `Palette`
 - `tests/graftui.Tests/` - xUnit tests, including the git safety tests (run in temp repositories)

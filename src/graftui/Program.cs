@@ -13,7 +13,7 @@ Usage:
   graftui --sandbox        rebuild the practice repo at ~/.graftui/sandbox and open it
   graftui --help           show this help
 
-Keys: ↑/↓ select · m merge the selected branch into the current one · Esc quit
+Keys: Tab Branches/Changes · ↑/↓ select · m merge · Space stage/unstage · a stage all · U unstage all · c commit · A amend · Esc quit
 
 """;
 
