@@ -87,7 +87,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             bool deleteFailed;
             try
             {
-                File.WriteAllText(messagePath, CommitMessage.Build(request.Subject, request.Body), new UTF8Encoding(false));
+                File.WriteAllText(messagePath, CommitMessage.Build(request.Subject, request.Body, request.BlankAfterSubject), new UTF8Encoding(false));
                 commit = request.Amend
                     ? Call(log, "commit", "--amend", "--cleanup=whitespace", "-F", messageArg)
                     : Call(log, "commit", "--cleanup=whitespace", "-F", messageArg);

@@ -40,6 +40,7 @@ internal sealed partial class ChangesTab
     private CommitCheck? _formCheck;
     private bool _formAmend;
     private bool _formPushedConfirmed;
+    private bool _formBlankAfterSubject = true;
     private string? _formError;
 
     // The amend confirmations: the check they are about, their state (which question, the quiet gap), and the clock the gap uses.
