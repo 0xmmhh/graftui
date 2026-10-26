@@ -79,6 +79,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             }
 
             // 3. The message goes to a file in the git dir. The path is shown relative to the repo, as .git/GRAFTUI_MSG.
+            //    --cleanup=whitespace keeps every line that was typed, so a commit.cleanup=strip setting cannot drop a "#" line.
             var messagePath = Path.Combine(check.GitDir, MessageFileName);
             var messageArg = Path.GetRelativePath(git.RepoPath, messagePath);
             GitResult? commit = null;
@@ -88,8 +89,8 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             {
                 File.WriteAllText(messagePath, CommitMessage.Build(request.Subject, request.Body), new UTF8Encoding(false));
                 commit = request.Amend
-                    ? Call(log, "commit", "--amend", "-F", messageArg)
-                    : Call(log, "commit", "-F", messageArg);
+                    ? Call(log, "commit", "--amend", "--cleanup=whitespace", "-F", messageArg)
+                    : Call(log, "commit", "--cleanup=whitespace", "-F", messageArg);
             }
             catch (Exception ex)
             {
