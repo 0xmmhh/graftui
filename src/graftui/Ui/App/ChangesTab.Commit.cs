@@ -70,7 +70,7 @@ internal sealed partial class ChangesTab
         {
             e.Handled = true;
             CloseForm();
-            _flash = new Caption("Commit cancelled: nothing changed", Dim);
+            _flash = new Caption((_formAmend ? "Amend" : "Commit") + " cancelled: nothing changed", Dim);
             ShowBrowse();
             return;
         }
