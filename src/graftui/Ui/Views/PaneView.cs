@@ -5,7 +5,8 @@ using Terminal.Gui.Drawing;
 namespace graftui.Ui.Views;
 
 /// <summary>
-/// A bordered pane with a rounded frame. The title is the inherited <see cref="View.Title"/>, drawn in the frame's top edge.
+/// A bordered pane with a rounded frame. The title is the inherited <see cref="View.Title"/>, drawn in the frame's top edge,
+/// or <see cref="TitleSegs"/> when those are set (a title with more than one colour, such as "Branches │ Changes").
 /// Panes are never focusable: key handling is done at application level.
 /// </summary>
 public abstract class PaneView : View
@@ -14,6 +15,9 @@ public abstract class PaneView : View
     {
         CanFocus = false;
     }
+
+    /// <summary>Title in several styles. When set, it replaces <see cref="View.Title"/> in the frame.</summary>
+    public IReadOnlyList<Seg>? TitleSegs { get; set; }
 
     protected void ClearAll() => Paint.ClearAll(this);
 
@@ -40,7 +44,12 @@ public abstract class PaneView : View
             Paint.Put(this, w - 1, y, '│', frame);
         }
 
-        if (!string.IsNullOrEmpty(Title))
+        if (TitleSegs is { } segs)
+        {
+            List<Seg> padded = [new Seg(" ", new Style(Ink.Fg)), .. segs, new Seg(" ", new Style(Ink.Fg))];
+            Paint.Segs(this, 2, 0, padded, w - 4);
+        }
+        else if (!string.IsNullOrEmpty(Title))
             Paint.Text(this, 2, 0, $" {Title} ", w - 4, new Style(Ink.Fg));
     }
 

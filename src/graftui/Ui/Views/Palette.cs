@@ -29,6 +29,12 @@ public static class Palette
 
     public static Scheme RootScheme => new(new Attribute(Fg, Term));
 
+    /// <summary>Background of the message box's fields: a shade darker than the terminal, so the typed text stands out.</summary>
+    public static readonly Color Chip = new(0x1a, 0x20, 0x29);
+
+    /// <summary>Colours of the message box's subject and body: light text on <see cref="Chip"/>.</summary>
+    public static Scheme InputScheme => new(new Attribute(Fg, Chip));
+
     private static Color ForeColor(Ink ink) => ink switch
     {
         Ink.Fg => Fg,
