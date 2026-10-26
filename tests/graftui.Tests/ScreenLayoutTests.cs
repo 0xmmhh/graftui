@@ -30,6 +30,12 @@ public class ScreenLayoutTests
     }
 
     [Fact]
+    public void No_art_area_when_the_pane_is_too_narrow_for_any_art()
+    {
+        Assert.Null(ArtPaneView.ArtArea(20, 15));
+    }
+
+    [Fact]
     public void One_column_below_the_minimum_is_too_small()
     {
         Assert.True(ScreenLayout.Compute(63, 22, 0).TooSmall);
