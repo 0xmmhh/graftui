@@ -67,8 +67,9 @@ public class MergeSafetyTests
         // Needs git >= 2.24 (pre-merge-commit hook). git exec's the hook directly, so $PPID is git,
         // and the temp dir must not be mounted noexec or the hook cannot run.
         using var repo = TempRepo.Diverged(conflict: false);
-        // git runs this hook just before it commits a clean merge; interrupting it leaves the merge staged.
-        repo.WriteHook("pre-merge-commit", "#!/bin/sh\nkill -INT $PPID\nsleep 1\n");
+        // git runs this hook just before it commits a clean merge; killing git there leaves the merge staged.
+        // SIGTERM rather than SIGINT: background jobs inherit SIGINT as ignored, so git would not die.
+        repo.WriteHook("pre-merge-commit", "#!/bin/sh\nkill -TERM $PPID\nsleep 1\n");
         var head = repo.Head;
         var op = new MergeOperation(repo.Git);
 
