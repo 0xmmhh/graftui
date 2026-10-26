@@ -25,6 +25,12 @@ internal sealed partial class ChangesTab
     {
         if (_app.Busy)
             return;
+        if (!ArtFits())
+        {
+            // The message box is laid over the art, so there is nowhere to type when no art fits.
+            _app.LogMessage("Refused: widen the window to write a commit message", WarnB);
+            return;
+        }
 
         BeginBusy();
         var op = _app.CommitOp;
@@ -66,6 +72,12 @@ internal sealed partial class ChangesTab
     internal void HandleInputKey(Key e)
     {
         var subject = _app.SubjectField;
+        // The window shrank under the open box: its fields are 0 wide and out of sight, so keys are taken but go nowhere.
+        if (!ArtFits() && e != Key.Esc)
+        {
+            e.Handled = true;
+            return;
+        }
         if (e == Key.Esc)
         {
             e.Handled = true;
