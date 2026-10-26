@@ -115,6 +115,9 @@ internal sealed partial class ChangesTab
     {
         e.Handled = true;
         var key = e == Key.Esc ? PushedAmendQuestions.EscapeKey : CharOf(e);
+        // The window shrank under the question: it is not drawn, so an answer must not count. Cancel still works.
+        if (!PushedAmendQuestions.IsCancel(key) && !ArtFits())
+            return;
         switch (_questions.Press(key, _askClock.ElapsedMilliseconds))
         {
             case QuestionResult.Advanced:
