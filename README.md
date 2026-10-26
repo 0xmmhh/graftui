@@ -106,7 +106,7 @@ graftui --help
 - **Changes (left):** the staged files, then the unstaged ones (`M` modified, `A` added, `D` deleted, `R` renamed, `?` untracked, `U` conflicted). The right pane shows the selected file's diff and a summary of the three areas: the working tree, the staging area and the repository.
 - **Staging** moves a file between the working tree and the staging area. Each move is animated and logged with its `git add`, `git restore --staged` or `git rm --cached`. Nothing is ever discarded: the edit stays in your working tree.
 - **Committing** opens a message box in the art pane. Type a subject, press `Tab` to reach the body, and press `Enter` to commit (Enter in the body adds a line). `Ctrl+Enter` or `Ctrl+J` saves from either field, if your terminal sends them. `Esc` cancels.
-- **Amending** starts from the last commit's message. If that commit is already on a remote branch, graftui asks three questions first. It never force-pushes; after an amend you run `git push --force-with-lease` yourself.
+- **Amending** starts from the last commit's message. If that commit is already on a remote branch, graftui asks three questions first, each answered with its digit (`1`, `2`, then `3`) after a short pause, so a held key cannot get past them. `n` or `Esc` cancels. It never force-pushes; after an amend you run `git push --force-with-lease` yourself.
 - **Refusals** are shown in the caption and logged: nothing staged, an empty subject, a conflicted file, a nested repository, an unfinished merge, rebase, cherry-pick or revert, or a detached HEAD.
 
 </details>
