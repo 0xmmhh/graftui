@@ -90,6 +90,7 @@ public sealed class KeyBarView : View
         [
             (AskKey, " yes"),
             ("n", " no"),
+            ("Esc", " cancel"),
         ],
         _ =>
         [
