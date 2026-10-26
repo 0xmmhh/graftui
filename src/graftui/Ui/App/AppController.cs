@@ -1,6 +1,7 @@
 using graftui.Git;
 using graftui.Model;
 using graftui.Operations;
+using graftui.Ui.Scenes;
 using graftui.Ui.Text;
 using graftui.Ui.Views;
 using Terminal.Gui.App;
@@ -29,19 +30,25 @@ public sealed class AppController
     private TooSmallView _tooSmall = null!;
     private Window? _window;
 
-    public AppController(IApplication app, GitClient git, RepoSnapshot initial, string repoDisplay, bool sandboxMode)
+    public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay, bool sandboxMode)
     {
         App = app;
         Git = git;
         Reader = new RepoReader(git);
+        RootGit = rootGit;
+        RootReader = new RepoReader(rootGit);
         MergeOp = new MergeOperation(git);
         Snapshot = initial;
         _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
         _repoDisplay = repoDisplay;
         _sandboxMode = sandboxMode;
         BranchesTab = new BranchesTab(this);
+        ChangesTab = new ChangesTab(this);
         Animator = new Animator(this);
     }
+
+    /// <summary>The tab the left pane shows. Branches is the start tab.</summary>
+    internal enum TabKind { Branches, Changes }
 
     /// <summary>The merge worker. Null until a merge has been started. Its result is the outcome, or null when nothing merged.</summary>
     public Task<MergeOutcome?>? MergeTask { get; internal set; }
@@ -58,6 +65,11 @@ public sealed class AppController
     internal MergeOperation MergeOp { get; }
     internal QuitGate Gate { get; } = new();
 
+    /// <summary>The top-level repo. The Changes tab's paths are relative to it, so its reads and writes run here.</summary>
+    internal GitClient RootGit { get; }
+    internal RepoReader RootReader { get; }
+    internal TabKind ActiveTab { get; private set; } = TabKind.Branches;
+
     internal RepoSnapshot Snapshot { get; private set; }
     internal int SnapshotSeq { get; set; }
     internal bool Busy { get; set; }
@@ -69,7 +81,10 @@ public sealed class AppController
     internal LogView Log { get; private set; } = null!;
     internal KeyBarView Keys { get; private set; } = null!;
 
+    internal ChangesView ChangesList { get; private set; } = null!;
+
     internal BranchesTab BranchesTab { get; }
+    internal ChangesTab ChangesTab { get; }
     internal Animator Animator { get; }
 
     internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _wantedBranchWidth);
@@ -104,6 +119,14 @@ public sealed class AppController
             Width = Dim.Fill(),
             Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().LogHeight),
         };
+        ChangesList = new ChangesView
+        {
+            X = 0,
+            Y = 1,
+            Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().BranchWidth),
+            Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
+            Visible = false,
+        };
         Keys = new KeyBarView { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1, SandboxMode = _sandboxMode };
         _tooSmall = new TooSmallView
         {
@@ -123,7 +146,7 @@ public sealed class AppController
         _tooSmall.Rows = App.Screen.Height;
         BranchesTab.ShowInitialState();
 
-        window.Add(Status, BranchList, Art, Log, Keys, _tooSmall);
+        window.Add(Status, BranchList, ChangesList, Art, Log, Keys, _tooSmall);
 
         App.ScreenChanged += (_, _) =>
         {
@@ -146,6 +169,20 @@ public sealed class AppController
 
     private void OnKeyDown(object? sender, Key e)
     {
+        if (e == Key.Tab)
+        {
+            e.Handled = true;
+            if (!Busy)
+                ToggleTab();
+            return;
+        }
+
+        if (ActiveTab == TabKind.Changes)
+        {
+            ChangesTab.HandleKey(e);
+            return;
+        }
+
         if (e == Key.CursorUp)
         {
             e.Handled = true;
@@ -161,6 +198,35 @@ public sealed class AppController
             e.Handled = true;
             BranchesTab.StartMerge();
         }
+    }
+
+    /// <summary>Switches the left pane between Branches and Changes. Only the view and the key bar change; each tab loads its own data.</summary>
+    private void ToggleTab()
+    {
+        Result = null;
+        ActiveTab = ActiveTab == TabKind.Branches ? TabKind.Changes : TabKind.Branches;
+        var onChanges = ActiveTab == TabKind.Changes;
+        BranchList.Visible = !onChanges;
+        ChangesList.Visible = onChanges;
+        Keys.Mode = onChanges ? KeyBarMode.Changes : KeyBarMode.Branches;
+        Keys.SetNeedsDraw();
+        BranchList.SetNeedsDraw();
+        ChangesList.SetNeedsDraw();
+
+        if (onChanges)
+        {
+            ChangesTab.Activate();
+            return;
+        }
+
+        Status.ChangedFiles = null;
+        Status.SetNeedsDraw();
+        ChangesTab.Deactivate();
+        Art.Below = null;
+        if (Snapshot.Branches.Count == 0)
+            BranchesTab.ShowInitialState();
+        else
+            BranchesTab.RequestPreview();
     }
 
     // ---------- snapshot, status and log ----------
