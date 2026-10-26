@@ -182,6 +182,7 @@ graftui refuses, without running `git merge`, when:
 - Your git config applies. `merge.ff=only` turns diverged merges into failures; `merge.ff=false` turns fast-forwards into merge commits. Commit signing with a passphrase-protected key and no agent will show a prompt over the TUI.
 - Like plain `git merge`, a merge can overwrite *ignored* files (such as a local `.env`) if the incoming branch tracks them.
 - The command log follows the latest output and can't be scrolled by hand.
+- A signing prompt (pinentry) or a hook that opens the terminal can draw over the TUI during a commit or a merge. graftui waits for git either way, and the caption says `git is still running` after about 5 seconds.
 - Non-ASCII file names in the conflict list are shown git-quoted.
 
 </details>
