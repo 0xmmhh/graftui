@@ -1,65 +1,59 @@
 <div align="center">
 
-# 🌱 graftui
+<h1>graftui</h1>
 
-<p align="center">
-  <img src="assets/demo.gif" alt="graftui demo: a merge commit, then a conflict that is aborted automatically" width="760"/>
+<p><b>Watch your branches grow together.</b><br/>
+An animated git TUI: pick a branch, press <code>m</code>, and see the real <code>git merge</code> happen.</p>
+
+<p>
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"/>&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square" alt=".NET 10"/>&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/Terminal.Gui-v2-2ea44f?style=flat-square" alt="Terminal.Gui v2"/>&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform: macOS | Linux"/>
 </p>
 
-**An animated git TUI.** Pick a branch, press `m`, and watch two branches grow together while the real `git merge` runs underneath.
+<p>
+  <a href="#install">Install</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#usage">Usage</a> ·
+  <a href="#safety">Safety</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
 
-![License: MIT](https://img.shields.io/static/v1?label=license&message=MIT&color=blue)
-![.NET 10](https://img.shields.io/static/v1?label=.NET&message=10&color=512BD4)
-![Terminal.Gui v2](https://img.shields.io/static/v1?label=Terminal.Gui&message=v2&color=2ea44f)
-![Platform](https://img.shields.io/static/v1?label=platform&message=macOS%20%7C%20Linux&color=lightgrey)
+<img src="assets/demo.gif" alt="graftui demo: a merge commit, then a conflict that is aborted automatically" width="760"/>
 
 </div>
 
+<br/>
+
 graftui is a thin, safety-first layer over the git CLI. It never reimplements git: every action is a real `git` command, and every command it runs is shown on screen with its exit code. You see what git actually did, not a guess.
 
-The name is three ideas in one word: **graft** (joining two plants, as a merge joins two branches), **graph** (git history is a graph, and "graft" sounds almost the same) and **TUI** (it runs in your terminal).
+## What it does
 
-## Features
+- **Animated merges.** Every outcome has its own animation: fast-forward, merge commit, already up to date, conflict and refused
+- **Branch overview.** Local branches with ahead/behind counts and a preview of how each one relates to the current branch
+- **Nothing hidden.** A live log of every git command that ran, with its exit code and git's output
+- **Safe by default.** Refuses to merge over uncommitted work or a detached HEAD, and aborts conflicts automatically so the repo is never left mid-merge
+- **Practice sandbox.** `graftui --sandbox` builds a throwaway repo with one branch per merge outcome
+- **Tested against real git.** Every safety rule has a test that runs git in a throwaway repository
 
-- **Animated merges** - every outcome has its own animation: fast-forward, merge commit, already up to date, conflict and refused
-- **Branch overview** - local branches with ahead/behind counts and a preview of how each one relates to the current branch
-- **Nothing hidden** - a live log of every git command that ran, with its exit code and git's output
-- **Safe by default** - refuses to merge over uncommitted work or a detached HEAD, and aborts conflicts automatically so the repo is never left mid-merge
-- **Practice sandbox** - `graftui --sandbox` builds a throwaway repo with one branch per merge outcome
-- **Tested against real git** - every safety rule has a test that runs git in a throwaway repository
+## Install
 
-## Installation
+There are no packaged releases yet; graftui builds into a single executable. You need git and the [.NET 10 SDK](https://dotnet.microsoft.com/download).
 
-There are no packaged releases yet. graftui builds into a single executable.
+1. Clone it:
+   ```bash
+   git clone https://github.com/0xmmhh/graftui.git && cd graftui
+   ```
+2. Publish it into a folder on your `PATH`:
+   ```bash
+   dotnet publish src/graftui -c Release -r osx-arm64 --self-contained false \
+     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
+     -o ~/.local/bin
+   ```
+3. Check that `~/.local/bin` is on your `PATH` (e.g. `export PATH="$HOME/.local/bin:$PATH"` in `~/.zshrc`), then run `graftui --help`.
 
-<details open>
-<summary>macOS / Linux - from source</summary>
-
-Needs the [.NET 10 SDK](https://dotnet.microsoft.com/download) and git.
-
-```bash
-git clone https://github.com/0xmmhh/graftui.git
-cd graftui
-dotnet publish src/graftui -c Release -r osx-arm64 --self-contained false \
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
-  -o ~/.local/bin
-```
-
-Make sure `~/.local/bin` is on your `PATH` (e.g. `export PATH="$HOME/.local/bin:$PATH"` in `~/.zshrc`). Re-run the publish command after pulling to update.
-
-</details>
-
-<details>
-<summary>Other platforms and options</summary>
-
-| Want | Change |
-|---|---|
-| Intel Mac / Linux / Windows | `-r osx-x64`, `-r linux-x64`, `-r linux-arm64`, `-r win-x64` |
-| No .NET runtime needed on the machine (≈90 MB instead of ≈11 MB) | `--self-contained true` |
-
-Windows should work but is untested.
-
-</details>
+To update, pull and run step 2 again. On another platform, change the runtime: `-r osx-x64`, `-r linux-x64`, `-r linux-arm64` or `-r win-x64` (Windows is untested). Add `--self-contained true` for a binary that doesn't need .NET installed (≈90 MB instead of ≈11 MB).
 
 ## Quick start
 
@@ -209,6 +203,16 @@ Develop against the sandbox, never against the graftui repository itself. Warnin
 - `tests/graftui.Tests/` - xUnit tests, including the git safety tests (run in temp repositories)
 
 </details>
+
+## Contributing
+
+Contributions are welcome: bug reports, ideas and pull requests.
+
+- **Found a bug?** [Open an issue](https://github.com/0xmmhh/graftui/issues) with what you did, what you expected and what happened. Include the Commands pane output if it's relevant: it lists every git command graftui ran.
+- **Have an idea?** Open an issue before starting anything big, so we can agree on the approach first. The plans above are a good place to start.
+- **Sending a pull request?** Keep it focused on one change, make sure `dotnet build` has no warnings and `dotnet test` passes, and add a test for anything that changes how graftui touches a repository.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the setup, the safety rules every change must keep, and how to test.
 
 ## License
 
