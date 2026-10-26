@@ -88,8 +88,8 @@ internal sealed partial class ChangesTab
     {
         _refreshSeq++;
         _diffSeq++;
-        _refreshCts?.Cancel();
-        _diffCts?.Cancel();
+        CancelAndDispose(ref _refreshCts);
+        CancelAndDispose(ref _diffCts);
         _flash = null;
         _result = null;
         if (Mode != ChangesMode.Browse)
@@ -166,7 +166,7 @@ internal sealed partial class ChangesTab
     /// <summary>Reads the status on a worker. Its answer is applied on the UI thread, unless a newer read has started.</summary>
     internal void RequestRefresh()
     {
-        _refreshCts?.Cancel();
+        CancelAndDispose(ref _refreshCts);
         _refreshCts = new CancellationTokenSource();
         var ct = _refreshCts.Token;
         var seq = ++_refreshSeq;
@@ -307,9 +307,9 @@ internal sealed partial class ChangesTab
         _result = null;
         // Any read still in flight is stale now: its answer must not overwrite what the change shows.
         _refreshSeq++;
-        _refreshCts?.Cancel();
+        CancelAndDispose(ref _refreshCts);
         _diffSeq++;
-        _diffCts?.Cancel();
+        CancelAndDispose(ref _diffCts);
     }
 
     private void EndBusy()
@@ -351,7 +351,7 @@ internal sealed partial class ChangesTab
     /// </summary>
     private void RequestDiff()
     {
-        _diffCts?.Cancel();
+        CancelAndDispose(ref _diffCts);
         _diffCts = new CancellationTokenSource();
         var ct = _diffCts.Token;
         var seq = ++_diffSeq;
@@ -446,6 +446,17 @@ internal sealed partial class ChangesTab
             art.Scene = geo => new SceneFrame(AreasScenes.Diff(geo, diff).Grid, _flash ?? hint);
         }
         art.SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// Cancels a read still in flight and disposes its source. The worker keeps its token, which stays valid after disposal;
+    /// it only reads IsCancellationRequested.
+    /// </summary>
+    private static void CancelAndDispose(ref CancellationTokenSource? cts)
+    {
+        cts?.Cancel();
+        cts?.Dispose();
+        cts = null;
     }
 
     private static int IndexOfRow(IReadOnlyList<FileChange> rows, ChangeSide side, string path)
