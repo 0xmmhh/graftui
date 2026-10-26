@@ -5,7 +5,7 @@ using graftui.Ui.App;
 
 namespace graftui.Tests;
 
-/// <summary>One test per git-safety rule in the roadmap, run against real temp repos.</summary>
+/// <summary>One test per merge safety rule, run against real temp repos.</summary>
 public class MergeSafetyTests
 {
     [Fact]
