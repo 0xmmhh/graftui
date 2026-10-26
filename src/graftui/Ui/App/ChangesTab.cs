@@ -152,6 +152,9 @@ internal sealed partial class ChangesTab
 
     private static string Short(string? hash) => string.IsNullOrEmpty(hash) ? "" : hash[..Math.Min(7, hash.Length)];
 
+    /// <summary>The short hash of HEAD, or "no commits" on an unborn branch.</summary>
+    private static string HeadText(string? hash) => string.IsNullOrEmpty(hash) ? "no commits" : Short(hash);
+
     private IReadOnlyList<IReadOnlyList<Seg>> Summary() =>
         Snapshot is null ? [] : ChangesText.Summary(Snapshot.Status, Snapshot.Head);
 

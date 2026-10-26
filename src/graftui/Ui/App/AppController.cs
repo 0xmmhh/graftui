@@ -56,8 +56,21 @@ public sealed class AppController
     /// <summary>The merge worker. Null until a merge has been started. Its result is the outcome, or null when nothing merged.</summary>
     public Task<MergeOutcome?>? MergeTask { get; internal set; }
 
-    /// <summary>The latest stage, unstage, commit or amend worker. Null until one has started. Program waits for it before exiting.</summary>
-    public Task? ChangesTask { get; internal set; }
+    /// <summary>
+    /// The latest stage, unstage, commit or amend worker. Its result is the line that says what the change did (null when nothing ran).
+    /// Program waits for it before exiting and prints the line if the change never showed its result on screen.
+    /// </summary>
+    public Task<string?>? ChangesTask { get; internal set; }
+
+    private volatile bool _changeOutcomeShown;
+
+    /// <summary>True once a change's result has been drawn in the UI (so the exit path need not print it again).</summary>
+    public bool ChangeOutcomeShown => _changeOutcomeShown;
+
+    internal void MarkChangeOutcomeShown() => _changeOutcomeShown = true;
+
+    /// <summary>Called when a new change starts, so an outcome drawn for an earlier change does not count for this one.</summary>
+    internal void BeginChangeOutcome() => _changeOutcomeShown = false;
 
     /// <summary>True once the outcome has been drawn in the UI (so the exit path need not print it again).</summary>
     public bool OutcomeShown => _outcomeShown;
