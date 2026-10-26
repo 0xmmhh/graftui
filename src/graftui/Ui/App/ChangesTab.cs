@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using graftui.Git;
 using graftui.Model;
 using graftui.Operations;
@@ -43,10 +42,9 @@ internal sealed partial class ChangesTab
     private bool _formBlankAfterSubject = true;
     private string? _formError;
 
-    // The amend confirmations: the check they are about, their state (which question, the quiet gap), and the clock the gap uses.
+    // The amend confirmations: the check they are about, and which question is on screen.
     private CommitCheck? _askCheck;
     private readonly PushedAmendQuestions _questions = new();
-    private readonly Stopwatch _askClock = new();
 
     // The last change's final frame. It stays on the art until the next Up, Down or Tab, as the mock keeps its result.
     private ChangesAnimation? _result;

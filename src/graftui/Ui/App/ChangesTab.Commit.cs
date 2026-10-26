@@ -109,7 +109,7 @@ internal sealed partial class ChangesTab
 
     /// <summary>
     /// Keys while the pushed-amend questions are shown. Every key is taken. The state machine decides what a key does:
-    /// the answer for the question on screen is that question's digit, after a quiet gap. Only a third answer opens the box.
+    /// the question's yes key moves on, n, N or Esc cancels, anything else is ignored. The third yes opens the box.
     /// </summary>
     internal void HandleAskKey(Key e)
     {
@@ -118,7 +118,7 @@ internal sealed partial class ChangesTab
         // The window shrank under the question: it is not drawn, so an answer must not count. Cancel still works.
         if (!PushedAmendQuestions.IsCancel(key) && !ArtFits())
             return;
-        switch (_questions.Press(key, _askClock.ElapsedMilliseconds))
+        switch (_questions.Press(key))
         {
             case QuestionResult.Advanced:
                 ShowAsk();
@@ -158,8 +158,7 @@ internal sealed partial class ChangesTab
         Mode = ChangesMode.Ask;
         _app.Keys.Mode = KeyBarMode.Ask;
         _askCheck = check;
-        _askClock.Restart();
-        _questions.Start(_askClock.ElapsedMilliseconds);
+        _questions.Start();
         var remote = AskRemote(check);
         _app.LogMessage($"Warning: {Short(check.OldHead)} is already on {remote}", WarnB);
         ShowAsk();
@@ -174,17 +173,19 @@ internal sealed partial class ChangesTab
         var subject = check.OldCommit?.Subject ?? "";
 
         var step = _questions.Step;
-        var answer = _questions.AnswerKey;
-        var (text, caption) = step switch
+        var question = _questions.Question;
+        var context = step switch
         {
-            1 => ($"This commit is already on {remote}; amending it means you'd have to force-push.", $"{answer} continues · n or Esc cancels"),
-            2 => ($"Anyone who already has {remote} keeps the old commit {shortHash}. After a force-push, their history no longer matches yours.", $"{answer} continues · n or Esc cancels"),
-            _ => ($"Last check: graftui never force-pushes. You will have to run git push --force-with-lease yourself. Amend {shortHash} anyway?", $"{answer} opens the message box · n or Esc cancels"),
+            1 => $"This commit is already on {remote}; amending it means you'd have to force-push.",
+            2 => $"Anyone who already has {remote} keeps the old commit {shortHash}. After a force-push, their history no longer matches yours.",
+            _ => $"graftui never force-pushes. You will have to run git push --force-with-lease yourself. Amend {shortHash} anyway?",
         };
-        _app.Keys.AskKey = answer.ToString();
+        var yes = _questions.YesKey;
+        var caption = $"{yes} yes · n no";
+        _app.Keys.AskKey = yes.ToString();
         _app.Keys.SetNeedsDraw();
 
-        art.Title = $"Amend pushed commit? ({step}/{PushedAmendQuestions.Count})";
+        art.Title = "Amend pushed commit?";
         art.Direction = cols => [new Seg("amend        ", Dim), new Seg(TextFit.Fit($"{shortHash} {subject}", Math.Max(8, cols - 13)), FgB)];
         art.Below = Summary();
         art.Commits = [];
@@ -192,7 +193,7 @@ internal sealed partial class ChangesTab
         art.Scene = geo =>
         {
             var grid = AreasScenes.Static(geo, Before());
-            MergeScenes.MessageOverlay(grid, "Warning", text);
+            MergeScenes.MessageOverlay(grid, question, context);
             return new SceneFrame(grid, new Caption(caption, Warn));
         };
         art.SetNeedsDraw();
