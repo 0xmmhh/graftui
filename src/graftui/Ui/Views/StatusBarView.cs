@@ -1,4 +1,5 @@
 using graftui.Model;
+using graftui.Ui.Scenes;
 using graftui.Ui.Text;
 using Terminal.Gui.ViewBase;
 
@@ -15,6 +16,11 @@ public sealed class StatusBarView : View
     public string RepoDisplay { get; set; } = "";
 
     public string? ErrorText { get; set; }
+
+    /// <summary>
+    /// Files with a change not yet committed, on the Changes tab. Null on the Branches tab, where the right side reads as before.
+    /// </summary>
+    public int? ChangedFiles { get; set; }
 
     // Column where the path starts: after "graftui" and its two spaces.
     private const int LeftEnd = 10;
@@ -49,6 +55,19 @@ public sealed class StatusBarView : View
             return [];
         if (Snapshot.CurrentBranch.Length == 0)
             return [new Seg("HEAD detached · merging disabled", Warn)];
+
+        if (ChangedFiles is { } changed)
+        {
+            return
+            [
+                new Seg("on ", Fg),
+                new Seg(Snapshot.CurrentBranch, CurB),
+                new Seg(" · ", Dim),
+                changed == 0
+                    ? new Seg("working tree clean", Ok)
+                    : new Seg($"{MergeScenes.Plural(changed, "changed file")}, not committed", Warn),
+            ];
+        }
 
         return
         [

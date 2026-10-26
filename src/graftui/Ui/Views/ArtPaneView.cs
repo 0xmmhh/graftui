@@ -23,7 +23,25 @@ public sealed class ArtPaneView : PaneView
 
     public IReadOnlyList<CommitRow> Commits { get; set; } = [];
 
+    /// <summary>Lines drawn under the caption in place of <see cref="Commits"/> (the Changes tab's summary).</summary>
+    public IReadOnlyList<IReadOnlyList<Seg>>? Below { get; set; }
+
     public Caption? FallbackCaption { get; set; }
+
+    /// <summary>
+    /// Where the art's grid is drawn in a pane of the given size (viewport coordinates), or null when no art fits.
+    /// Used by the views and by the message form, which is laid over the art.
+    /// </summary>
+    public static (int X, int Y, int W, int H)? ArtArea(int paneW, int paneH)
+    {
+        var cw = paneW - 4;
+        var ih = paneH - 2;
+        var ah = ih >= 17 ? 11 : 8;
+        var gw = Math.Min(cw, MaxArtWidth);
+        if (cw <= 0 || ih <= 0 || ArtGeometry.For(gw, ah) is null)
+            return null;
+        return (2 + (cw - gw) / 2, 3, gw, ah);
+    }
 
     protected override bool OnDrawingContent(DrawContext? context)
     {
@@ -43,25 +61,23 @@ public sealed class ArtPaneView : PaneView
         DrawSegs(2, 1, Direction(cw), cw);
         DrawRule(2, 2, cw);
 
-        var gw = Math.Min(cw, MaxArtWidth);
-        var geo = ArtGeometry.For(gw, ah);
+        var area = ArtArea(pw, ph);
         SceneFrame? frame = null;
-        if (geo is not null && Scene is not null)
-            frame = Scene(geo);
+        if (area is { } scene && Scene is not null)
+            frame = Scene(ArtGeometry.For(scene.W, scene.H)!);
 
-        if (geo is not null && frame is not null)
+        if (area is { } art && frame is not null)
         {
-            var ox = 2 + (cw - gw) / 2;
             var grid = frame.Grid;
-            for (var y = 0; y < ah; y++)
-                for (var x = 0; x < gw; x++)
+            for (var y = 0; y < art.H; y++)
+                for (var x = 0; x < art.W; x++)
                 {
                     var cell = grid[x, y];
-                    Paint.Put(this, ox + x, 3 + y, cell.Ch, Palette.Get(cell.Style));
+                    Paint.Put(this, art.X + x, art.Y + y, cell.Ch, Palette.Get(cell.Style));
                 }
         }
 
-        var caption = geo is null
+        var caption = area is null
             ? new Caption("art needs a wider pane", Dim)
             : frame?.Caption ?? FallbackCaption;
         if (caption is not null)
@@ -72,6 +88,13 @@ public sealed class ArtPaneView : PaneView
         }
 
         DrawRule(2, 4 + ah, cw);
+
+        if (Below is { } below)
+        {
+            for (var k = 0; k < commitRows && k < below.Count; k++)
+                DrawSegs(4, 5 + ah + k, below[k], cw - 2);
+            return true;
+        }
 
         for (var k = 0; k < commitRows && k < Commits.Count; k++)
         {

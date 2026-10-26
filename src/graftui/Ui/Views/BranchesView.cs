@@ -15,6 +15,7 @@ public sealed class BranchesView : PaneView
     public BranchesView()
     {
         Title = "Branches";
+        TitleSegs = [new Seg("Branches", Fg), new Seg(" │ Changes", Dim)];
     }
 
     public IReadOnlyList<Branch> Branches { get; set; } = [];
