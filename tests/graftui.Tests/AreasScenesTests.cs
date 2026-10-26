@@ -103,6 +103,17 @@ public class AreasScenesTests
     }
 
     [Fact]
+    public void The_repository_box_keeps_its_border_at_the_narrow_size()
+    {
+        var grid = AreasScenes.Static(Narrow, Model(head: Head(3)));
+
+        var l = AreasLayout.For(30, 8);
+        var right = l.BoxX(2) + l.BoxWidth(2) - 1;
+        Assert.Equal('│', grid[right, 2].Ch);
+        Assert.Equal('│', grid[right, 3].Ch);
+    }
+
+    [Fact]
     public void At_thirty_by_eight_the_layout_draws_without_error_and_the_box_bottom_is_row_four()
     {
         var grid = AreasScenes.Static(Narrow, Model(head: Head(3)));

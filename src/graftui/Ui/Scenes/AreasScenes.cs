@@ -176,7 +176,7 @@ public static class AreasScenes
             grid.Text(x, 2, "no commits", Dim);
         else
         {
-            grid.Text(x, 2, tip.ShortHash, Hash);
+            grid.Text(x, 2, TextFit.Fit(tip.ShortHash, cols), Hash);
             grid.Text(x, 3, TextFit.Fit(tip.Subject, cols), Fg);
         }
     }
