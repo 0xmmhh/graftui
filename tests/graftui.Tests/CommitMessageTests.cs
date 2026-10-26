@@ -92,6 +92,13 @@ public class CommitMessageTests
     }
 
     [Fact]
+    public void A_body_typed_with_a_leading_blank_line_gets_the_blank_line_even_when_the_old_message_had_none()
+    {
+        Assert.Equal("Fix the parser\n\nDetails\n", CommitMessage.Build("Fix the parser", "\nDetails", blankAfterSubject: false));
+        Assert.Equal("Fix the parser\nsubjects\n\nDetails\n", CommitMessage.Build("Fix the parser", "subjects\n\nDetails", blankAfterSubject: false));
+    }
+
+    [Fact]
     public void A_typed_body_with_leading_blank_lines_is_built_without_them()
     {
         Assert.Equal("s\n\nb\n", CommitMessage.Build("s", "\n\nb"));
