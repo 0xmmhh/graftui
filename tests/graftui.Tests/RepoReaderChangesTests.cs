@@ -160,6 +160,37 @@ public class RepoReaderChangesTests
     }
 
     [Fact]
+    public void A_small_untracked_binary_file_keeps_the_binary_note_and_is_not_called_empty()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("keep.txt", "k\n", "Add keep");
+        File.WriteAllBytes(Path.Combine(repo.Dir, "logo.png"), [0x89, 0x50, 0x4E, 0x47, 0x00, 0x01, 0x02, 0x03]);
+
+        var diff = new RepoReader(repo.Git).LoadDiff(new FileChange("logo.png", null, ChangeSide.Unstaged, ChangeKind.Untracked), CancellationToken.None);
+
+        Assert.DoesNotContain(diff.Lines, l => l.Text == "(empty file)");
+        var binary = Assert.Single(diff.Lines, l => l.Text.StartsWith("Binary files", StringComparison.Ordinal));
+        Assert.Equal(DiffLineKind.Note, binary.Kind);
+        Assert.Equal("Binary files /dev/null and b/logo.png differ", binary.Text);
+    }
+
+    [Fact]
+    public void A_staged_binary_file_keeps_the_binary_note()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("keep.txt", "k\n", "Add keep");
+        File.WriteAllBytes(Path.Combine(repo.Dir, "logo.png"), [0x89, 0x50, 0x4E, 0x47, 0x00, 0x01, 0x02, 0x03]);
+        repo.Run("add", "--", "logo.png");
+
+        var diff = new RepoReader(repo.Git).LoadDiff(new FileChange("logo.png", null, ChangeSide.Staged, ChangeKind.Added), CancellationToken.None);
+
+        Assert.DoesNotContain(diff.Lines, l => l.Text == "(empty file)");
+        var binary = Assert.Single(diff.Lines, l => l.Text.StartsWith("Binary files", StringComparison.Ordinal));
+        Assert.Equal(DiffLineKind.Note, binary.Kind);
+        Assert.Equal("Binary files /dev/null and b/logo.png differ", binary.Text);
+    }
+
+    [Fact]
     public void A_large_untracked_file_is_not_read_for_the_preview()
     {
         using var repo = TempRepo.Create();

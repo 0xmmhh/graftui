@@ -138,16 +138,15 @@ public sealed class RepoReader(GitClient git)
         var file = new FileInfo(Path.Combine(git.RepoPath, f.Path));
         if (file.Exists && file.Length > MaxPreviewBytes)
             return [new DiffLine(DiffLineKind.Note, $"new file, {file.Length} bytes: too large to preview")];
+        if (file.Exists && file.Length == 0)
+            return [new DiffLine(DiffLineKind.Note, "(empty file)")];
 
-        // git diff --no-index exits 1 when the files differ, which is the normal case here.
+        // git diff --no-index exits 1 when the files differ, which is the normal case here. A binary file gives git's
+        // "Binary files ... differ" note, which DiffParser keeps.
         var r = git.RunLiteral("diff", "--no-color", "--no-ext-diff", "--no-index", "--", "/dev/null", f.Path);
         if (r.ExitCode is not (0 or 1))
             return [new DiffLine(DiffLineKind.Note, FailedNote(r))];
-        var lines = DiffParser.Parse(r.StdOut);
-        // An empty file has no hunk and no added line, only the mode note; say so rather than show the header alone.
-        return lines.Any(l => l.Kind is DiffLineKind.Hunk or DiffLineKind.Added)
-            ? lines
-            : [new DiffLine(DiffLineKind.Note, "(empty file)")];
+        return DiffParser.Parse(r.StdOut);
     }
 
     private static IReadOnlyList<DiffLine> DiffOf(GitResult r) =>
