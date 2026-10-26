@@ -44,6 +44,9 @@ internal sealed class PushedAmendQuestions
         _lastKeyMs = nowMs;
     }
 
+    /// <summary>True for the keys that cancel (n, N, Esc). They work even when the question is not visible.</summary>
+    public static bool IsCancel(char key) => key is CancelKey or 'N' or EscapeKey;
+
     /// <summary>Handles one key. <paramref name="key"/> is the typed character, or <see cref="EscapeKey"/>; '\0' for keys with no character.</summary>
     public QuestionResult Press(char key, long nowMs)
     {
@@ -51,7 +54,7 @@ internal sealed class PushedAmendQuestions
         var quiet = nowMs - _lastKeyMs >= QuietGapMs;
         _lastKeyMs = nowMs;
 
-        if (key is CancelKey or 'N' or EscapeKey)
+        if (IsCancel(key))
             return QuestionResult.Cancelled;
         if (!quiet || key != AnswerKey)
             return QuestionResult.Ignored;
