@@ -1,9 +1,12 @@
+using System.Diagnostics;
 using graftui.Git;
 using graftui.Model;
 using graftui.Operations;
 using graftui.Ui.Scenes;
 using graftui.Ui.Text;
+using graftui.Ui.Views;
 using Terminal.Gui.Input;
+using Terminal.Gui.ViewBase;
 
 namespace graftui.Ui.App;
 
@@ -14,10 +17,13 @@ internal enum ChangesMode { Browse, Input, Ask }
 /// The Changes tab: the status list, the diff of the selected file, and a refresh every two seconds while it is shown.
 /// Reads run on worker threads and are applied on the UI thread, with a sequence number so a stale answer is dropped.
 /// </summary>
-internal sealed class ChangesTab
+internal sealed partial class ChangesTab
 {
     private static readonly Style Dim = new(Ink.Dim), Warn = new(Ink.Warn), WarnB = new(Ink.Warn, true);
     private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true), BadB = new(Ink.Bad, true);
+    private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), CurB = new(Ink.Cur, true);
+    private const int PushedWarnings = 3;
+    private const int YesIgnoredMs = 400;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
     private readonly AppController _app;
@@ -31,6 +37,17 @@ internal sealed class ChangesTab
 
     // Where the selection goes after a successful change (set when the change lands, used by the next refresh).
     private Func<IReadOnlyList<FileChange>, int>? _chooseAfter;
+
+    // The message box: the check it opened on, what is typed is in the fields, and the last error to show.
+    private CommitCheck? _formCheck;
+    private bool _formAmend;
+    private bool _formPushedConfirmed;
+    private string? _formError;
+
+    // The amend confirmations: the screen shown (1 to 3), when it appeared, and the check they are about.
+    private CommitCheck? _askCheck;
+    private int _askStep;
+    private Stopwatch _askShown = new();
 
     // The last change's final frame. It stays on the art until the next Up, Down or Tab, as the mock keeps its result.
     private ChangesAnimation? _result;
@@ -76,6 +93,9 @@ internal sealed class ChangesTab
         _diffCts?.Cancel();
         _flash = null;
         _result = null;
+        if (Mode != ChangesMode.Browse)
+            CloseForm();
+        Mode = ChangesMode.Browse;
     }
 
     /// <summary>
@@ -115,7 +135,21 @@ internal sealed class ChangesTab
             e.Handled = true;
             UnstageAll();
         }
+        else if (e == Key.C)
+        {
+            e.Handled = true;
+            BeginCommitInput(amend: false);
+        }
+        else if (e == Key.A.WithShift)
+        {
+            e.Handled = true;
+            BeginCommitInput(amend: true);
+        }
     }
+    private static string Short(string? hash) => string.IsNullOrEmpty(hash) ? "" : hash[..Math.Min(7, hash.Length)];
+
+    private IReadOnlyList<IReadOnlyList<Seg>> Summary() =>
+        Snapshot is null ? [] : ChangesText.Summary(Snapshot.Status, Snapshot.Head);
 
     private void ClearFlash()
     {
@@ -217,115 +251,6 @@ internal sealed class ChangesTab
         _app.ChangesList.SetNeedsDraw();
         SyncKeyBar();
         RequestDiff();
-    }
-
-    // ---------- stage, unstage ----------
-
-    private void StageSelected()
-    {
-        var row = SelectedRow;
-        var snap = Snapshot;
-        if (row is null || snap is null)
-        {
-            Flash("Nothing to stage", Warn);
-            return;
-        }
-
-        if (row.Side == ChangeSide.Unstaged)
-        {
-            // The selection stays at the same position among the unstaged rows, or moves to the file's staged row.
-            var position = Selected - snap.Status.Staged.Count;
-            StartStage(new StageRequest(StageAction.Stage, row), "Stage", all: false, row.Path,
-                rows => AfterStage(rows, row.Path, position));
-        }
-        else
-        {
-            var position = Selected;
-            StartStage(new StageRequest(StageAction.Unstage, row), "Unstage", all: false, row.Path,
-                rows => AfterUnstage(rows, row.Path, position));
-        }
-    }
-
-    private void StageAll() =>
-        StartStage(new StageRequest(StageAction.StageAll, null), "Stage", all: true, path: null, _ => 0);
-
-    private void UnstageAll() =>
-        StartStage(new StageRequest(StageAction.UnstageAll, null), "Unstage", all: true, path: null, _ => 0);
-
-    private static int AfterStage(IReadOnlyList<FileChange> rows, string path, int position)
-    {
-        var staged = rows.Count(r => r.Side == ChangeSide.Staged);
-        var unstagedCount = rows.Count - staged;
-        if (unstagedCount > 0)
-            return staged + Math.Clamp(position, 0, unstagedCount - 1);
-        return Math.Max(0, IndexOfRow(rows, ChangeSide.Staged, path));
-    }
-
-    private static int AfterUnstage(IReadOnlyList<FileChange> rows, string path, int position)
-    {
-        var staged = rows.Count(r => r.Side == ChangeSide.Staged);
-        if (staged > 0)
-            return Math.Clamp(position, 0, staged - 1);
-        return Math.Max(0, IndexOfRow(rows, ChangeSide.Unstaged, path));
-    }
-
-    /// <summary>
-    /// One stage or unstage on a worker: Check, the quit gate, the animation starting, Run, then the result for the animation.
-    /// Only one change runs at a time (Busy). Refusals and failures are reported; nothing is rolled back (StageOperation has no rollback).
-    /// </summary>
-    private void StartStage(StageRequest request, string verb, bool all, string? path, Func<IReadOnlyList<FileChange>, int> chooseAfter)
-    {
-        var snap = Snapshot;
-        if (snap is null)
-            return;
-
-        var before = new AreasModel(snap.Status.Unstaged, snap.Status.Staged, snap.Head);
-        var staging = request.Action is StageAction.Stage or StageAction.StageAll;
-        var areaOp = staging ? AreasOp.Stage : AreasOp.Unstage;
-        var below = ChangesText.Summary(snap.Status, snap.Head);
-        var stageOp = _app.StageOp;
-        var animator = _app.ChangesAnimator;
-        BeginBusy();
-
-        // Set on the UI thread when the animation starts, read there again when it ends.
-        ChangesAnimation? anim = null;
-        Func<int, IReadOnlyList<Seg>>? direction = null;
-        _app.ChangesTask = Task.Run(() =>
-        {
-            try
-            {
-                var o = RunGated(stageOp, request, c => c.Refusal, () => _app.Gate.IsQuitting,
-                    check => _app.Ui(() => Refuse(check.Commands, check.Refusal ?? "")),
-                    check => _app.Ui(() =>
-                    {
-                        _app.LogCommands(check.Commands);
-                        var what = ChangesText.What(check.Moving, all);
-                        var target = staging ? "staging area" : "working tree";
-                        anim = new ChangesAnimation(areaOp, before, check.Moving, $"{(staging ? "Staging" : "Unstaging")} {what}…");
-                        direction = cols => ChangesText.OpDirection(verb.ToLowerInvariant(), what, [new Seg(target, new Style(Ink.Dim))], cols);
-                        animator.Begin(anim, direction, below);
-                    }));
-                if (o is null)
-                    return;
-
-                var moved = ChangesText.What(o.Moved, all);
-                var after = o.Success && o.After is { } s ? new AreasModel(s.Unstaged, s.Staged, snap.Head) : before;
-                var result = o.Success
-                    ? new AreasResult(true, after,
-                        new Caption(staging
-                            ? $"✔ Staged {moved}: it goes into the next commit"
-                            : $"✔ Unstaged {moved}: the edit is still in your working tree", OkB),
-                        staging ? "Staged" : "Unstaged")
-                    : new AreasResult(false, before, new Caption($"✕ {verb} failed: {o.Message}", BadB), "Failed", o.Message);
-                var failureLog = o.Success ? null : $"{verb} failed: {o.Message}";
-                _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,
-                    () => AfterChange(o.Success, chooseAfter, anim, direction)));
-            }
-            catch (Exception ex)
-            {
-                _app.Ui(() => FailUnexpectedly(ex, verb));
-            }
-        });
     }
 
     private void Refuse(IReadOnlyList<GitResult> commands, string reason)

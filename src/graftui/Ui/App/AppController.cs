@@ -39,6 +39,7 @@ public sealed class AppController
         RootReader = new RepoReader(rootGit);
         MergeOp = new MergeOperation(git);
         StageOp = new StageOperation(rootGit);
+        CommitOp = new CommitOperation(rootGit);
         Snapshot = initial;
         _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
         _repoDisplay = repoDisplay;
@@ -69,6 +70,7 @@ public sealed class AppController
     internal RepoReader Reader { get; }
     internal MergeOperation MergeOp { get; }
     internal StageOperation StageOp { get; }
+    internal CommitOperation CommitOp { get; }
     internal QuitGate Gate { get; } = new();
 
     /// <summary>The top-level repo. The Changes tab's paths are relative to it, so its reads and writes run here.</summary>
@@ -88,6 +90,10 @@ public sealed class AppController
     internal KeyBarView Keys { get; private set; } = null!;
 
     internal ChangesView ChangesList { get; private set; } = null!;
+
+    /// <summary>The message box's subject line and body. They are subviews of the art pane and are shown only while a message is being typed.</summary>
+    internal TextField SubjectField { get; private set; } = null!;
+    internal BodyTextView BodyField { get; private set; } = null!;
 
     internal BranchesTab BranchesTab { get; }
     internal ChangesTab ChangesTab { get; }
@@ -134,6 +140,7 @@ public sealed class AppController
             Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
             Visible = false,
         };
+        BuildMessageBox();
         Keys = new KeyBarView { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1, SandboxMode = _sandboxMode };
         _tooSmall = new TooSmallView
         {
@@ -172,10 +179,61 @@ public sealed class AppController
         return window;
     }
 
+    /// <summary>
+    /// The message box: a one-line subject and a body, laid over the art pane's form area. Hidden and not focusable until a
+    /// message is typed (the art pane itself is not focusable, so it becomes focusable only while the form is open).
+    /// </summary>
+    private void BuildMessageBox()
+    {
+        SubjectField = new TextField
+        {
+            Visible = false,
+            CanFocus = false,
+            X = Pos.Func(_ => FieldX()),
+            Y = Pos.Func(_ => FieldArea() is { } a ? a.Y + AreasLayout.For(a.W, a.H).SubjectRow : 0),
+            Width = Dim.Func(_ => FieldArea() is { } a && !CurrentLayout().TooSmall ? a.W - AreasLayout.FieldX - 7 : 0),
+            Height = 1,
+        };
+        BodyField = new BodyTextView
+        {
+            Visible = false,
+            CanFocus = false,
+            X = Pos.Func(_ => FieldX()),
+            Y = Pos.Func(_ => FieldArea() is { } a ? a.Y + AreasLayout.For(a.W, a.H).BodyRow : 0),
+            Width = Dim.Func(_ => FieldArea() is { } a && !CurrentLayout().TooSmall ? a.W - AreasLayout.FieldX - 7 : 0),
+            Height = 2,
+            TabKeyAddsTab = false,
+            WordWrap = false,
+        };
+        SubjectField.SetScheme(Palette.InputScheme);
+        BodyField.SetScheme(Palette.InputScheme);
+        SubjectField.TextChanged += (_, _) => Art.SetNeedsDraw();
+        BodyField.ContentsChanged += (_, _) => Art.SetNeedsDraw();
+        Art.Add(SubjectField, BodyField);
+    }
+
+    /// <summary>The art's area inside the art pane, in the pane's own coordinates; null when no art fits.</summary>
+    private (int X, int Y, int W, int H)? FieldArea() =>
+        ArtPaneView.ArtArea(Art.Viewport.Width, Art.Viewport.Height);
+
+    private int FieldX() => FieldArea() is { } a ? a.X + AreasLayout.FieldX : 0;
+
     // ---------- keys ----------
 
     private void OnKeyDown(object? sender, Key e)
     {
+        // The message box and the amend confirmations take every key first, so Esc cancels them rather than quitting.
+        if (ActiveTab == TabKind.Changes && ChangesTab.Mode == ChangesMode.Input)
+        {
+            ChangesTab.HandleInputKey(e);
+            return;
+        }
+        if (ActiveTab == TabKind.Changes && ChangesTab.Mode == ChangesMode.Ask)
+        {
+            ChangesTab.HandleAskKey(e);
+            return;
+        }
+
         if (e == Key.Tab)
         {
             e.Handled = true;

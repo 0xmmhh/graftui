@@ -1,0 +1,340 @@
+using System.Diagnostics;
+using graftui.Git;
+using graftui.Model;
+using graftui.Operations;
+using graftui.Ui.Scenes;
+using graftui.Ui.Text;
+using graftui.Ui.Views;
+using Terminal.Gui.Input;
+using Terminal.Gui.ViewBase;
+
+namespace graftui.Ui.App;
+
+/// <summary>
+/// Commit and amend: the message box, the three questions before amending a pushed commit, and the commit's run and result.
+/// </summary>
+internal sealed partial class ChangesTab
+{
+    // ---------- commit and amend: the message box ----------
+
+    /// <summary>
+    /// Checks the repo for a commit or amend on a worker (Busy meanwhile). A refusal is shown; an amend of a pushed commit asks
+    /// three questions first; otherwise the message box opens.
+    /// </summary>
+    private void BeginCommitInput(bool amend)
+    {
+        if (_app.Busy)
+            return;
+
+        BeginBusy();
+        var op = _app.CommitOp;
+        Task.Run(() =>
+        {
+            try
+            {
+                var check = op.CheckRepo(amend);
+                _app.Ui(() =>
+                {
+                    if (!check.CanRun)
+                    {
+                        Refuse(check.Commands, check.Refusal!);
+                        return;
+                    }
+                    _app.LogCommands(check.Commands);
+                    EndBusy();
+                    if (amend && check.PushedTo.Count > 0)
+                    {
+                        BeginAsk(check);
+                        return;
+                    }
+                    var (subject, body) = FormText(check, amend);
+                    OpenForm(amend, check, subject, body, pushedConfirmed: false);
+                });
+            }
+            catch (Exception ex)
+            {
+                _app.Ui(() =>
+                {
+                    _app.ShowGitError(ex);
+                    EndBusy();
+                });
+            }
+        });
+    }
+
+    /// <summary>Keys while the message box is open: Esc cancels, Tab moves between the fields, Enter or Ctrl+Enter saves.</summary>
+    internal void HandleInputKey(Key e)
+    {
+        var subject = _app.SubjectField;
+        if (e == Key.Esc)
+        {
+            e.Handled = true;
+            CloseForm();
+            _flash = new Caption("Commit cancelled: nothing changed", Dim);
+            ShowBrowse();
+            return;
+        }
+
+        if (e == Key.Tab || e == Key.Tab.WithShift)
+        {
+            e.Handled = true;
+            if (subject.HasFocus)
+                _app.BodyField.SetFocus();
+            else
+                subject.SetFocus();
+            return;
+        }
+
+        // Enter saves from the subject. Ctrl+Enter saves from either field; a terminal sends Ctrl+J as Key.J.WithCtrl or as LF,
+        // and LF arrives as Ctrl+Enter. In the body, a plain Enter adds a line.
+        if (e == Key.Enter.WithCtrl || e == Key.J.WithCtrl || (e == Key.Enter && subject.HasFocus))
+        {
+            e.Handled = true;
+            SubmitForm();
+        }
+        // Anything else is left unhandled, so the focused field edits.
+    }
+
+    /// <summary>Keys while the pushed-amend questions are shown: y moves on, n or Esc cancels; every key is taken.</summary>
+    internal void HandleAskKey(Key e)
+    {
+        e.Handled = true;
+        if (e == Key.Y)
+        {
+            // A y that arrives right after a screen appeared (key repeat, typed ahead) must not skip it.
+            if (_askShown.ElapsedMilliseconds < YesIgnoredMs || _askCheck is null)
+                return;
+            if (_askStep < PushedWarnings)
+            {
+                _askStep++;
+                ShowAsk();
+                return;
+            }
+            var check = _askCheck;
+            _askCheck = null;
+            var (subject, body) = FormText(check, amend: true);
+            OpenForm(amend: true, check, subject, body, pushedConfirmed: true);
+            return;
+        }
+
+        if (e == Key.N || e == Key.Esc)
+        {
+            _askCheck = null;
+            Mode = ChangesMode.Browse;
+            _app.Keys.Mode = KeyBarMode.Changes;
+            _app.Keys.SetNeedsDraw();
+            _app.LogMessage("Amend cancelled", Dim);
+            _flash = new Caption("Amend cancelled: nothing changed", Dim);
+            ShowBrowse();
+        }
+    }
+
+    /// <summary>Starts the three questions for amending a commit that a remote branch already has.</summary>
+    private void BeginAsk(CommitCheck check)
+    {
+        Mode = ChangesMode.Ask;
+        _app.Keys.Mode = KeyBarMode.Ask;
+        _app.Keys.SetNeedsDraw();
+        _askCheck = check;
+        _askStep = 1;
+        var remote = AskRemote(check);
+        _app.LogMessage($"Warning: {Short(check.OldHead)} is already on {remote}", WarnB);
+        ShowAsk();
+    }
+
+    private void ShowAsk()
+    {
+        var check = _askCheck!;
+        var art = _app.Art;
+        var shortHash = Short(check.OldHead);
+        var remote = AskRemote(check);
+        var subject = check.OldCommit?.Subject ?? "";
+
+        var (text, caption) = _askStep switch
+        {
+            1 => ($"This commit is already on {remote}; amending it means you'd have to force-push.", "y continues · n or Esc cancels"),
+            2 => ($"Anyone who already has {remote} keeps the old commit {shortHash}. After a force-push, their history no longer matches yours.", "y continues · n or Esc cancels"),
+            _ => ($"Last check: graftui never force-pushes. You will have to run git push --force-with-lease yourself. Amend {shortHash} anyway?", "y opens the message box · n or Esc cancels"),
+        };
+
+        art.Title = $"Amend pushed commit? ({_askStep}/{PushedWarnings})";
+        art.Direction = cols => [new Seg("amend        ", Dim), new Seg(TextFit.Fit($"{shortHash} {subject}", Math.Max(8, cols - 13)), FgB)];
+        art.Below = Summary();
+        art.Commits = [];
+        art.FallbackCaption = null;
+        art.Scene = geo =>
+        {
+            var grid = AreasScenes.Static(geo, Before());
+            MergeScenes.MessageOverlay(grid, "Warning", text);
+            return new SceneFrame(grid, new Caption(caption, Warn));
+        };
+        _askShown = Stopwatch.StartNew();
+        art.SetNeedsDraw();
+    }
+
+    /// <summary>The message box's starting text: an amend starts from the old message; a commit starts empty.</summary>
+    private static (string Subject, string Body) FormText(CommitCheck check, bool amend) =>
+        amend ? CommitMessage.Split(check.OldMessage) : ("", "");
+
+    private static string AskRemote(CommitCheck check) =>
+        check.PushedTo.Count > 1 ? $"{check.PushedTo[0]} and {check.PushedTo.Count - 1} more" : check.PushedTo[0];
+
+    /// <summary>
+    /// Shows the message box: the subject and body fields over the art, with the counters and the hint. The fields take
+    /// the focus; the art pane becomes focusable while the box is open.
+    /// </summary>
+    private void OpenForm(bool amend, CommitCheck check, string subject, string body, bool pushedConfirmed)
+    {
+        _formCheck = check;
+        _formAmend = amend;
+        _formPushedConfirmed = pushedConfirmed;
+        _formError = null;
+        Mode = ChangesMode.Input;
+        _app.Keys.Mode = KeyBarMode.Input;
+        _app.Keys.SetNeedsDraw();
+
+        var art = _app.Art;
+        art.CanFocus = true;
+        foreach (var field in new View[] { _app.SubjectField, _app.BodyField })
+        {
+            field.CanFocus = true;
+            field.Visible = true;
+        }
+        _app.SubjectField.Text = subject;
+        _app.SubjectField.InsertionPoint = subject.Length;
+        _app.BodyField.Text = body;
+
+        art.Title = amend ? "Amend" : "Commit";
+        var staged = Snapshot?.Status.Staged.Count ?? check.Staged.Count;
+        var branch = check.Branch.Length == 0 ? "HEAD" : check.Branch;
+        art.Direction = cols => ChangesText.OpDirection(amend ? "amend" : "commit", MergeScenes.Plural(staged, "staged file"),
+            [new Seg(branch, CurB), new Seg(" (current)", Dim)], cols);
+        art.Below = Summary();
+        art.Commits = [];
+        art.FallbackCaption = null;
+        art.Scene = geo => FormFrame(geo);
+        art.SetNeedsDraw();
+        _app.SubjectField.SetFocus();
+    }
+
+    private SceneFrame FormFrame(ArtGeometry geo)
+    {
+        var subject = _app.SubjectField.Text ?? "";
+        var body = _app.BodyField.Text ?? "";
+        var longest = body.Split('\n').Select(TextFit.Columns).DefaultIfEmpty(0).Max();
+        var frame = AreasScenes.Form(geo, Before(), _formAmend, TextFit.Columns(subject), longest);
+
+        var caption = _formError is not null
+            ? new Caption(_formError, Warn)
+            : new Caption(_formAmend
+                ? "Enter amends · Tab moves to the body · Ctrl+Enter saves from the body · Esc cancels"
+                : "Enter commits · Tab moves to the body · Ctrl+Enter saves from the body · Esc cancels", Dim);
+        return new SceneFrame(frame.Grid, caption);
+    }
+
+    /// <summary>A blank subject keeps the box open with a message. Otherwise the box closes and the commit starts.</summary>
+    private void SubmitForm()
+    {
+        var subject = _app.SubjectField.Text ?? "";
+        if (subject.Trim().Length == 0)
+        {
+            _formError = ChangeRefusals.EmptySubject;
+            _app.Art.SetNeedsDraw();
+            return;
+        }
+
+        var check = _formCheck!;
+        var request = new CommitRequest(_formAmend, subject, _app.BodyField.Text ?? "", check.OldHead, _formPushedConfirmed);
+        CloseForm();
+        StartCommit(request);
+    }
+
+    /// <summary>Hides the message box and gives the art back to the browse screen. The caller decides what shows next.</summary>
+    private void CloseForm()
+    {
+        Mode = ChangesMode.Browse;
+        _formError = null;
+        foreach (var field in new View[] { _app.SubjectField, _app.BodyField })
+        {
+            field.Visible = false;
+            field.CanFocus = false;
+        }
+        _app.Art.CanFocus = false;
+        _app.Keys.Mode = KeyBarMode.Changes;
+        _app.Keys.SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// One commit or amend on a worker: Check, the quit gate, the animation, Run, then the result. The commit animation's final
+    /// frame stays on the art, and the status and branch snapshot are reloaded afterwards.
+    /// </summary>
+    private void StartCommit(CommitRequest request)
+    {
+        var before = Before();
+        var below = Summary();
+        var commitOp = _app.CommitOp;
+        var animator = _app.ChangesAnimator;
+        var areaOp = request.Amend ? AreasOp.Amend : AreasOp.Commit;
+        BeginBusy();
+
+        ChangesAnimation? anim = null;
+        Func<int, IReadOnlyList<Seg>>? direction = null;
+        _app.ChangesTask = Task.Run(() =>
+        {
+            try
+            {
+                var o = RunGated(commitOp, request, c => c.Refusal, () => _app.Gate.IsQuitting,
+                    check => _app.Ui(() => Refuse(check.Commands, check.Refusal ?? "")),
+                    check => _app.Ui(() =>
+                    {
+                        _app.LogCommands(check.Commands);
+                        var branch = check.Branch;
+                        var count = check.Staged.Count;
+                        anim = new ChangesAnimation(areaOp, before, check.Staged, request.Amend ? "Amending…" : "Committing…");
+                        direction = cols => ChangesText.OpDirection(request.Amend ? "amend" : "commit", MergeScenes.Plural(count, "staged file"),
+                            [new Seg(branch, CurB), new Seg(" (current)", Dim)], cols);
+                        animator.Begin(anim, direction, below);
+                    }));
+                if (o is null)
+                    return;
+
+                var result = CommitResult(o, before, request);
+                var failureLog = o.Kind == CommitKind.Failed ? $"{(request.Amend ? "Amend" : "Commit")} failed: {o.Message}" : null;
+                _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,
+                    () => AfterChange(o.Kind != CommitKind.Failed, _ => 0, anim, direction)));
+            }
+            catch (Exception ex)
+            {
+                _app.Ui(() => FailUnexpectedly(ex, request.Amend ? "Amend" : "Commit"));
+            }
+        });
+    }
+
+    /// <summary>The animation's result for a commit outcome: the new areas, and the caption (success or failure).</summary>
+    private AreasResult CommitResult(CommitOutcome o, AreasModel before, CommitRequest request)
+    {
+        if (o.Kind == CommitKind.Failed)
+        {
+            var verb = request.Amend ? "Amend" : "Commit";
+            return new AreasResult(false, before, new Caption($"✕ {verb} failed: {o.Message}", BadB), "Failed", o.Message);
+        }
+
+        // The new areas come from a fresh read; if that fails, the staged rows are shown as gone, which is what a commit does.
+        AreasModel after;
+        try
+        {
+            var snap = _app.RootReader.LoadChanges(CancellationToken.None);
+            after = new AreasModel(snap.Status.Unstaged, snap.Status.Staged, snap.Head);
+        }
+        catch
+        {
+            after = new AreasModel(before.Unstaged, [], before.Head);
+        }
+
+        if (request.Amend)
+            return new AreasResult(true, after, new Caption($"✔ Amended: {Short(o.NewHead)} replaces {Short(o.OldHead)}", OkB), "Amended");
+
+        var subject = TextFit.Fit(CommitMessage.Split(request.Subject).Subject, 40);
+        return new AreasResult(true, after, new Caption($"✔ Committed {Short(o.NewHead)} on {o.Branch}: {subject}", OkB), "Committed");
+    }
+}
