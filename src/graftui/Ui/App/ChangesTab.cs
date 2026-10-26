@@ -1,5 +1,6 @@
 using graftui.Git;
 using graftui.Model;
+using graftui.Operations;
 using graftui.Ui.Scenes;
 using graftui.Ui.Text;
 using Terminal.Gui.Input;
@@ -15,7 +16,8 @@ internal enum ChangesMode { Browse, Input, Ask }
 /// </summary>
 internal sealed class ChangesTab
 {
-    private static readonly Style Dim = new(Ink.Dim);
+    private static readonly Style Dim = new(Ink.Dim), Warn = new(Ink.Warn), WarnB = new(Ink.Warn, true);
+    private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true), BadB = new(Ink.Bad, true);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
     private readonly AppController _app;
@@ -26,6 +28,13 @@ internal sealed class ChangesTab
     private bool _polling;
     private FileDiff? _diff;
     private Caption? _flash;
+
+    // Where the selection goes after a successful change (set when the change lands, used by the next refresh).
+    private Func<IReadOnlyList<FileChange>, int>? _chooseAfter;
+
+    // The last change's final frame. It stays on the art until the next Up, Down or Tab, as the mock keeps its result.
+    private ChangesAnimation? _result;
+    private Func<int, IReadOnlyList<Seg>>? _resultDirection;
 
     internal ChangesTab(AppController app)
     {
@@ -66,25 +75,54 @@ internal sealed class ChangesTab
         _refreshCts?.Cancel();
         _diffCts?.Cancel();
         _flash = null;
+        _result = null;
     }
 
-    /// <summary>Browse-mode keys. Only Up and Down are used so far; every other key falls through (Esc quits).</summary>
+    /// <summary>
+    /// Browse-mode keys: Up and Down move, Space stages or unstages the selected row, a stages everything and U (shift) unstages
+    /// everything. Every other key falls through, so Esc still quits. Ignored while git is busy.
+    /// </summary>
     internal void HandleKey(Key e)
     {
         if (_app.Busy)
             return;
 
-        _flash = null;
+        ClearFlash();
         if (e == Key.CursorUp)
         {
             e.Handled = true;
+            _result = null;
             Move(-1);
         }
         else if (e == Key.CursorDown)
         {
             e.Handled = true;
+            _result = null;
             Move(+1);
         }
+        else if (e == Key.Space)
+        {
+            e.Handled = true;
+            StageSelected();
+        }
+        else if (e == Key.A)
+        {
+            e.Handled = true;
+            StageAll();
+        }
+        else if (e == Key.U.WithShift)
+        {
+            e.Handled = true;
+            UnstageAll();
+        }
+    }
+
+    private void ClearFlash()
+    {
+        if (_flash is null)
+            return;
+        _flash = null;
+        _app.Art.SetNeedsDraw();
     }
 
     /// <summary>Reads the status on a worker. Its answer is applied on the UI thread, unless a newer read has started.</summary>
@@ -150,9 +188,13 @@ internal sealed class ChangesTab
         // Keep the selection on the same row (side and path) when it still exists; otherwise keep the index, clamped.
         var keep = SelectedRow;
         var rows = snap.Status.Rows;
-        var index = keep is null ? -1 : IndexOfRow(rows, keep);
+        var index = keep is null ? -1 : IndexOfRow(rows, keep.Side, keep.Path);
+        if (_chooseAfter is { } choose)
+            index = choose(rows);
+        _chooseAfter = null;
         Snapshot = snap;
         Selected = index >= 0 ? index : Math.Clamp(Selected, 0, Math.Max(0, rows.Count - 1));
+        SyncKeyBar();
 
         _app.ChangesList.Status = snap.Status;
         _app.ChangesList.Selected = Selected;
@@ -173,7 +215,205 @@ internal sealed class ChangesTab
         _app.Result = null;
         _app.ChangesList.Selected = Selected;
         _app.ChangesList.SetNeedsDraw();
+        SyncKeyBar();
         RequestDiff();
+    }
+
+    // ---------- stage, unstage ----------
+
+    private void StageSelected()
+    {
+        var row = SelectedRow;
+        var snap = Snapshot;
+        if (row is null || snap is null)
+        {
+            Flash("Nothing to stage", Warn);
+            return;
+        }
+
+        if (row.Side == ChangeSide.Unstaged)
+        {
+            // The selection stays at the same position among the unstaged rows, or moves to the file's staged row.
+            var position = Selected - snap.Status.Staged.Count;
+            StartStage(new StageRequest(StageAction.Stage, row), "Stage", all: false, row.Path,
+                rows => AfterStage(rows, row.Path, position));
+        }
+        else
+        {
+            var position = Selected;
+            StartStage(new StageRequest(StageAction.Unstage, row), "Unstage", all: false, row.Path,
+                rows => AfterUnstage(rows, row.Path, position));
+        }
+    }
+
+    private void StageAll() =>
+        StartStage(new StageRequest(StageAction.StageAll, null), "Stage", all: true, path: null, _ => 0);
+
+    private void UnstageAll() =>
+        StartStage(new StageRequest(StageAction.UnstageAll, null), "Unstage", all: true, path: null, _ => 0);
+
+    private static int AfterStage(IReadOnlyList<FileChange> rows, string path, int position)
+    {
+        var staged = rows.Count(r => r.Side == ChangeSide.Staged);
+        var unstagedCount = rows.Count - staged;
+        if (unstagedCount > 0)
+            return staged + Math.Clamp(position, 0, unstagedCount - 1);
+        return Math.Max(0, IndexOfRow(rows, ChangeSide.Staged, path));
+    }
+
+    private static int AfterUnstage(IReadOnlyList<FileChange> rows, string path, int position)
+    {
+        var staged = rows.Count(r => r.Side == ChangeSide.Staged);
+        if (staged > 0)
+            return Math.Clamp(position, 0, staged - 1);
+        return Math.Max(0, IndexOfRow(rows, ChangeSide.Unstaged, path));
+    }
+
+    /// <summary>
+    /// One stage or unstage on a worker: Check, the quit gate, the animation starting, Run, then the result for the animation.
+    /// Only one change runs at a time (Busy). Refusals and failures are reported; nothing is rolled back (StageOperation has no rollback).
+    /// </summary>
+    private void StartStage(StageRequest request, string verb, bool all, string? path, Func<IReadOnlyList<FileChange>, int> chooseAfter)
+    {
+        var snap = Snapshot;
+        if (snap is null)
+            return;
+
+        var before = new AreasModel(snap.Status.Unstaged, snap.Status.Staged, snap.Head);
+        var staging = request.Action is StageAction.Stage or StageAction.StageAll;
+        var areaOp = staging ? AreasOp.Stage : AreasOp.Unstage;
+        var below = ChangesText.Summary(snap.Status, snap.Head);
+        var stageOp = _app.StageOp;
+        var animator = _app.ChangesAnimator;
+        BeginBusy();
+
+        // Set on the UI thread when the animation starts, read there again when it ends.
+        ChangesAnimation? anim = null;
+        Func<int, IReadOnlyList<Seg>>? direction = null;
+        _app.ChangesTask = Task.Run(() =>
+        {
+            try
+            {
+                var o = RunGated(stageOp, request, c => c.Refusal, () => _app.Gate.IsQuitting,
+                    check => _app.Ui(() => Refuse(check.Commands, check.Refusal ?? "")),
+                    check => _app.Ui(() =>
+                    {
+                        _app.LogCommands(check.Commands);
+                        var what = ChangesText.What(check.Moving, all);
+                        var target = staging ? "staging area" : "working tree";
+                        anim = new ChangesAnimation(areaOp, before, check.Moving, $"{(staging ? "Staging" : "Unstaging")} {what}…");
+                        direction = cols => ChangesText.OpDirection(verb.ToLowerInvariant(), what, [new Seg(target, new Style(Ink.Dim))], cols);
+                        animator.Begin(anim, direction, below);
+                    }));
+                if (o is null)
+                    return;
+
+                var moved = ChangesText.What(o.Moved, all);
+                var after = o.Success && o.After is { } s ? new AreasModel(s.Unstaged, s.Staged, snap.Head) : before;
+                var result = o.Success
+                    ? new AreasResult(true, after,
+                        new Caption(staging
+                            ? $"✔ Staged {moved}: it goes into the next commit"
+                            : $"✔ Unstaged {moved}: the edit is still in your working tree", OkB),
+                        staging ? "Staged" : "Unstaged")
+                    : new AreasResult(false, before, new Caption($"✕ {verb} failed: {o.Message}", BadB), "Failed", o.Message);
+                var failureLog = o.Success ? null : $"{verb} failed: {o.Message}";
+                _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,
+                    () => AfterChange(o.Success, chooseAfter, anim, direction)));
+            }
+            catch (Exception ex)
+            {
+                _app.Ui(() => FailUnexpectedly(ex, verb));
+            }
+        });
+    }
+
+    private void Refuse(IReadOnlyList<GitResult> commands, string reason)
+    {
+        _app.LogCommands(commands);
+        _app.LogMessage("Refused: " + reason, WarnB);
+        _flash = new Caption("Refused: " + reason, Warn);
+        EndBusy();
+        RequestRefresh();
+    }
+
+    /// <summary>
+    /// After a change: its final frame stays on the art, the selection moves as the operation says (on success), and the
+    /// status and branch snapshot are reloaded.
+    /// </summary>
+    private void AfterChange(bool success, Func<IReadOnlyList<FileChange>, int> chooseAfter, ChangesAnimation? anim,
+        Func<int, IReadOnlyList<Seg>>? direction)
+    {
+        if (success)
+            _chooseAfter = chooseAfter;
+        _result = anim;
+        _resultDirection = direction;
+        RequestRefresh();
+        _app.ReloadCountsAsync();
+    }
+
+    private void FailUnexpectedly(Exception ex, string verb)
+    {
+        _app.ShowGitError(ex);
+        if (_app.ChangesAnimator.Running)
+        {
+            var failed = new AreasResult(false, Before(), new Caption($"✕ {verb} failed: {ex.Message}", BadB), "Failed", ex.Message);
+            _app.ChangesAnimator.SetPending(failed, [], $"{verb} failed: {ex.Message}", () => AfterChange(false, _ => 0, null, null));
+            return;
+        }
+        EndBusy();
+        RequestRefresh();
+    }
+
+    private AreasModel Before() =>
+        Snapshot is null ? new AreasModel([], [], new HeadLine("", null, [], false))
+            : new AreasModel(Snapshot.Status.Unstaged, Snapshot.Status.Staged, Snapshot.Head);
+
+    private void BeginBusy()
+    {
+        _app.Busy = true;
+        _app.Keys.Busy = true;
+        _app.Keys.SetNeedsDraw();
+        _flash = null;
+        _result = null;
+        // Any read still in flight is stale now: its answer must not overwrite what the change shows.
+        _refreshSeq++;
+        _refreshCts?.Cancel();
+        _diffSeq++;
+        _diffCts?.Cancel();
+    }
+
+    private void EndBusy()
+    {
+        _app.Busy = false;
+        _app.Keys.Busy = false;
+        _app.Keys.SetNeedsDraw();
+        _app.Art.SetNeedsDraw();
+    }
+
+    private void Flash(string text, Style style)
+    {
+        _flash = new Caption(text, style);
+        _app.Art.SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// The gate every change goes through: Check, then the refusal test, then the quit gate, then the animation starts, then Run.
+    /// A refusal goes to <paramref name="refused"/>; a refusal or a quit returns null and runs nothing after that point.
+    /// </summary>
+    internal static TOut? RunGated<TReq, TCheck, TOut>(IGitOperation<TReq, TCheck, TOut> op, TReq req, Func<TCheck, string?> refusal,
+        Func<bool> isQuitting, Action<TCheck> refused, Action<TCheck> starting) where TOut : class
+    {
+        var check = op.Check(req);
+        if (refusal(check) is not null)
+        {
+            refused(check);
+            return null;
+        }
+        if (isQuitting())
+            return null;
+        starting(check);
+        return op.Run(req, check);
     }
 
     /// <summary>
@@ -235,6 +475,18 @@ internal sealed class ChangesTab
         art.Title = row is null ? "Changes" : "Diff";
 
         var snap = Snapshot;
+        if (_result is { } done && snap is not null)
+        {
+            art.Title = done.Result!.Title;
+            art.Direction = _resultDirection ?? (_ => []);
+            art.Below = ChangesText.Summary(snap.Status, snap.Head);
+            art.Commits = [];
+            art.FallbackCaption = null;
+            art.Scene = geo => done.Final(geo);
+            art.SetNeedsDraw();
+            return;
+        }
+
         if (snap is null)
         {
             art.Direction = _ => [];
@@ -267,11 +519,21 @@ internal sealed class ChangesTab
         art.SetNeedsDraw();
     }
 
-    private static int IndexOfRow(IReadOnlyList<FileChange> rows, FileChange keep)
+    private static int IndexOfRow(IReadOnlyList<FileChange> rows, ChangeSide side, string path)
     {
         for (var i = 0; i < rows.Count; i++)
-            if (rows[i].Side == keep.Side && rows[i].Path == keep.Path)
+            if (rows[i].Side == side && rows[i].Path == path)
                 return i;
         return -1;
+    }
+
+    /// <summary>The key bar's Space label follows the selected row: unstage for a staged row, stage otherwise.</summary>
+    private void SyncKeyBar()
+    {
+        var label = SelectedRow?.Side == ChangeSide.Staged ? "unstage" : "stage";
+        if (_app.Keys.SpaceLabel == label)
+            return;
+        _app.Keys.SpaceLabel = label;
+        _app.Keys.SetNeedsDraw();
     }
 }

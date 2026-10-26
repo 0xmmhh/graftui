@@ -50,6 +50,9 @@ public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyLis
         _offset = r.Success ? Math.Max(0, elapsedMs - HoldMs) : elapsedMs - TotalMs;
     }
 
+    /// <summary>The frame the animation ends on. Only meaningful once <see cref="IsDone"/> is true.</summary>
+    public SceneFrame Final(ArtGeometry g) => Done(g);
+
     /// <summary>True once the scene has played out after the result arrived.</summary>
     public bool IsDone(long elapsedMs) => Result is not null && TimeOf(elapsedMs) >= TotalMs;
 
