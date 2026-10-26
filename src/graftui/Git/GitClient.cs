@@ -21,6 +21,15 @@ public sealed class GitClient(string repoPath)
     /// <summary>Like <see cref="Run"/>, with extra environment variables (applied after graftui's own defaults).</summary>
     public GitResult RunWithEnv(IReadOnlyDictionary<string, string> env, params string[] args) => RunCore(env, args);
 
+    /// <summary>
+    /// Like <see cref="Run"/>, but pathspecs are literal: a file named "*.txt" or ":x" matches only that file,
+    /// never a glob or magic pathspec.
+    /// </summary>
+    public GitResult RunLiteral(params string[] args) => RunWithEnv(LiteralPathspecs, args);
+
+    private static readonly IReadOnlyDictionary<string, string> LiteralPathspecs =
+        new Dictionary<string, string> { ["GIT_LITERAL_PATHSPECS"] = "1" };
+
     private GitResult RunCore(IReadOnlyDictionary<string, string>? env, string[] args)
     {
         var psi = new ProcessStartInfo("git")
@@ -194,10 +203,18 @@ public sealed class GitClient(string repoPath)
         refName.StartsWith("refs/heads/", StringComparison.Ordinal) ? refName["refs/heads/".Length..] : refName;
 
     /// <summary>Error text for a failed git call: its stderr, or the exit code when stderr is empty.</summary>
-    private static string Describe(GitResult result)
+    internal static string Describe(GitResult result)
     {
         var detail = result.StdErr.Trim();
         return detail.Length > 0 ? detail : $"{result.Command} exited with {result.ExitCode}";
+    }
+
+    /// <summary>Absolute path of the top-level folder of the work tree, or null when there is none.</summary>
+    public string? GetTopLevel()
+    {
+        var result = Run("rev-parse", "--show-toplevel");
+        var top = result.StdOut.Trim();
+        return result.Success && top.Length > 0 ? top : null;
     }
 
     /// <summary>True when there are no staged, unstaged or untracked changes.</summary>
