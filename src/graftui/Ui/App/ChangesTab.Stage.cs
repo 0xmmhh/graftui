@@ -25,22 +25,22 @@ internal sealed partial class ChangesTab
         {
             // The selection stays at the same position among the unstaged rows, or moves to the file's staged row.
             var position = Selected - snap.Status.Staged.Count;
-            StartStage(new StageRequest(StageAction.Stage, row), "Stage", all: false, row.Path,
+            StartStage(new StageRequest(StageAction.Stage, row), "Stage", all: false,
                 rows => AfterStage(rows, row.Path, position));
         }
         else
         {
             var position = Selected;
-            StartStage(new StageRequest(StageAction.Unstage, row), "Unstage", all: false, row.Path,
+            StartStage(new StageRequest(StageAction.Unstage, row), "Unstage", all: false,
                 rows => AfterUnstage(rows, row.Path, position));
         }
     }
 
     private void StageAll() =>
-        StartStage(new StageRequest(StageAction.StageAll, null), "Stage", all: true, path: null, _ => 0);
+        StartStage(new StageRequest(StageAction.StageAll, null), "Stage", all: true, _ => 0);
 
     private void UnstageAll() =>
-        StartStage(new StageRequest(StageAction.UnstageAll, null), "Unstage", all: true, path: null, _ => 0);
+        StartStage(new StageRequest(StageAction.UnstageAll, null), "Unstage", all: true, _ => 0);
 
     private static int AfterStage(IReadOnlyList<FileChange> rows, string path, int position)
     {
@@ -63,7 +63,7 @@ internal sealed partial class ChangesTab
     /// One stage or unstage on a worker: Check, the quit gate, the animation starting, Run, then the result for the animation.
     /// Only one change runs at a time (Busy). Refusals and failures are reported; nothing is rolled back (StageOperation has no rollback).
     /// </summary>
-    private void StartStage(StageRequest request, string verb, bool all, string? path, Func<IReadOnlyList<FileChange>, int> chooseAfter)
+    private void StartStage(StageRequest request, string verb, bool all, Func<IReadOnlyList<FileChange>, int> chooseAfter)
     {
         var snap = Snapshot;
         if (snap is null)
