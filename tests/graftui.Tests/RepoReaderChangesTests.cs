@@ -1,0 +1,131 @@
+using graftui.Git;
+using graftui.Model;
+
+namespace graftui.Tests;
+
+/// <summary>The Changes tab's reads against throwaway repos. Nothing here writes to the repo under test except through TempRepo.</summary>
+public class RepoReaderChangesTests
+{
+    [Fact]
+    public void Renamed_deleted_and_untracked_files_land_in_the_right_groups()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("a.txt", "a\n", "Add a");
+        repo.Commit("b.txt", "b\n", "Add b");
+        repo.Run("mv", "a.txt", "renamed.txt");
+        File.Delete(Path.Combine(repo.Dir, "b.txt"));
+        File.WriteAllText(Path.Combine(repo.Dir, "c.txt"), "c\n");
+
+        var snap = new RepoReader(repo.Git).LoadChanges(CancellationToken.None);
+
+        var renamed = Assert.Single(snap.Status.Staged);
+        Assert.Equal(new FileChange("renamed.txt", "a.txt", ChangeSide.Staged, ChangeKind.Renamed), renamed);
+        Assert.Equal(
+            [
+                new FileChange("b.txt", null, ChangeSide.Unstaged, ChangeKind.Deleted),
+                new FileChange("c.txt", null, ChangeSide.Unstaged, ChangeKind.Untracked),
+            ],
+            snap.Status.Unstaged);
+    }
+
+    [Fact]
+    public void Head_line_holds_the_last_four_commits_oldest_first_and_flags_more()
+    {
+        using var repo = TempRepo.Create();
+        for (var i = 1; i <= 5; i++)
+            repo.Commit("f.txt", $"{i}\n", $"Commit {i}");
+
+        var head = new RepoReader(repo.Git).LoadChanges(CancellationToken.None).Head;
+
+        Assert.Equal("main", head.Branch);
+        Assert.False(head.Detached);
+        Assert.True(head.More);
+        Assert.Equal(["Commit 2", "Commit 3", "Commit 4", "Commit 5"], head.Commits.Select(c => c.Subject).ToArray());
+        Assert.Equal("Commit 5", head.Tip?.Subject);
+    }
+
+    [Fact]
+    public void A_repo_with_no_commits_has_an_empty_head_line()
+    {
+        using var repo = TempRepo.Create();
+        File.WriteAllText(Path.Combine(repo.Dir, "a.txt"), "a\n");
+
+        var snap = new RepoReader(repo.Git).LoadChanges(CancellationToken.None);
+
+        Assert.Null(snap.Head.HeadHash);
+        Assert.Empty(snap.Head.Commits);
+        Assert.Null(snap.Head.Tip);
+        Assert.Equal("main", snap.Head.Branch);
+        Assert.Equal(new FileChange("a.txt", null, ChangeSide.Unstaged, ChangeKind.Untracked), Assert.Single(snap.Status.Unstaged));
+    }
+
+    [Fact]
+    public void Untracked_file_diff_is_all_added_lines()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("keep.txt", "k\n", "Add keep");
+        File.WriteAllText(Path.Combine(repo.Dir, "new.txt"), "first\nsecond\n");
+        var row = new FileChange("new.txt", null, ChangeSide.Unstaged, ChangeKind.Untracked);
+
+        var diff = new RepoReader(repo.Git).LoadDiff(row, CancellationToken.None);
+
+        Assert.DoesNotContain(diff.Lines, l => l.Kind == DiffLineKind.Removed);
+        Assert.Contains(new DiffLine(DiffLineKind.Added, "+first"), diff.Lines);
+        Assert.Contains(new DiffLine(DiffLineKind.Added, "+second"), diff.Lines);
+    }
+
+    [Fact]
+    public void Staged_rename_diff_names_the_original_file_in_a_note()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("old.txt", "same content\n", "Add old");
+        repo.Run("mv", "old.txt", "new.txt");
+        var row = new FileChange("new.txt", "old.txt", ChangeSide.Staged, ChangeKind.Renamed);
+
+        var diff = new RepoReader(repo.Git).LoadDiff(row, CancellationToken.None);
+
+        Assert.Contains(diff.Lines, l => l.Kind == DiffLineKind.Note && l.Text == "rename from old.txt");
+    }
+
+    [Fact]
+    public void Unstaged_modification_diff_shows_the_removed_and_added_lines()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        File.WriteAllText(Path.Combine(repo.Dir, "app.txt"), "line 1 (edited)\n");
+        var row = new FileChange("app.txt", null, ChangeSide.Unstaged, ChangeKind.Modified);
+
+        var diff = new RepoReader(repo.Git).LoadDiff(row, CancellationToken.None);
+
+        Assert.Contains(new DiffLine(DiffLineKind.Removed, "-line 1"), diff.Lines);
+        Assert.Contains(new DiffLine(DiffLineKind.Added, "+line 1 (edited)"), diff.Lines);
+    }
+
+    [Fact]
+    public void A_file_name_with_glob_characters_is_diffed_literally()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("b.txt", "b\n", "Add b");
+        File.WriteAllText(Path.Combine(repo.Dir, "b.txt"), "changed\n");
+        File.WriteAllText(Path.Combine(repo.Dir, "*.txt"), "glob\n");
+        var row = new FileChange("*.txt", null, ChangeSide.Unstaged, ChangeKind.Untracked);
+
+        var diff = new RepoReader(repo.Git).LoadDiff(row, CancellationToken.None);
+
+        Assert.Contains(new DiffLine(DiffLineKind.Added, "+glob"), diff.Lines);
+        Assert.DoesNotContain(diff.Lines, l => l.Text == "+changed");
+    }
+
+    [Fact]
+    public void Top_level_from_a_subfolder_is_the_repo_root()
+    {
+        using var repo = TempRepo.Create();
+        var sub = Path.Combine(repo.Dir, "sub");
+        Directory.CreateDirectory(sub);
+
+        var fromSub = new GitClient(sub).GetTopLevel();
+
+        Assert.NotNull(fromSub);
+        Assert.Equal(repo.Git.GetTopLevel(), fromSub);
+    }
+}
