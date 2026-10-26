@@ -251,4 +251,46 @@ public class StageSafetyTests
 
         Assert.Equal(ChangeRefusals.NothingIsStaged, CheckOnly(repo, StageAction.UnstageAll, null).Refusal);
     }
+
+    [Fact]
+    public void Stage_unstage_and_unstage_all_handle_names_with_spaces_and_a_leading_dash()
+    {
+        using var repo = TempRepo.Create();
+        repo.Write("-old file.txt", "old\n");
+        repo.Run("add", "--", "-old file.txt");
+        repo.Run("commit", "-q", "-m", "Add dash file");
+        repo.Write("-old file.txt", "changed\n");
+        repo.Write("-new file.txt", "new\n");
+
+        Assert.True(Act(repo, StageAction.Stage, Find(repo, ChangeSide.Unstaged, "-old file.txt")).Success);
+        Assert.True(Act(repo, StageAction.Stage, Find(repo, ChangeSide.Unstaged, "-new file.txt")).Success);
+        Assert.Equal("-new file.txt\n-old file.txt", repo.Run("diff", "--cached", "--name-only"));
+
+        var single = Act(repo, StageAction.Unstage, Find(repo, ChangeSide.Staged, "-new file.txt"));
+        Assert.True(single.Success, single.Message);
+        Assert.Contains(single.Commands, c => c.Command == "git restore --staged -- -new file.txt");
+        Assert.Contains(new FileChange("-new file.txt", null, ChangeSide.Unstaged, ChangeKind.Untracked), Read(repo).Unstaged);
+
+        Assert.True(Act(repo, StageAction.UnstageAll, null).Success);
+        Assert.Empty(Read(repo).Staged);
+        Assert.Equal("changed\n", File.ReadAllText(Path.Combine(repo.Dir, "-old file.txt")));
+    }
+
+    [Fact]
+    public void Unstage_all_with_head_unstages_names_that_look_like_pathspecs()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("keep.txt", "k\n", "Add keep");
+        repo.Write("*.txt", "glob\n");
+        repo.Write(":x", "magic\n");
+        repo.Write("keep.txt", "k changed\n");
+        Act(repo, StageAction.StageAll, null);
+
+        var outcome = Act(repo, StageAction.UnstageAll, null);
+
+        Assert.True(outcome.Success, outcome.Message);
+        Assert.Empty(Read(repo).Staged);
+        Assert.Equal("glob\n", File.ReadAllText(Path.Combine(repo.Dir, "*.txt")));
+        Assert.Equal("magic\n", File.ReadAllText(Path.Combine(repo.Dir, ":x")));
+    }
 }

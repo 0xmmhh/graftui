@@ -143,9 +143,11 @@ public sealed class RepoReader(GitClient git)
         var r = git.RunLiteral("diff", "--no-color", "--no-ext-diff", "--no-index", "--", "/dev/null", f.Path);
         if (r.ExitCode is not (0 or 1))
             return [new DiffLine(DiffLineKind.Note, FailedNote(r))];
-        if (r.StdOut.Trim().Length == 0)
-            return [new DiffLine(DiffLineKind.Note, "(empty file)")];
-        return DiffParser.Parse(r.StdOut);
+        var lines = DiffParser.Parse(r.StdOut);
+        // An empty file has no hunk and no added line, only the mode note; say so rather than show the header alone.
+        return lines.Any(l => l.Kind is DiffLineKind.Hunk or DiffLineKind.Added)
+            ? lines
+            : [new DiffLine(DiffLineKind.Note, "(empty file)")];
     }
 
     private static IReadOnlyList<DiffLine> DiffOf(GitResult r) =>
