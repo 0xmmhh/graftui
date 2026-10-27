@@ -51,4 +51,59 @@ public static class TextFit
         }
         return sb.Append(Ellipsis).ToString();
     }
+
+    /// <summary>
+    /// Splits the text over at most two lines of <paramref name="width"/> columns. Text that fits is (Fit(s), null).
+    /// Otherwise the first line ends at the last space that fits, and the second line goes through <see cref="Fit"/>.
+    /// With no usable space the first line is cut at <paramref name="width"/>, and the rest goes through Fit.
+    /// Returns ("", null) when width is 0 or less.
+    /// </summary>
+    public static (string First, string? Second) Wrap2(string s, int width)
+    {
+        if (width <= 0)
+            return ("", null);
+
+        var clean = Sanitize(s);
+        if (Columns(clean) <= width)
+            return (clean, null);
+
+        var fitEnd = FitEnd(clean, width);
+
+        // A space can end the first line only after some text, and only where everything before it fits.
+        var firstText = clean.AsSpan().IndexOfAnyExcept(' ');
+        var space = -1;
+        for (var i = Math.Min(fitEnd, clean.Length - 1); i > firstText; i--)
+        {
+            if (clean[i] == ' ')
+            {
+                space = i;
+                break;
+            }
+        }
+
+        if (space > 0)
+        {
+            var first = clean[..space].TrimEnd(' ');
+            var rest = clean[(space + 1)..].TrimStart(' ');
+            return rest.Length == 0 ? (first, null) : (first, Fit(rest, width));
+        }
+
+        return (clean[..fitEnd], Fit(clean[fitEnd..], width));
+    }
+
+    /// <summary>Length in UTF-16 units of the longest prefix that fits in width columns, never splitting a rune.</summary>
+    private static int FitEnd(string s, int width)
+    {
+        var used = 0;
+        var index = 0;
+        foreach (var rune in s.EnumerateRunes())
+        {
+            var cols = Math.Max(0, rune.GetColumns());
+            if (used + cols > width)
+                break;
+            used += cols;
+            index += rune.Utf16SequenceLength;
+        }
+        return index;
+    }
 }
