@@ -27,6 +27,36 @@ public class TextFitTests
     }
 
     [Fact]
+    public void Wrap2_keeps_text_that_fits_on_one_line()
+    {
+        Assert.Equal(("abc", null), TextFit.Wrap2("abc", 5));
+    }
+
+    [Fact]
+    public void Wrap2_breaks_at_the_last_space_that_fits()
+    {
+        Assert.Equal(("aa bb", "cc"), TextFit.Wrap2("aa bb cc", 5));
+    }
+
+    [Fact]
+    public void Wrap2_cuts_a_long_second_line_with_an_ellipsis()
+    {
+        Assert.Equal(("hello", "big wor…"), TextFit.Wrap2("hello big world", 8));
+    }
+
+    [Fact]
+    public void Wrap2_cuts_text_with_no_spaces_at_the_width()
+    {
+        Assert.Equal(("abcd", "efg…"), TextFit.Wrap2("abcdefghij", 4));
+    }
+
+    [Fact]
+    public void Wrap2_returns_nothing_for_a_zero_width()
+    {
+        Assert.Equal(("", null), TextFit.Wrap2("abc", 0));
+    }
+
+    [Fact]
     public void Sanitize_replaces_control_characters_with_spaces()
     {
         Assert.Equal("a b", TextFit.Sanitize("a\u001bb"));

@@ -7,7 +7,7 @@ namespace graftui.Ui.Views;
 
 /// <summary>
 /// The preview and animation pane: a direction line, the art, its caption and the commit list.
-/// Layout (pane rows): 1 direction, 2 rule, 3.. art (AH rows), caption, rule, then commit rows.
+/// Layout (pane rows): 1 direction, 2 rule, 3.. art (AH rows), caption (one or two lines), rule, then commit rows.
 /// </summary>
 public sealed class ArtPaneView : PaneView
 {
@@ -43,6 +43,20 @@ public sealed class ArtPaneView : PaneView
         return (2 + (cw - gw) / 2, 3, gw, ah);
     }
 
+    /// <summary>
+    /// Rows of the caption and the rows under it, for a pane of height <paramref name="paneH"/>. A two-line caption
+    /// takes one commit row, and only when a commit row is free; otherwise it falls back to one line.
+    /// </summary>
+    public static (int CaptionRows, int RuleRow, int BelowTop, int BelowRows) CaptionLayout(int paneH, bool twoLines)
+    {
+        var ih = paneH - 2;
+        var ah = ih >= 17 ? 11 : 8;
+        var commitRows = Math.Clamp(ih - 4 - ah, 0, 4);
+        return twoLines && commitRows > 0
+            ? (2, 5 + ah, 6 + ah, commitRows - 1)
+            : (1, 4 + ah, 5 + ah, commitRows);
+    }
+
     protected override bool OnDrawingContent(DrawContext? context)
     {
         ClearAll();
@@ -56,7 +70,6 @@ public sealed class ArtPaneView : PaneView
             return true;
 
         var ah = ih >= 17 ? 11 : 8;
-        var commitRows = Math.Clamp(ih - 4 - ah, 0, 4);
 
         DrawSegs(2, 1, Direction(cw), cw);
         DrawRule(2, 2, cw);
@@ -80,26 +93,32 @@ public sealed class ArtPaneView : PaneView
         var caption = area is null
             ? new Caption("art needs a wider pane", Dim)
             : frame?.Caption ?? FallbackCaption;
+        var (first, second) = caption is null ? ("", null) : TextFit.Wrap2(caption.Text, cw);
+        var layout = CaptionLayout(ph, second is not null);
         if (caption is not null)
         {
-            var text = TextFit.Fit(caption.Text, cw);
-            var cols = TextFit.Columns(text);
-            DrawText(2 + (cw - cols) / 2, 3 + ah, text, cw, caption.Style);
+            if (layout.CaptionRows == 2)
+            {
+                DrawCentred(first, 3 + ah, cw, caption.Style);
+                DrawCentred(second!, 4 + ah, cw, caption.Style);
+            }
+            else
+                DrawCentred(TextFit.Fit(caption.Text, cw), 3 + ah, cw, caption.Style);
         }
 
-        DrawRule(2, 4 + ah, cw);
+        DrawRule(2, layout.RuleRow, cw);
 
         if (Below is { } below)
         {
-            for (var k = 0; k < commitRows && k < below.Count; k++)
-                DrawSegs(4, 5 + ah + k, below[k], cw - 2);
+            for (var k = 0; k < layout.BelowRows && k < below.Count; k++)
+                DrawSegs(4, layout.BelowTop + k, below[k], cw - 2);
             return true;
         }
 
-        for (var k = 0; k < commitRows && k < Commits.Count; k++)
+        for (var k = 0; k < layout.BelowRows && k < Commits.Count; k++)
         {
             var row = Commits[k];
-            DrawSegs(4, 5 + ah + k,
+            DrawSegs(4, layout.BelowTop + k,
             [
                 new Seg(row.Dot.ToString(), row.DotStyle),
                 new Seg(" ", Fg),
@@ -109,6 +128,12 @@ public sealed class ArtPaneView : PaneView
             ], cw - 2);
         }
         return true;
+    }
+
+    private void DrawCentred(string text, int y, int cw, Style style)
+    {
+        var cols = TextFit.Columns(text);
+        DrawText(2 + (cw - cols) / 2, y, text, cw, style);
     }
 
     private void DrawRule(int x, int y, int cols)
