@@ -6,8 +6,11 @@ public enum ChangeKind { Modified, Added, Deleted, Renamed, Copied, TypeChanged,
 /// <summary>Which area a row is in: the staging area (index) or the working tree.</summary>
 public enum ChangeSide { Staged, Unstaged }
 
-/// <summary>One row of the Changes list. OrigPath is set for staged renames and copies only.</summary>
-public sealed record FileChange(string Path, string? OrigPath, ChangeSide Side, ChangeKind Kind)
+/// <summary>
+/// One row of the Changes list. OrigPath is set for staged renames and copies only.
+/// IsSubmodule is set when git reports the path as a submodule (the porcelain v2 "sub" field starts with S).
+/// </summary>
+public sealed record FileChange(string Path, string? OrigPath, ChangeSide Side, ChangeKind Kind, bool IsSubmodule = false)
 {
     /// <summary>The status letter shown in the list: M A D R C T ? U.</summary>
     public char Letter => Kind switch
