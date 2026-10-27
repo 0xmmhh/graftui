@@ -40,7 +40,7 @@ public static class Sandbox
         CheckRefusals(full);
 
         if (Directory.Exists(full))
-            Directory.Delete(full, recursive: true);
+            DeleteOwnTree(full);
 
         Directory.CreateDirectory(full);
         progress.WriteLine($"graftui: rebuilding practice repo at {full}");
@@ -56,6 +56,39 @@ public static class Sandbox
                 TryDeleteTree(full);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Deletes a sandbox graftui made. The marker goes last of all: top-level entries, then everything in .git except
+    /// the marker, then the marker, then the folder. If any step throws, the marker is still there, so the next launch
+    /// recognises the folder and retries instead of refusing it.
+    /// </summary>
+    private static void DeleteOwnTree(string full)
+    {
+        foreach (var entry in Directory.GetFileSystemEntries(full))
+            if (Path.GetFileName(entry) != ".git")
+                DeleteEntry(entry);
+
+        var gitDir = Path.Combine(full, ".git");
+        if (Directory.Exists(gitDir))
+        {
+            foreach (var entry in Directory.GetFileSystemEntries(gitDir))
+                if (Path.GetFileName(entry) != MarkerFile)
+                    DeleteEntry(entry);
+
+            File.Delete(Path.Combine(gitDir, MarkerFile));
+        }
+
+        Directory.Delete(full, recursive: true);
+    }
+
+    /// <summary>Deletes a file, a link, or a folder. A link is removed itself and never followed.</summary>
+    private static void DeleteEntry(string p)
+    {
+        if (Directory.Exists(p) && !IsLink(p))
+            Directory.Delete(p, recursive: true);
+        else
+            File.Delete(p);
     }
 
     private static void CheckRefusals(string sandbox)
