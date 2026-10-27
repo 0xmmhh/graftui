@@ -60,7 +60,8 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
 
         var oldHead = "";
         var mergeRan = false;
-        UndoRecord Moved(string head) => new("merge", [new RefChange("refs/heads/" + into, oldHead, head)]);
+        UndoRecord Moved(string head) =>
+            new(UndoKind.Merge, $"merge of {branch}", [new RefChange("refs/heads/" + into, oldHead, head)], Branch: into, Head: head);
         try
         {
             var headResult = Run("rev-parse", "-q", "--verify", "HEAD");

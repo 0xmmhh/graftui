@@ -27,6 +27,22 @@ public sealed class GitClient(string repoPath)
     /// </summary>
     public GitResult RunLiteral(params string[] args) => RunWithEnv(LiteralPathspecs, args);
 
+    /// <summary>
+    /// Runs git against a separate index file (GIT_INDEX_FILE) with literal pathspecs. The logged command is prefixed
+    /// with GIT_INDEX_FILE=&lt;path relative to RepoPath&gt;, so the command log shows which index was used.
+    /// </summary>
+    public GitResult RunWithIndex(string indexFile, params string[] args)
+    {
+        var env = new Dictionary<string, string>
+        {
+            ["GIT_INDEX_FILE"] = indexFile,
+            ["GIT_LITERAL_PATHSPECS"] = "1",
+        };
+        var result = RunWithEnv(env, args);
+        var rel = Path.GetRelativePath(RepoPath, indexFile);
+        return result with { Command = $"GIT_INDEX_FILE={rel} " + result.Command };
+    }
+
     private static readonly IReadOnlyDictionary<string, string> LiteralPathspecs =
         new Dictionary<string, string> { ["GIT_LITERAL_PATHSPECS"] = "1" };
 
