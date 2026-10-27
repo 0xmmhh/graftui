@@ -178,13 +178,9 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
         var gitDir = Path.IsPathRooted(gitDirOut) ? gitDirOut : Path.Combine(git.RepoPath, gitDirOut);
 
         // 4. Another operation that owns the index must finish first. Commits never create merge or rebase state.
-        foreach (var (name, kind) in new[] { ("MERGE_HEAD", "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"), ("REVERT_HEAD", "revert") })
-        {
-            if (Call(log, "rev-parse", "-q", "--verify", name).Success)
-                return Refused(ChangeRefusals.InProgress(kind), log, branch);
-        }
-        if (Directory.Exists(Path.Combine(gitDir, "rebase-merge")) || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
-            return Refused(ChangeRefusals.InProgress("rebase"), log, branch);
+        var inProgress = RepoState.InProgress(a => Call(log, a), gitDir);
+        if (inProgress is not null)
+            return Refused(ChangeRefusals.InProgress(inProgress), log, branch);
 
         // 5. Status: conflicts block everything; a commit needs something staged (an amend may change only the message).
         var st = Call(log, StatusArgs);
@@ -251,7 +247,8 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
         bool amend, List<GitResult> log)
     {
         var newCommit = git.GetCommit(newHead);
-        var undo = new UndoRecord(amend ? "amend" : "commit", [new RefChange("refs/heads/" + branch, check.OldHead ?? "", newHead)]);
+        var undo = new UndoRecord(amend ? UndoKind.Amend : UndoKind.Commit, amend ? "amend" : "commit",
+            [new RefChange("refs/heads/" + branch, check.OldHead ?? "", newHead)], Branch: branch, Head: newHead);
         return new CommitOutcome(kind, branch, check.OldHead, newHead, newCommit, message, log, undo);
     }
 
