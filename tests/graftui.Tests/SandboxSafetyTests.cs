@@ -112,4 +112,38 @@ public class SandboxSafetyTests
             TempRepo.DeleteSandboxRoot(dir);
         }
     }
+
+    [Fact]
+    public void A_folder_that_cannot_be_emptied_keeps_its_marker_so_the_next_launch_retries()
+    {
+        // Root ignores directory permissions, so the failure cannot be produced there. Unix modes do not exist on Windows.
+        if (Environment.UserName == "root" || OperatingSystem.IsWindows())
+            return;
+
+        var dir = TempRepo.NewSandboxDir();
+        var locked = Path.Combine(dir, "locked");
+        try
+        {
+            Sandbox.RebuildAt(dir, TextWriter.Null);
+            Directory.CreateDirectory(locked);
+            File.WriteAllText(Path.Combine(locked, "f"), "x");
+            File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+
+            var ex = Record.Exception(() => Sandbox.RebuildAt(dir, TextWriter.Null));
+            Assert.True(ex is IOException or UnauthorizedAccessException, $"expected a file-system error, got {ex}");
+            Assert.True(File.Exists(Path.Combine(dir, ".git", Sandbox.MarkerFile)));
+
+            File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            Sandbox.RebuildAt(dir, TextWriter.Null);
+
+            Assert.True(File.Exists(Path.Combine(dir, ".git", Sandbox.MarkerFile)));
+            Assert.False(Directory.Exists(locked));
+        }
+        finally
+        {
+            if (Directory.Exists(locked))
+                File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            TempRepo.DeleteSandboxRoot(dir);
+        }
+    }
 }
