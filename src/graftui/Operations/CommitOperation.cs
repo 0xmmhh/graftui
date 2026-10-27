@@ -242,14 +242,21 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
         return names;
     }
 
-    /// <summary>A commit that landed: the undo record names the one ref that moved.</summary>
+    /// <summary>
+    /// A commit that landed. Its undo step names the one ref that moved and is saved now. If saving fails, the commit still
+    /// stands: the note goes on the message and the outcome carries no undo step.
+    /// </summary>
     private CommitOutcome Succeeded(CommitKind kind, string branch, CommitCheck check, string newHead, string message,
         bool amend, List<GitResult> log)
     {
         var newCommit = git.GetCommit(newHead);
         var undo = new UndoRecord(amend ? UndoKind.Amend : UndoKind.Commit, amend ? "amend" : "commit",
             [new RefChange("refs/heads/" + branch, check.OldHead ?? "", newHead)], Branch: branch, Head: newHead);
-        return new CommitOutcome(kind, branch, check.OldHead, newHead, newCommit, message, log, undo);
+        var problem = new UndoLog(git).Push(undo, log);
+        return problem is null
+            ? new CommitOutcome(kind, branch, check.OldHead, newHead, newCommit, message, log, undo)
+            : new CommitOutcome(kind, branch, check.OldHead, newHead, newCommit,
+                Combine(message, $"could not save the undo step: {problem}"), log, null);
     }
 
     private static CommitCheck Refused(string reason, List<GitResult> log, string branch = "") =>

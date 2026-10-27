@@ -55,8 +55,21 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
         var into = check.CurrentBranch;
         var log = new List<GitResult>();
         GitResult Run(params string[] a) { var r = git.Run(a); log.Add(r); return r; }
-        MergeOutcome Done(MergeKind kind, string? head, IReadOnlyList<string> files, string message, UndoRecord? undo = null) =>
-            new(kind, branch, into, head, files, message, log, undo);
+        MergeOutcome Done(MergeKind kind, string? head, IReadOnlyList<string> files, string message, UndoRecord? undo = null)
+        {
+            // Only a verified merge has an undo step, so only then is one saved. If saving fails, the merge still stands.
+            var saved = undo;
+            if (undo is not null)
+            {
+                var problem = new UndoLog(git).Push(undo, log);
+                if (problem is not null)
+                {
+                    message += $"; could not save the undo step: {problem}";
+                    saved = null;
+                }
+            }
+            return new(kind, branch, into, head, files, message, log, saved);
+        }
 
         var oldHead = "";
         var mergeRan = false;
