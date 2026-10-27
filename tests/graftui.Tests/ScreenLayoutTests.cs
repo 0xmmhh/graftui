@@ -13,7 +13,28 @@ public class ScreenLayoutTests
         Assert.False(layout.TooSmall);
         Assert.Equal(5, layout.LogHeight);
         Assert.Equal(15, layout.TopHeight);
-        Assert.Equal(30, layout.BranchWidth);
+        Assert.Equal(24, layout.BranchWidth);
+    }
+
+    [Theory]
+    [InlineData(64, 22, 0, 24)]
+    [InlineData(64, 22, 38, 24)]
+    [InlineData(80, 24, 38, 32)]
+    [InlineData(100, 30, 20, 30)]
+    public void Branch_pane_is_split_so_the_art_pane_keeps_forty_columns(int cols, int rows, int wanted, int expected)
+    {
+        Assert.Equal(expected, ScreenLayout.Compute(cols, rows, wanted).BranchWidth);
+    }
+
+    [Theory]
+    [InlineData(64)]
+    [InlineData(70)]
+    [InlineData(100)]
+    public void Art_pane_is_at_least_forty_columns_wide(int cols)
+    {
+        var layout = ScreenLayout.Compute(cols, 24, 60);
+
+        Assert.True(cols - layout.BranchWidth >= ScreenLayout.MinArtPaneWidth);
     }
 
     [Fact]
