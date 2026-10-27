@@ -126,6 +126,62 @@ public class MergeSafetyTests
         Assert.Equal(new RefChange("refs/heads/main", head, featureTip), Assert.Single(outcome.Undo.Changes));
     }
 
+    [Fact]
+    public void A_fast_forward_saves_an_undo_step_that_names_the_branch_and_the_move()
+    {
+        using var repo = TempRepo.FastForwardable();
+        var before = repo.Head;
+        var op = new MergeOperation(repo.Git);
+
+        var outcome = op.Run(new MergeRequest("feature"), op.Check(new MergeRequest("feature")));
+
+        Assert.Equal(MergeKind.FastForward, outcome.Kind);
+        AssertSavedMerge(repo, outcome, before);
+    }
+
+    [Fact]
+    public void A_merge_commit_saves_an_undo_step_that_names_the_branch_and_the_move()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var before = repo.Head;
+        var op = new MergeOperation(repo.Git);
+
+        var outcome = op.Run(new MergeRequest("feature"), op.Check(new MergeRequest("feature")));
+
+        Assert.Equal(MergeKind.MergeCommit, outcome.Kind);
+        AssertSavedMerge(repo, outcome, before);
+    }
+
+    [Fact]
+    public void A_merge_whose_undo_step_cannot_be_saved_stands_and_says_so()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        // A folder where the message file goes makes the save fail after the merge has landed.
+        Directory.CreateDirectory(Path.Combine(repo.Dir, ".git", UndoLog.MessageFile));
+        var op = new MergeOperation(repo.Git);
+
+        var outcome = op.Run(new MergeRequest("feature"), op.Check(new MergeRequest("feature")));
+
+        Assert.Equal(MergeKind.MergeCommit, outcome.Kind);
+        Assert.Equal(outcome.NewHead, repo.Head);
+        Assert.Contains("could not save the undo step", outcome.Message);
+        Assert.Null(outcome.Undo);
+        Assert.Null(new UndoLog(repo.Git).Top([]));
+    }
+
+    private static void AssertSavedMerge(TempRepo repo, MergeOutcome outcome, string before)
+    {
+        var top = new UndoLog(repo.Git).Top([]);
+        Assert.NotNull(top?.Step);
+        Assert.Equal(UndoKind.Merge, top.Step.Kind);
+        Assert.Equal("merge of feature", top.Step.What);
+        Assert.Equal("main", top.Step.Branch);
+        Assert.Equal(outcome.NewHead, top.Step.Head);
+        Assert.Equal(new RefChange("refs/heads/main", before, repo.Head), Assert.Single(top.Step.Changes));
+        Assert.NotNull(outcome.Undo);
+        Assert.Equal(UndoKind.Merge, outcome.Undo.Kind);
+    }
+
     private static void AssertRefused(TempRepo repo, string reason)
     {
         var head = repo.Head;

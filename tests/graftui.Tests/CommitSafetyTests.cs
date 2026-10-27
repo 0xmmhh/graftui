@@ -235,6 +235,63 @@ public class CommitSafetyTests
     }
 
     [Fact]
+    public void A_commit_saves_an_undo_step_that_names_the_branch_and_the_move()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        var oldHead = repo.Head;
+        repo.Write("app.txt", "line 1 (edited)\n");
+        StageAll(repo);
+
+        var outcome = Run(new CommitOperation(repo.Git), Commit("Subj"));
+
+        var top = new UndoLog(repo.Git).Top([]);
+        Assert.NotNull(top?.Step);
+        Assert.Equal(UndoKind.Commit, top.Step.Kind);
+        Assert.Equal("commit", top.Step.What);
+        Assert.Equal("main", top.Step.Branch);
+        Assert.Equal(outcome.NewHead, top.Step.Head);
+        Assert.Equal(new RefChange("refs/heads/main", oldHead, repo.Head), Assert.Single(top.Step.Changes));
+    }
+
+    [Fact]
+    public void An_amend_saves_an_amend_step_with_the_old_and_the_new_commit()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "a\n", "Add app");
+        var oldHead = repo.Head;
+
+        var outcome = Run(new CommitOperation(repo.Git), new CommitRequest(true, "Reworded", "", oldHead, false));
+
+        var top = new UndoLog(repo.Git).Top([]);
+        Assert.NotNull(top?.Step);
+        Assert.Equal(UndoKind.Amend, top.Step.Kind);
+        Assert.Equal("amend", top.Step.What);
+        Assert.Equal(outcome.NewHead, top.Step.Head);
+        Assert.Equal(new RefChange("refs/heads/main", oldHead, repo.Head), Assert.Single(top.Step.Changes));
+    }
+
+    [Fact]
+    public void A_commit_whose_undo_step_cannot_be_saved_stands_and_says_so()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "a\n", "Add app");
+        var oldHead = repo.Head;
+        repo.Write("b.txt", "b\n");
+        StageAll(repo);
+        // A folder where the message file goes makes the save fail after the commit has landed.
+        Directory.CreateDirectory(Path.Combine(repo.Dir, ".git", UndoLog.MessageFile));
+
+        var outcome = Run(new CommitOperation(repo.Git), Commit("Second"));
+
+        Assert.Equal(CommitKind.Committed, outcome.Kind);
+        Assert.NotEqual(oldHead, repo.Head);
+        Assert.Contains("could not save the undo step", outcome.Message);
+        Assert.Null(outcome.Undo);
+        Assert.Null(new UndoLog(repo.Git).Top([]));
+    }
+
+    [Fact]
     public void Amend_replaces_the_message_keeps_the_parent_and_includes_staged_changes()
     {
         using var repo = TempRepo.Create();
