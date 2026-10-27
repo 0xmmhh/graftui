@@ -28,7 +28,7 @@ internal static class StatusParser
                     // 1 XY sub mH mI mW hH hI path
                     var f = rec.Split(' ', 9);
                     if (f.Length == 9 && f[1].Length == 2)
-                        AddEntries(f[1], f[8], null, staged, unstaged);
+                        AddEntries(f[1], f[8], null, IsSubmodule(f[2]), staged, unstaged);
                     break;
                 }
                 case '2':
@@ -37,7 +37,7 @@ internal static class StatusParser
                     var f = rec.Split(' ', 10);
                     var orig = i + 1 < records.Length ? records[++i] : null;
                     if (f.Length == 10 && f[1].Length == 2)
-                        AddEntries(f[1], f[9], orig, staged, unstaged);
+                        AddEntries(f[1], f[9], orig, IsSubmodule(f[2]), staged, unstaged);
                     break;
                 }
                 case 'u':
@@ -45,7 +45,7 @@ internal static class StatusParser
                     // u XY sub m1 m2 m3 mW h1 h2 h3 path: always one unstaged conflict row
                     var f = rec.Split(' ', 11);
                     if (f.Length == 11)
-                        unstaged.Add(new FileChange(f[10], null, ChangeSide.Unstaged, ChangeKind.Conflicted));
+                        unstaged.Add(new FileChange(f[10], null, ChangeSide.Unstaged, ChangeKind.Conflicted, IsSubmodule(f[2])));
                     break;
                 }
                 case '?':
@@ -60,12 +60,15 @@ internal static class StatusParser
         return new WorkingStatus(staged, unstaged);
     }
 
-    private static void AddEntries(string xy, string path, string? origPath, List<FileChange> staged, List<FileChange> unstaged)
+    /// <summary>The "sub" field: N... for a plain file, S followed by c, m and u flags for a submodule.</summary>
+    private static bool IsSubmodule(string sub) => sub.StartsWith('S');
+
+    private static void AddEntries(string xy, string path, string? origPath, bool isSubmodule, List<FileChange> staged, List<FileChange> unstaged)
     {
         if (xy[0] != '.')
-            staged.Add(new FileChange(path, origPath, ChangeSide.Staged, IndexKind(xy[0])));
+            staged.Add(new FileChange(path, origPath, ChangeSide.Staged, IndexKind(xy[0]), isSubmodule));
         if (xy[1] != '.')
-            unstaged.Add(new FileChange(path, null, ChangeSide.Unstaged, WorktreeKind(xy[1])));
+            unstaged.Add(new FileChange(path, null, ChangeSide.Unstaged, WorktreeKind(xy[1]), isSubmodule));
     }
 
     private static ChangeKind IndexKind(char x) => x switch

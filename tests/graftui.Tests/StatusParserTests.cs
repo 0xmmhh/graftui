@@ -123,4 +123,35 @@ public class StatusParserTests
 
         Assert.Equal(["b.txt", "a.txt", "c.txt"], s.Rows.Select(r => r.Path).ToArray());
     }
+
+    [Fact]
+    public void A_submodule_record_sets_IsSubmodule_on_its_rows()
+    {
+        var input = $"1 .M S.M. 160000 160000 160000 {H} {H} sub\0";
+
+        var s = StatusParser.Parse(input);
+
+        var row = Assert.Single(s.Unstaged);
+        Assert.Equal(new FileChange("sub", null, ChangeSide.Unstaged, ChangeKind.Modified, IsSubmodule: true), row);
+        Assert.True(row.IsSubmodule);
+    }
+
+    [Fact]
+    public void An_ordinary_record_leaves_IsSubmodule_false()
+    {
+        var s = StatusParser.Parse(Entry(".M", "app.txt"));
+
+        Assert.False(Assert.Single(s.Unstaged).IsSubmodule);
+    }
+
+    [Fact]
+    public void A_conflicted_submodule_sets_IsSubmodule()
+    {
+        var input = $"u UU S.M. 160000 160000 160000 160000 {H} {H} {H} sub\0";
+
+        var row = Assert.Single(StatusParser.Parse(input).Unstaged);
+
+        Assert.Equal(ChangeKind.Conflicted, row.Kind);
+        Assert.True(row.IsSubmodule);
+    }
 }
