@@ -25,4 +25,20 @@ public static class ChangeRefusals
 
     public static string PushedNotConfirmed(string remoteBranch) =>
         $"this commit is already on {remoteBranch}; press A again to confirm amending it";
+
+    public const string NoCommitYet = "there are no commits yet: commit once before discarding or stashing";
+    public const string NothingToStash = "Nothing to stash: the working tree is clean";
+    public const string StashEmpty = "The stash is empty";
+    public const string StashMoved = "the stash changed since you pressed Z; nothing was popped";
+
+    public static string NoUnstaged(string path) =>
+        $"{path} has no unstaged changes to discard; its staged changes stay (Space unstages them)";
+
+    public static string IntentToAdd(string path) => $"{path} was added with git add -N: graftui won't discard it";
+
+    public static string NestedRepoDiscard(string path) => $"{path} is a separate git repository: graftui won't discard it";
+
+    public static string NestedRepoStash(string path) => $"{path} is a separate git repository: graftui won't stash or pop over it";
+
+    public static string Submodule(string path) => $"{path} is a submodule: graftui won't discard, stash or pop over it";
 }
