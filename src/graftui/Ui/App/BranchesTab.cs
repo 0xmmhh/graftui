@@ -8,7 +8,7 @@ namespace graftui.Ui.App;
 /// <summary>
 /// The branch list's behaviour: selection, the preview of the selected branch, and starting a merge.
 /// </summary>
-internal sealed class BranchesTab
+internal sealed partial class BranchesTab
 {
     private static readonly Style Warn = new(Ink.Warn);
     private static readonly Style Muted = new(Ink.Dim);

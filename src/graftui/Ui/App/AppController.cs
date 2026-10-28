@@ -284,6 +284,11 @@ public sealed class AppController
             e.Handled = true;
             BranchesTab.StartMerge();
         }
+        else if (e == Key.U)
+        {
+            e.Handled = true;
+            BranchesTab.StartUndo();
+        }
     }
 
     /// <summary>Switches the left pane between Branches and Changes. Only the view and the key bar change; each tab loads its own data.</summary>
