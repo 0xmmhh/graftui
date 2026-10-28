@@ -43,4 +43,23 @@ public static class ChangeRefusals
     public static string Submodule(string path) => $"{path} is a submodule: graftui won't discard, stash or pop over it";
 
     public static string HandPickedNotConfirmed(string path) => $"{path} has hand-picked staged changes: confirm before unstaging them";
+
+    public const string NothingToUndo = "Nothing to undo";
+    public const string UndoDirty = "you have uncommitted changes: commit or stash them before undoing this";
+    public const string UndoStashGone = "that stash entry is gone, so there is nothing to bring back";
+    public const string UndoStashMoved = "the stash has changed since, so undoing would mix up its entries";
+    public const string UndoStateChanged = "files have changed since the pop, so undoing would overwrite them";
+
+    public static string UndoChanged(string path) => $"{path} has changed since, so undoing would overwrite it";
+
+    public static string UndoHeadMoved(string branch) => $"{branch} has moved since, so undoing would lose commits";
+
+    public static string UndoWrongBranch(string branch) => $"that commit is on {branch}: switch back to it first";
+
+    /// <summary>The step's record cannot be read, or lacks a field its kind needs. reference is the undo ref.</summary>
+    public static string UndoUnreadable(string reference) =>
+        $"the undo history is unreadable ({reference}); delete it with git update-ref -d {reference}";
+
+    /// <summary>git could not list the undo refs at all, so no step can be named.</summary>
+    public static string UndoListFailed(string detail) => $"could not read the undo history: {detail}";
 }
