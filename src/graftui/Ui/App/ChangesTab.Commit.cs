@@ -108,11 +108,18 @@ internal sealed partial class ChangesTab
     }
 
     /// <summary>
-    /// Keys while the pushed-amend questions are shown. Every key is taken. The state machine decides what a key does:
-    /// the question's yes key moves on, n, N or Esc cancels, anything else is ignored. The third yes opens the box.
+    /// Keys while a question is shown. Every key is taken. A yes/no question (discard, hand-picked unstage) is answered first.
+    /// Otherwise the pushed-amend questions run: their state machine decides what a key does, the yes key moves on, n, N or Esc
+    /// cancels, anything else is ignored, and the third yes opens the box.
     /// </summary>
     internal void HandleAskKey(Key e)
     {
+        if (_yesNo is { } question)
+        {
+            HandleYesNoKey(e, question);
+            return;
+        }
+
         e.Handled = true;
         var key = e == Key.Esc ? PushedAmendQuestions.EscapeKey : CharOf(e);
         // The window shrank under the question: it is not drawn, so an answer must not count. Cancel still works.

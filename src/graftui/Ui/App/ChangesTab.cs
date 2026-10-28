@@ -92,6 +92,11 @@ internal sealed partial class ChangesTab
         _result = null;
         if (Mode != ChangesMode.Browse)
             CloseForm();
+        if (_yesNo is not null)
+        {
+            _yesNo = null;
+            ResetAskKeys();
+        }
         Mode = ChangesMode.Browse;
     }
 
