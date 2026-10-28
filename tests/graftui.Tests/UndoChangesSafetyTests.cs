@@ -295,6 +295,37 @@ public class UndoChangesSafetyTests
         Assert.Equal("", repo.Run("stash", "list"));
     }
 
+    [Fact]
+    public void Undo_of_a_pop_is_refused_when_the_stash_has_changed_since()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Write("app.txt", "line 1 (edited)\n");
+        Stash(repo);
+        Pop(repo);
+        repo.Write("app.txt", "line 1 (again)\n");
+        repo.Run("stash", "push", "-q");
+
+        Assert.Equal(ChangeRefusals.UndoStashMoved, CheckOnly(repo).Refusal);
+        Assert.Single(repo.Run("stash", "list").Split('\n'));
+    }
+
+    [Fact]
+    public void Undo_of_a_pop_is_refused_when_head_moved_since()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Write("app.txt", "line 1 (edited)\n");
+        Stash(repo);
+        Pop(repo);
+        repo.Run("add", "app.txt");
+        repo.Run("commit", "-q", "-m", "Change app");
+        var moved = repo.Head;
+
+        Assert.Equal(ChangeRefusals.UndoHeadMoved("HEAD"), CheckOnly(repo).Refusal);
+        Assert.Equal(moved, repo.Head);
+    }
+
     // ---- hand-picked unstage ----
 
     [Fact]
