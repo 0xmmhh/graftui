@@ -274,7 +274,7 @@ public class AreasScenesTests
     [Fact]
     public void The_stash_form_labels_the_message_field_and_has_no_counters()
     {
-        var frame = AreasScenes.StashForm(Wide, Model(), messageCols: 12);
+        var frame = AreasScenes.StashForm(Wide, Model());
         var grid = frame.Grid;
 
         Assert.StartsWith("Stash everything, untracked files too", Row(grid, 7));

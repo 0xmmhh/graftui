@@ -314,7 +314,7 @@ internal sealed partial class ChangesTab
         var areaOp = request.Amend ? AreasOp.Amend : AreasOp.Commit;
         BeginBusy();
 
-        ChangesAnimation? anim = null;
+        IAreasAnimation? anim = null;
         Func<int, IReadOnlyList<Seg>>? direction = null;
         _app.BeginChangeOutcome();
         _app.ChangesTask = Task.Run<string?>(() =>
@@ -375,11 +375,11 @@ internal sealed partial class ChangesTab
         try
         {
             var snap = _app.RootReader.LoadChanges(CancellationToken.None);
-            after = new AreasModel(snap.Status.Unstaged, snap.Status.Staged, snap.Head);
+            after = new AreasModel(snap.Status.Unstaged, snap.Status.Staged, snap.Head, snap.Stash);
         }
         catch
         {
-            after = new AreasModel(before.Unstaged, [], before.Head);
+            after = new AreasModel(before.Unstaged, [], before.Head, before.Stash);
         }
 
         if (request.Amend)

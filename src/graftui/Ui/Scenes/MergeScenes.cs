@@ -276,7 +276,7 @@ public static class MergeScenes
             : $"✕ CONFLICT in {ConflictFiles(o.ConflictFiles)}: merge aborted, {cur} unchanged";
 
     // " app.txt" / " app.txt +2 more"; long names are shortened so the caption stays near the art width.
-    private static string ConflictFiles(IReadOnlyList<string> files)
+    internal static string ConflictFiles(IReadOnlyList<string> files)
     {
         var first = files[0];
         if (TextFit.Columns(first) > 24)
