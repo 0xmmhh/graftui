@@ -12,7 +12,7 @@ public sealed record IndexEntry(string Path, string Mode, string Blob);
 
 /// <summary>
 /// One undoable step, stored as the message of a commit under refs/graftui/undo/. Only the fields that the kind needs are set.
-/// See the plan's "Undo" section for what each kind records and how it is checked before it runs.
+/// What each kind records, and how UndoOperation checks it before it runs, is described on UndoOperation.
 /// </summary>
 public sealed record UndoRecord(
     UndoKind Kind,
