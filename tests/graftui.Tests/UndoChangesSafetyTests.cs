@@ -16,6 +16,10 @@ public class UndoChangesSafetyTests
     private static FileChange Row(TempRepo repo, ChangeSide side, string path) =>
         Read(repo).Rows.Single(r => r.Side == side && r.Path == path);
 
+    /// <summary>The refusal of the step on top, with the drop hint that a guard refusal carries (see ChangeRefusals.WithUndoHint).</summary>
+    private static string Hinted(TempRepo repo, string refusal) =>
+        ChangeRefusals.WithUndoHint(refusal, new UndoLog(repo.Git).Top([])!.Ref);
+
     private static UndoCheck CheckOnly(TempRepo repo) => new UndoOperation(repo.Git).Check(new UndoRequest(null));
 
     private static UndoOutcome Undo(TempRepo repo)
@@ -114,7 +118,7 @@ public class UndoChangesSafetyTests
 
         var check = CheckOnly(repo);
 
-        Assert.Equal(ChangeRefusals.UndoChanged("app.txt"), check.Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoChanged("app.txt")), check.Refusal);
         Assert.Equal("edited meanwhile\n", Text(repo, "app.txt"));
         Assert.Single(repo.Run("stash", "list").Split('\n'));
         Assert.Single(UndoRefs(repo));
@@ -129,7 +133,7 @@ public class UndoChangesSafetyTests
         Discard(repo, Row(repo, ChangeSide.Unstaged, "app.txt"));
         repo.Run("stash", "drop", "-q");
 
-        Assert.Equal(ChangeRefusals.UndoStashGone, CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoStashGone), CheckOnly(repo).Refusal);
     }
 
     [Fact]
@@ -158,7 +162,7 @@ public class UndoChangesSafetyTests
         Discard(repo, Row(repo, ChangeSide.Unstaged, "n.txt"));
         repo.Write("n.txt", "again\n");
 
-        Assert.Equal(ChangeRefusals.UndoChanged("n.txt"), CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoChanged("n.txt")), CheckOnly(repo).Refusal);
         Assert.Equal("again\n", Text(repo, "n.txt"));
     }
 
@@ -217,7 +221,7 @@ public class UndoChangesSafetyTests
         Stash(repo);
         repo.Write("later.txt", "later\n");
 
-        Assert.Equal(ChangeRefusals.UndoDirty, CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoDirty), CheckOnly(repo).Refusal);
         Assert.Equal("?? later.txt", repo.Status());
         Assert.Single(repo.Run("stash", "list").Split('\n'));
     }
@@ -232,7 +236,7 @@ public class UndoChangesSafetyTests
         repo.Write("app.txt", "line 1 (again)\n");
         repo.Run("stash", "push", "-q");
 
-        Assert.Equal(ChangeRefusals.UndoStashMoved, CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoStashMoved), CheckOnly(repo).Refusal);
         Assert.Equal(2, repo.Run("stash", "list").Split('\n').Length);
     }
 
@@ -246,7 +250,7 @@ public class UndoChangesSafetyTests
         repo.Commit("b.txt", "b\n", "Add b");
         var moved = repo.Head;
 
-        Assert.Equal(ChangeRefusals.UndoHeadMoved("HEAD"), CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoHeadMoved("HEAD")), CheckOnly(repo).Refusal);
         Assert.Equal(moved, repo.Head);
     }
 
@@ -290,7 +294,7 @@ public class UndoChangesSafetyTests
         Pop(repo);
         repo.Write("app.txt", "changed after the pop\n");
 
-        Assert.Equal(ChangeRefusals.UndoStateChanged, CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoStateChanged), CheckOnly(repo).Refusal);
         Assert.Equal("changed after the pop\n", Text(repo, "app.txt"));
         Assert.Equal("", repo.Run("stash", "list"));
     }
@@ -306,7 +310,7 @@ public class UndoChangesSafetyTests
         repo.Write("app.txt", "line 1 (again)\n");
         repo.Run("stash", "push", "-q");
 
-        Assert.Equal(ChangeRefusals.UndoStashMoved, CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoStashMoved), CheckOnly(repo).Refusal);
         Assert.Single(repo.Run("stash", "list").Split('\n'));
     }
 
@@ -322,7 +326,7 @@ public class UndoChangesSafetyTests
         repo.Run("commit", "-q", "-m", "Change app");
         var moved = repo.Head;
 
-        Assert.Equal(ChangeRefusals.UndoHeadMoved("HEAD"), CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoHeadMoved("HEAD")), CheckOnly(repo).Refusal);
         Assert.Equal(moved, repo.Head);
     }
 
@@ -359,7 +363,7 @@ public class UndoChangesSafetyTests
         Unstage(repo, StageAction.Unstage, Row(repo, ChangeSide.Staged, "app.txt"), confirmed: true);
         repo.Run("add", "app.txt");
 
-        Assert.Equal(ChangeRefusals.UndoChanged("app.txt"), CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoChanged("app.txt")), CheckOnly(repo).Refusal);
         Assert.Equal("B", repo.Run("show", ":app.txt"));
     }
 

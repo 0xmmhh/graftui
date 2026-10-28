@@ -128,7 +128,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (status.HasConflicts)
             return ChangeRefusals.Conflicts;
 
-        return step.Kind switch
+        var guard = step.Kind switch
         {
             UndoKind.Commit or UndoKind.Amend => BranchGuard(step, log),
             UndoKind.Merge => BranchGuard(step, log) ?? (status.Rows.Count > 0 ? ChangeRefusals.UndoDirty : null),
@@ -137,6 +137,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
             UndoKind.Pop => PopGuard(step, gitDir, log),
             _ => UnstageGuard(step, log),
         };
+        return guard is null ? null : ChangeRefusals.WithUndoHint(guard, entry.Ref);
     }
 
     /// <summary>The refusal for the first kept copy that exists, or null when none does (or git fails, which is returned as the reason).</summary>
