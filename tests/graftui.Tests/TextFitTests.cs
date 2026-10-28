@@ -4,6 +4,14 @@ namespace graftui.Tests;
 
 public class TextFitTests
 {
+    [Fact]
+    public void WrapWords_breaks_at_spaces_and_cuts_a_word_longer_than_the_line()
+    {
+        Assert.Equal(new[] { "aaa", "bbbb…", "cc" }, TextFit.WrapWords("aaa bbbbbbbbbb cc", 5));
+        Assert.Equal(new[] { "one two", "three" }, TextFit.WrapWords("one two three", 7));
+        Assert.Empty(TextFit.WrapWords("   ", 5));
+    }
+
     [Theory]
     [InlineData("abcdef", 3, "ab…")]
     [InlineData("abc", 3, "abc")]

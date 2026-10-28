@@ -290,8 +290,9 @@ internal sealed partial class ChangesTab
     private void Refuse(IReadOnlyList<GitResult> commands, string reason)
     {
         _app.LogCommands(commands);
-        _app.LogMessage("Refused: " + reason, WarnB);
-        _flash = new Caption("Refused: " + reason, Warn);
+        foreach (var line in RefusalText.LogLines(reason))
+            _app.LogMessage(line, WarnB);
+        _flash = new Caption(RefusalText.Caption(reason), Warn);
         EndBusy();
         RequestRefresh();
     }

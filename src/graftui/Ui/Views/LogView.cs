@@ -7,6 +7,7 @@ namespace graftui.Ui.Views;
 /// <summary>
 /// The Commands pane. Shows the newest lines, unless an anchor is set: then the anchor line is at the top
 /// as far as the end of the log allows (v1's rule, computed at draw time so it survives a resize).
+/// Message lines wrap to the pane width, so a long refusal or failure is read in full; command and output lines are cut.
 /// </summary>
 public sealed class LogView : PaneView
 {
@@ -66,20 +67,55 @@ public sealed class LogView : PaneView
         if (rows <= 0 || maxCols <= 0)
             return true;
 
-        var top = TopLine(_lines.Count, rows, _anchor);
-        for (var i = 0; i < rows && top + i < _lines.Count; i++)
-            DrawLine(2, 1 + i, _lines[top + i], maxCols);
+        var rowsOf = _lines.Select(l => Rows(l, maxCols)).ToList();
+        var top = TopLine(rowsOf.Select(r => r.Count).ToList(), rows, _anchor);
+        var y = 0;
+        for (var i = top; i < rowsOf.Count && y < rows; i++)
+            foreach (var row in rowsOf[i])
+            {
+                if (y >= rows)
+                    break;
+                DrawLine(2, 1 + y++, row, maxCols);
+            }
         return true;
     }
 
     /// <summary>
-    /// Index of the first visible line. Without an anchor (anchor &lt; 0) that is the newest lines. With one, the
-    /// anchor is the top line, but never past the newest lines (no blank space below the log).
+    /// Index of the first visible line, given how many rows each line takes. Without an anchor (anchor &lt; 0) that is
+    /// the newest lines that fit. With one, the anchor is the top line, but never past those (no blank space below the log).
+    /// The newest line is always the bottom line, even when it is taller than the pane.
     /// </summary>
-    internal static int TopLine(int count, int rows, int anchor)
+    internal static int TopLine(IReadOnlyList<int> heights, int rows, int anchor)
     {
-        var bottom = Math.Max(0, count - rows);
+        var count = heights.Count;
+        var bottom = count;
+        var used = 0;
+        while (bottom > 0 && used + heights[bottom - 1] <= rows)
+            used += heights[--bottom];
+        if (bottom == count && count > 0)
+            bottom = count - 1;
         return anchor >= 0 ? Math.Min(anchor, bottom) : bottom;
+    }
+
+    /// <summary>
+    /// The rows a line takes at maxCols. A message wraps at word boundaries and each row keeps the line's leading spaces.
+    /// Command and output lines take one row, cut at the pane width.
+    /// </summary>
+    internal static IReadOnlyList<LogLine> Rows(LogLine line, int maxCols)
+    {
+        if (line.Kind != LogKind.Message)
+            return [line];
+
+        var text = TextFit.Sanitize(line.Text);
+        var indent = new string(' ', text.Length - text.TrimStart(' ').Length);
+        var width = maxCols - indent.Length;
+        if (width < 1)
+            return [new LogLine(LogKind.Message, TextFit.Fit(text, maxCols), 0, line.Style)];
+
+        var words = TextFit.WrapWords(text, width);
+        if (words.Count == 0)
+            return [new LogLine(LogKind.Message, "", 0, line.Style)];
+        return words.Select(w => new LogLine(LogKind.Message, indent + w, 0, line.Style)).ToList();
     }
 
     private void DrawLine(int x, int y, LogLine l, int maxCols)

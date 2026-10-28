@@ -68,7 +68,7 @@ public static class MergeScenes
         var h0 = grid.Height;
 
         var maxLine = Math.Max(10, w0 - 10);
-        var lines = Wrap(TextFit.Sanitize(text), maxLine);
+        var lines = TextFit.WrapWords(text, maxLine);
         var inner = Math.Max(7, lines.Select(TextFit.Columns).DefaultIfEmpty(0).Max());
         var w = inner + 4;
         if (w > w0)
@@ -379,26 +379,4 @@ public static class MergeScenes
     }
 
     private static string Pad(string s, int cols) => s + new string(' ', Math.Max(0, cols - TextFit.Columns(s)));
-
-    /// <summary>Greedy word wrap by columns. A word longer than the line is cut with "…".</summary>
-    private static List<string> Wrap(string text, int maxCols)
-    {
-        var lines = new List<string>();
-        var current = "";
-        foreach (var raw in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var word = TextFit.Columns(raw) > maxCols ? TextFit.Fit(raw, maxCols) : raw;
-            var candidate = current.Length == 0 ? word : current + " " + word;
-            if (TextFit.Columns(candidate) <= maxCols)
-            {
-                current = candidate;
-                continue;
-            }
-            lines.Add(current);
-            current = word;
-        }
-        if (current.Length > 0)
-            lines.Add(current);
-        return lines;
-    }
 }

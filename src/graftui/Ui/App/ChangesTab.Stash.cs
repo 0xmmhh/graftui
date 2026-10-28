@@ -332,8 +332,9 @@ internal sealed partial class ChangesTab
     /// </summary>
     private void RefuseNow(string reason)
     {
-        _app.LogMessage("Refused: " + reason, WarnB);
-        Flash("Refused: " + reason, Warn);
+        foreach (var line in RefusalText.LogLines(reason))
+            _app.LogMessage(line, WarnB);
+        Flash(RefusalText.Caption(reason), Warn);
     }
 
     /// <summary>
