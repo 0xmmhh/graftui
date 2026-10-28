@@ -7,7 +7,7 @@ namespace graftui.Operations;
 /// Stash for the Changes tab (z): `git stash push -u` takes every tracked and untracked change, so the tree is clean afterwards.
 /// The message is passed with -m only when the user typed one; a blank message gives git's default.
 /// Check reads the repo and refuses what git cannot stash cleanly (no commit, a merge in progress, conflicts, a nested repo,
-/// a submodule) and a clean tree.
+/// a submodule, an intent-to-add file) and a clean tree.
 /// Run runs the stash, then verifies from the stash ref, its parent and the status. Run never throws.
 /// Rollback: none. A stash that did not happen changes nothing. A stash that happened is never dropped, because it holds
 /// the user's changes: when the tree is not clean afterwards the message says where the changes are.
@@ -142,6 +142,9 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
             return ChangeRefusals.NestedRepoStash(nested.Path);
         if (status.Rows.FirstOrDefault(f => f.IsSubmodule) is { } sub)
             return ChangeRefusals.Submodule(sub.Path);
+        // git add -N makes an index entry with no content, which `git stash push -u` cannot save: git fails with "Entry not uptodate".
+        if (status.Unstaged.FirstOrDefault(f => f.Kind == ChangeKind.Added) is { } intent)
+            return ChangeRefusals.IntentToAddStash(intent.Path);
         return null;
     }
 
