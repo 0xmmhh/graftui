@@ -170,4 +170,30 @@ public class StashSafetyTests
             sub.Dispose();
         }
     }
+
+    [Fact]
+    public void An_intent_to_add_file_is_refused_before_git_runs_and_nothing_is_stashed()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Write("app.txt", "one\n");
+        repo.Write("new.txt", "new\n");
+        repo.Run("add", "-N", "new.txt");
+        var before = repo.Status();
+        var stashBefore = repo.Run("stash", "list");
+
+        var check = CheckOnly(repo);
+
+        Assert.False(check.CanRun);
+        Assert.Equal(ChangeRefusals.IntentToAddStash("new.txt"), check.Refusal);
+        Assert.DoesNotContain(check.Commands, c => c.Command.StartsWith("git stash", StringComparison.Ordinal));
+        Assert.Equal(before, repo.Status());
+        Assert.Equal(stashBefore, repo.Run("stash", "list"));
+
+        var outcome = new StashOperation(repo.Git).Run(new StashRequest(null), check);
+        Assert.Equal(StashKind.Failed, outcome.Kind);
+        Assert.Equal(ChangeRefusals.IntentToAddStash("new.txt"), outcome.Message);
+        Assert.Equal(before, repo.Status());
+        Assert.Equal(stashBefore, repo.Run("stash", "list"));
+    }
 }
