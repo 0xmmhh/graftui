@@ -155,7 +155,7 @@ public sealed class LogView : PaneView
     internal static IReadOnlyList<LogLine> Rows(LogLine line, int maxCols)
     {
         if (line.Kind == LogKind.Command && line.Failed)
-            return Rows(new LogLine(LogKind.Message, $"$ {line.Text}  [exit {line.ExitCode}]", 0, Bad), maxCols);
+            return FailedRows(line, maxCols);
 
         if (line.Kind != LogKind.Message)
             return [line];
@@ -170,6 +170,21 @@ public sealed class LogView : PaneView
         if (words.Count == 0)
             return [new LogLine(LogKind.Message, "", 0, line.Style)];
         return words.Select(w => new LogLine(LogKind.Message, indent + w, 0, line.Style)).ToList();
+    }
+
+    /// <summary>
+    /// A failed command: "$ command" wrapped at words, then "  [exit N]" after the last word when it fits, else on a row of its own.
+    /// All in the failure colour.
+    /// </summary>
+    private static IReadOnlyList<LogLine> FailedRows(LogLine line, int maxCols)
+    {
+        var texts = TextFit.WrapWords("$ " + line.Text, maxCols);
+        var suffix = $"  [exit {line.ExitCode}]";
+        if (texts.Count > 0 && TextFit.Columns(texts[^1] + suffix) <= maxCols)
+            texts[^1] += suffix;
+        else
+            texts.Add(TextFit.Fit(suffix.TrimStart(), maxCols));
+        return texts.Select(t => new LogLine(LogKind.Message, t, 0, Bad)).ToList();
     }
 
     private void DrawLine(int x, int y, LogLine l, int maxCols)

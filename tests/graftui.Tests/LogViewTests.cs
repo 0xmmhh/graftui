@@ -116,7 +116,17 @@ public class LogViewTests
         Assert.All(rows, r => Assert.Equal(LogKind.Message, r.Kind));
         Assert.All(rows, r => Assert.Equal(new Style(Ink.Bad), r.Style));
         Assert.All(rows, r => Assert.True(TextFit.Columns(r.Text) <= 40, r.Text));
-        Assert.Equal("$ " + line.Text + " [exit 1]", string.Join(" ", rows.Select(r => r.Text)));
+        Assert.StartsWith("$ git merge", rows[0].Text);
+        Assert.EndsWith("[exit 1]", rows[^1].Text);
+    }
+
+    [Fact]
+    public void A_failed_command_keeps_two_spaces_before_the_exit_code_when_it_fits_on_the_last_row()
+    {
+        var line = new LogLine(LogKind.Command, "git merge --no-edit feature/conflict", 1, Failed: true);
+
+        Assert.Equal(["$ git merge --no-edit feature/conflict  [exit 1]"], LogView.Rows(line, 60).Select(r => r.Text));
+        Assert.Equal(["$ git merge --no-edit feature/conflict", "[exit 1]"], LogView.Rows(line, 40).Select(r => r.Text));
     }
 
     [Fact]
