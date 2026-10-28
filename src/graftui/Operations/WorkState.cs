@@ -58,6 +58,38 @@ internal sealed class WorkState(GitClient git, string gitDir)
         }
     }
 
+    /// <summary>
+    /// The tree of one path's state: its index entry with its work-tree file (tracked), or the file alone (untracked).
+    /// Built in the temporary index, so the real index is not changed. Null when git fails.
+    /// </summary>
+    public string? PathTree(string path, bool untracked, List<GitResult> log)
+    {
+        try
+        {
+            TryDelete(_tempIndex);
+            GitResult add;
+            if (untracked)
+                add = CallWithIndex(log, "add", "--", path);
+            else
+            {
+                // Copying the real index keeps its stat data; only the path is read from the disk.
+                var real = Path.Combine(gitDir, "index");
+                if (File.Exists(real))
+                    File.Copy(real, _tempIndex, overwrite: true);
+                add = CallWithIndex(log, "add", "-A", "--", path);
+            }
+            return add.Success ? Hash(CallWithIndex(log, "write-tree")) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+        finally
+        {
+            TryDelete(_tempIndex);
+        }
+    }
+
     /// <summary>Stores a snapshot as a commit and returns its hash, or null when git fails.</summary>
     public string? Save(WorkSnapshot s, string head, List<GitResult> log)
     {
