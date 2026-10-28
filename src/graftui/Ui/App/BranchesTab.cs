@@ -16,7 +16,7 @@ internal sealed partial class BranchesTab
     private readonly AppController _app;
 
     // Keyed by the selected branch's name as well as its tip: branches that share a commit have different layouts.
-    private readonly Dictionary<(string Current, string Head, string Name, string Tip, bool Clean), GraphLayout> _cache = new();
+    private readonly Dictionary<(string Current, string Head, string Name, string Tip), GraphLayout> _cache = new();
 
     private int _selected;
     private CancellationTokenSource? _previewCts;
@@ -241,8 +241,8 @@ internal sealed partial class BranchesTab
         _app.Art.SetNeedsDraw();
     }
 
-    private static (string Current, string Head, string Name, string Tip, bool Clean) CacheKey(RepoSnapshot snap, Branch b) =>
-        (snap.CurrentBranch, snap.HeadHash ?? "", b.Name, b.Hash, snap.Clean);
+    private static (string Current, string Head, string Name, string Tip) CacheKey(RepoSnapshot snap, Branch b) =>
+        (snap.CurrentBranch, snap.HeadHash ?? "", b.Name, b.Hash);
 
     private static int FirstNonCurrent(RepoSnapshot s)
     {
