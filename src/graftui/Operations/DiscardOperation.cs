@@ -109,7 +109,8 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         var indexTree = Hash(Call(log, "write-tree"));
         if (indexTree is null)
             return Done(DiscardKind.Failed, path, null, "could not read the index; nothing was discarded", null, log);
-        var workTree = WorkTree(log, gitDir, path, untracked);
+        var state = new WorkState(git, gitDir);
+        var workTree = state.PathTree(path, untracked, log);
         if (workTree is null)
             return Done(DiscardKind.Failed, path, null, $"could not read {path}; nothing was discarded", null, log);
 
@@ -142,7 +143,7 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
             return Done(DiscardKind.Failed, path, null, GitClient.Describe(store) + "; nothing was discarded", null, log);
 
         // 6. The file must not have changed since the copy was taken. If it did, the copy is taken back out.
-        if (WorkTree(log, gitDir, path, untracked) != workTree)
+        if (state.PathTree(path, untracked, log) != workTree)
         {
             if (RevParse(log, StashRef) == w)
                 Call(log, "stash", "drop", "-q", "stash@{0}");
@@ -200,39 +201,6 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         return RevParse(log, StashRef) == copy ? null : "the stash entry is not the copy that was saved";
     }
 
-    /// <summary>
-    /// The tree of one path's work: its index entry plus its work-tree state (tracked), or the file alone (untracked).
-    /// Built in a temporary index, so the real index is not touched. Null when git fails.
-    /// </summary>
-    private string? WorkTree(List<GitResult> log, string gitDir, string path, bool untracked)
-    {
-        var temp = Path.Combine(gitDir, WorkState.TempIndex);
-        try
-        {
-            TryDelete(temp);
-            GitResult add;
-            if (untracked)
-                add = Indexed(log, temp, "add", "--", path);
-            else
-            {
-                // Copying the real index keeps its stat data; only the path is read from the disk.
-                var real = Path.Combine(gitDir, "index");
-                if (File.Exists(real))
-                    File.Copy(real, temp, overwrite: true);
-                add = Indexed(log, temp, "add", "-A", "--", path);
-            }
-            return add.Success ? Hash(Indexed(log, temp, "write-tree")) : null;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-        finally
-        {
-            TryDelete(temp);
-        }
-    }
-
     /// <summary>The rows the discard may act on, or the refusal. Used by Check and again by Run.</summary>
     private static (string? Refusal, FileChange? Row) Judge(FileChange file, WorkingStatus status)
     {
@@ -286,33 +254,9 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         return r;
     }
 
-    private GitResult Indexed(List<GitResult> log, string indexFile, params string[] args)
-    {
-        var r = git.RunWithIndex(indexFile, args);
-        log.Add(r);
-        return r;
-    }
-
     private static string? Hash(GitResult r)
     {
         var hash = r.StdOut.Trim();
         return r.Success && hash.Length > 0 ? hash : null;
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-                File.Delete(path);
-        }
-        catch (IOException)
-        {
-            // A leftover temp file is overwritten by the next use.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Same as above.
-        }
     }
 }
