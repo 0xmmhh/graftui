@@ -88,4 +88,77 @@ public class LogViewTests
 
         Assert.Equal([line], LogView.Rows(line, 10));
     }
+
+    [Fact]
+    public void The_anchor_maps_to_the_first_line_of_its_entry_or_a_later_one()
+    {
+        // Entry 1 is left out of the simplified list, so the anchor on entry 1 lands on entry 2's first line.
+        Assert.Equal(1, LogView.AnchorLine([0, 2, 2], anchorEntry: 1));
+        Assert.Equal(0, LogView.AnchorLine([0, 2, 2], anchorEntry: 0));
+    }
+
+    [Fact]
+    public void No_anchor_or_no_line_from_the_anchor_on_gives_no_anchor_line()
+    {
+        Assert.Equal(-1, LogView.AnchorLine([0, 1], anchorEntry: -1));
+        Assert.Equal(-1, LogView.AnchorLine([0, 1], anchorEntry: 2));
+        Assert.Equal(-1, LogView.AnchorLine([], anchorEntry: 0));
+    }
+
+    [Fact]
+    public void A_failed_command_wraps_like_a_message_and_every_row_fits()
+    {
+        var line = new LogLine(LogKind.Command, "git merge --no-edit feature/a-branch-name then the rest of a long line", 1, Failed: true);
+
+        var rows = LogView.Rows(line, 40);
+
+        Assert.True(rows.Count > 1);
+        Assert.All(rows, r => Assert.Equal(LogKind.Message, r.Kind));
+        Assert.All(rows, r => Assert.Equal(new Style(Ink.Bad), r.Style));
+        Assert.All(rows, r => Assert.True(TextFit.Columns(r.Text) <= 40, r.Text));
+        Assert.Equal("$ " + line.Text + " [exit 1]", string.Join(" ", rows.Select(r => r.Text)));
+    }
+
+    [Fact]
+    public void A_successful_command_stays_one_row_however_long()
+    {
+        var line = new LogLine(LogKind.Command, "git merge feature/a-branch-with-a-long-name-that-goes-on", 0, Simple: true);
+
+        Assert.Equal([line], LogView.Rows(line, 30));
+    }
+
+    [Fact]
+    public void Toggling_the_list_keeps_the_entries_and_their_positions()
+    {
+        var log = new LogView();
+        log.Add(new LogEntry([new LogLine(LogKind.Command, "git merge --no-edit feature/x", 0)], [new LogLine(LogKind.Command, "git merge feature/x", 0, Simple: true)]));
+        log.Add(new LogEntry([new LogLine(LogKind.Command, "git rev-parse -q --verify MERGE_HEAD", 1)], []));
+        var position = log.Position;
+
+        Assert.False(log.ShowExact);
+        log.ToggleExact();
+        Assert.True(log.ShowExact);
+        log.ToggleExact();
+        Assert.False(log.ShowExact);
+
+        Assert.Equal(2, log.Count);
+        Assert.Equal(position, log.Position);
+    }
+
+    [Fact]
+    public void Positions_count_entries_not_lines()
+    {
+        var log = new LogView();
+        log.Add(new LogEntry(
+            [new LogLine(LogKind.Command, "git commit", 0), new LogLine(LogKind.Output, "[main 1a2b3c4] Fix"), new LogLine(LogKind.Output, "1 file changed")],
+            [new LogLine(LogKind.Command, "git commit -m \"Fix\"", 0, Simple: true), new LogLine(LogKind.Output, "[main 1a2b3c4] Fix")]));
+        var second = log.Position;
+        log.Add(new LogLine(LogKind.Message, "next"));
+
+        Assert.Equal(1, second);
+        Assert.Equal(2, log.Position);
+        log.SetAnchor(second);
+        log.ToggleExact();
+        Assert.Equal(2, log.Count);
+    }
 }

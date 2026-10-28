@@ -433,4 +433,71 @@ public class CommandDisplayTests
         Assert.Null(CommandHints.None.Subject);
         Assert.Null(CommandHints.None.Body);
     }
+
+    // ----- Log entries (one per git invocation, exact and simplified lines) -----
+
+    [Fact]
+    public void A_visible_command_has_its_exact_line_and_a_tidied_simple_line()
+    {
+        var r = L("merge --no-edit feature/fast-forward");
+
+        var entry = CommandDisplay.Entry(r, CommandHints.None, showOutput: false);
+
+        Assert.Equal([new LogLine(LogKind.Command, "git merge --no-edit feature/fast-forward", 0)], entry.Exact);
+        Assert.Equal([new LogLine(LogKind.Command, "git merge feature/fast-forward", 0, Simple: true)], entry.Simple);
+    }
+
+    [Fact]
+    public void A_hidden_command_has_no_simple_lines()
+    {
+        var entry = CommandDisplay.Entry(L("rev-parse --verify HEAD"), CommandHints.None, showOutput: false);
+
+        Assert.Single(entry.Exact);
+        Assert.Empty(entry.Simple);
+    }
+
+    [Fact]
+    public void A_failed_hidden_command_shows_its_exact_line_failed_in_both_lists()
+    {
+        var entry = CommandDisplay.Entry(L("write-tree", 128), CommandHints.None, showOutput: false);
+
+        var line = new LogLine(LogKind.Command, "git write-tree", 128, Failed: true);
+        Assert.Equal([line], entry.Exact);
+        Assert.Equal([line], entry.Simple);
+    }
+
+    [Fact]
+    public void An_undo_step_is_one_note_on_the_simple_side_and_its_command_on_the_exact_side()
+    {
+        var r = Make(0, ["update-ref", "refs/graftui/undo/000001", H40, ""]);
+
+        var entry = CommandDisplay.Entry(r, CommandHints.None, showOutput: false);
+
+        Assert.Equal(new LogLine(LogKind.Message, CommandDisplay.UndoSavedNote, 0, new Style(Ink.Dim)), Assert.Single(entry.Simple));
+        Assert.Equal(LogKind.Command, Assert.Single(entry.Exact).Kind);
+    }
+
+    [Fact]
+    public void Output_lines_are_in_both_lists_when_they_are_shown()
+    {
+        var r = new GitResult("git merge feature/x", 1, "Auto-merging a.txt\n", "CONFLICT (content): Merge conflict in a.txt\n") { Args = ["merge", "feature/x"] };
+
+        var entry = CommandDisplay.Entry(r, CommandHints.None, showOutput: true);
+
+        var outputs = new[] { new LogLine(LogKind.Output, "Auto-merging a.txt"), new LogLine(LogKind.Output, "CONFLICT (content): Merge conflict in a.txt") };
+        Assert.Equal(outputs, entry.Exact.Skip(1));
+        Assert.Equal(outputs, entry.Simple.Skip(1));
+        Assert.True(entry.Simple[0].Failed);
+    }
+
+    [Fact]
+    public void A_commit_simple_line_uses_the_hints_and_the_exact_line_keeps_the_message_file()
+    {
+        var r = L("commit --cleanup=whitespace -F .git/GRAFTUI_MSG");
+
+        var entry = CommandDisplay.Entry(r, new CommandHints("Fix login redirect", "Users landed on /"), showOutput: false);
+
+        Assert.Equal("git commit --cleanup=whitespace -F .git/GRAFTUI_MSG", entry.Exact[0].Text);
+        Assert.Equal("git commit -m \"Fix login redirect\" -m \"Users landed on /\"", entry.Simple[0].Text);
+    }
 }

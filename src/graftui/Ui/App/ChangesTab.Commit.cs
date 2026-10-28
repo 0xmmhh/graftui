@@ -353,7 +353,8 @@ internal sealed partial class ChangesTab
                 var result = CommitResult(o, before, request);
                 var failureLog = o.Kind == CommitKind.Failed ? $"{(request.Amend ? "Amend" : "Commit")} failed: {o.Message}" : null;
                 _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,
-                    () => AfterChange(o.Kind != CommitKind.Failed, _ => 0, anim, direction)));
+                    () => AfterChange(o.Kind != CommitKind.Failed, _ => 0, anim, direction),
+                    new CommandHints(request.Subject, request.Body)));
                 return CommitSummary(o, request);
             }
             catch (Exception ex)

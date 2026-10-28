@@ -255,6 +255,14 @@ public sealed class AppController
             return;
         }
 
+        // v switches the Commands pane between the simplified and the exact list, also while git is busy (it only changes the display).
+        if (e == Key.V)
+        {
+            e.Handled = true;
+            Log.ToggleExact();
+            return;
+        }
+
         if (e == Key.Tab)
         {
             e.Handled = true;
@@ -350,27 +358,25 @@ public sealed class AppController
     }
 
     /// <summary>
-    /// Logs each command and its exit code, and the output of the commands that <paramref name="showOutput"/> picks (by default
-    /// the `git merge` commands). Returns the log position of the first command that <paramref name="anchorOn"/> picks (by default
-    /// the first `git merge`), or -1.
+    /// Logs each command with its exit code, and the output of the commands that <paramref name="showOutput"/> picks (by default
+    /// the `git merge` commands). Each command is one entry: its exact line and, when the simplified pane shows it, its simplified line.
+    /// <paramref name="hints"/> tells the simplified line what a commit's message was. Returns the log position of the first command that
+    /// <paramref name="anchorOn"/> picks (by default the first `git merge`), or -1.
     /// </summary>
-    internal int LogCommands(IEnumerable<GitResult> results, Func<GitResult, bool>? showOutput = null, Func<GitResult, bool>? anchorOn = null)
+    internal int LogCommands(IEnumerable<GitResult> results, Func<GitResult, bool>? showOutput = null, Func<GitResult, bool>? anchorOn = null,
+        CommandHints? hints = null)
     {
         var merges = (GitResult r) => r.Command.StartsWith("git merge", StringComparison.Ordinal);
         showOutput ??= merges;
         anchorOn ??= merges;
+        var h = hints ?? CommandHints.None;
 
         var mergeIndex = -1;
         foreach (var r in results)
         {
             if (mergeIndex < 0 && anchorOn(r))
                 mergeIndex = Log.Position;
-            Log.Add(new LogLine(LogKind.Command, r.Command, r.ExitCode));
-            if (!showOutput(r))
-                continue;
-
-            foreach (var line in (r.StdOut + "\n" + r.StdErr).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                Log.Add(new LogLine(LogKind.Output, line));
+            Log.Add(CommandDisplay.Entry(r, h, showOutput(r)));
         }
         Art.SetNeedsDraw();
         return mergeIndex;

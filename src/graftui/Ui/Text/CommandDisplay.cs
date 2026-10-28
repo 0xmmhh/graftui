@@ -62,6 +62,33 @@ public static class CommandDisplay
     }
 
     /// <summary>
+    /// The log entry for one git invocation: its exact lines (the command and, when <paramref name="showOutput"/>, its output) and its
+    /// simplified lines (none when the simplified pane leaves the command out; the undo note for an undo step).
+    /// </summary>
+    public static LogEntry Entry(GitResult r, CommandHints h, bool showOutput)
+    {
+        var failed = IsFailure(r);
+        List<LogLine> outputs = showOutput ? OutputLines(r) : [];
+
+        List<LogLine> exact = [new LogLine(LogKind.Command, r.Command, r.ExitCode, Failed: failed), .. outputs];
+        var shown = Simplify(r, h);
+        List<LogLine> simple = shown switch
+        {
+            null => [],
+            { Kind: DisplayKind.Note } => [new LogLine(LogKind.Message, shown.Text, 0, new Style(Ink.Dim))],
+            _ => [new LogLine(LogKind.Command, shown.Text, r.ExitCode, Simple: !shown.Exact, Failed: failed), .. outputs],
+        };
+        return new LogEntry(exact, simple);
+    }
+
+    /// <summary>The non-empty lines of a result's stdout and stderr, each as an output line.</summary>
+    internal static List<LogLine> OutputLines(GitResult r) =>
+        (r.StdOut + "\n" + r.StdErr)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => new LogLine(LogKind.Output, line))
+            .ToList();
+
+    /// <summary>
     /// True when git failed. Exit 1 is an answer, not a failure, for the queries that use it to say "no":
     /// rev-parse with -q or --verify, symbolic-ref -q, diff --quiet and merge-base.
     /// </summary>
