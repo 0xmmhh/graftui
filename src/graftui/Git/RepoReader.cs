@@ -83,7 +83,7 @@ public sealed class RepoReader(GitClient git)
             ahead, behind, kind);
     }
 
-    /// <summary>Changes-tab read: the status rows and the current branch with its last four commits. Never logged.</summary>
+    /// <summary>Changes-tab read: the status rows, the current branch with its last four commits, and the stash list. Never logged.</summary>
     public ChangesSnapshot LoadChanges(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -106,7 +106,23 @@ public sealed class RepoReader(GitClient git)
         var recent = newestFirst.Take(HeadCount).Reverse().ToList();
         var line = new HeadLine(branch, head, recent, newestFirst.Count > HeadCount);
 
-        return new ChangesSnapshot(working, line, status.StdOut);
+        ct.ThrowIfCancellationRequested();
+        var stashes = git.Run("stash", "list", "--format=%H%x1f%gs");
+        if (!stashes.Success)
+            throw new InvalidOperationException(GitClient.Describe(stashes));
+
+        return new ChangesSnapshot(working, line, status.StdOut, StashSummaryOf(stashes.StdOut));
+    }
+
+    /// <summary>The stash list's lines: their number, and the newest entry's commit and reflog subject (line 1).</summary>
+    private static StashSummary StashSummaryOf(string stdout)
+    {
+        var lines = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length == 0)
+            return StashSummary.None;
+
+        var top = lines[0].Split('\x1f', 2);
+        return new StashSummary(lines.Length, top[0], top.Length > 1 ? top[1] : "");
     }
 
     /// <summary>
