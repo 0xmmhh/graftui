@@ -91,6 +91,31 @@ public static class TextFit
         return (clean[..fitEnd], Fit(clean[fitEnd..], width));
     }
 
+    /// <summary>
+    /// Greedy word wrap by columns: the text is split at spaces, control characters count as spaces, and each line holds as many
+    /// words as fit. A word longer than the line is cut with "…". Empty when there are no words. width should be 1 or more.
+    /// </summary>
+    public static List<string> WrapWords(string s, int width)
+    {
+        var lines = new List<string>();
+        var current = "";
+        foreach (var raw in Sanitize(s).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var word = Columns(raw) > width ? Fit(raw, width) : raw;
+            var candidate = current.Length == 0 ? word : current + " " + word;
+            if (Columns(candidate) <= width)
+            {
+                current = candidate;
+                continue;
+            }
+            lines.Add(current);
+            current = word;
+        }
+        if (current.Length > 0)
+            lines.Add(current);
+        return lines;
+    }
+
     /// <summary>Length in UTF-16 units of the longest prefix that fits in width columns, never splitting a rune.</summary>
     private static int FitEnd(string s, int width)
     {

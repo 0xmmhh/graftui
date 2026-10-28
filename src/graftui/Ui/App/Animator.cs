@@ -26,21 +26,22 @@ internal sealed class Animator
     internal void ShowRefused(MergeCheck check, string selName, GraphLayout? layout)
     {
         _app.LogCommands(check.Commands);
-        _app.LogMessage("Refused: " + check.Refusal, WarnB);
+        var reason = check.Refusal ?? "";
+        foreach (var line in RefusalText.LogLines(reason))
+            _app.LogMessage(line, WarnB);
 
         var detached = check.CurrentBranch.Length == 0;
         _app.Art.Title = "Refused";
         _app.Art.Direction = cols => DirectionLine.Merge(selName, check.CurrentBranch, detached, cols);
         _app.Art.Commits = layout is null ? [] : CommitLists.Idle(layout);
         _app.Art.FallbackCaption = null;
-        var reason = check.Refusal ?? "";
         _app.Art.Scene = geo =>
         {
             var frame = layout is null
                 ? new SceneFrame(new ArtGrid(geo.Width, geo.Height), null)
                 : MergeScenes.Preview(geo, layout);
-            MergeScenes.RefusedOverlay(frame.Grid, reason);
-            return new SceneFrame(frame.Grid, new Caption("Refused: " + reason, WarnB));
+            MergeScenes.RefusedOverlay(frame.Grid, RefusalText.Overlay(reason));
+            return new SceneFrame(frame.Grid, new Caption(RefusalText.Caption(reason), WarnB));
         };
 
         _app.Result = selName;

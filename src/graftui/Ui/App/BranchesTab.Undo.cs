@@ -16,7 +16,7 @@ internal sealed partial class BranchesTab
 
     /// <summary>What the preview shows after an undo: the layout (null for an empty art), the title, the caption and its style.</summary>
     private sealed record UndoView(GraphLayout? Layout, string Title, string Direction, string Caption, Style Style, string? Overlay,
-        IReadOnlyList<GitResult> Commands, string? LogLine);
+        IReadOnlyList<GitResult> Commands, IReadOnlyList<string> LogLines);
 
     /// <summary>Undoes the newest step on a worker, then shows the result. Busy meanwhile; the change's exit line is printed if the screen closes first.</summary>
     internal void StartUndo()
@@ -44,15 +44,15 @@ internal sealed partial class BranchesTab
                 if (check.NothingToUndo)
                 {
                     var view = new UndoView(LayoutFor(snapshot, selected), "Undo", "nothing to undo", "Nothing to undo", Muted, null,
-                        check.Commands, null);
+                        check.Commands, []);
                     _app.Ui(() => ShowUndoResult(view, selected));
                     return null;
                 }
                 if (!check.CanRun)
                 {
                     var reason = check.Refusal ?? "";
-                    var view = new UndoView(LayoutFor(snapshot, selected), "Refused", stepText, "Refused: " + reason, WarnB, reason,
-                        check.Commands, "Refused: " + reason);
+                    var view = new UndoView(LayoutFor(snapshot, selected), "Refused", stepText, RefusalText.Caption(reason), WarnB,
+                        RefusalText.Overlay(reason), check.Commands, RefusalText.LogLines(reason));
                     _app.Ui(() => ShowUndoResult(view, selected));
                     return null;
                 }
@@ -65,8 +65,8 @@ internal sealed partial class BranchesTab
                 var what = o.Step is null ? stepText : $"the {o.Step.What}";
                 var result = failed
                     ? new UndoView(LayoutFor(after ?? snapshot, selected), "Failed", what, $"✕ Undo failed: {o.Message}", BadB, null,
-                        o.Commands, $"✕ Undo failed: {o.Message}")
-                    : new UndoView(LayoutFor(after ?? snapshot, selected), "Undone", what, o.Caption, OkB, null, o.Commands, null);
+                        o.Commands, [$"✕ Undo failed: {o.Message}"])
+                    : new UndoView(LayoutFor(after ?? snapshot, selected), "Undone", what, o.Caption, OkB, null, o.Commands, []);
 
                 _app.Ui(() =>
                 {
@@ -106,8 +106,8 @@ internal sealed partial class BranchesTab
     private void ShowUndoResult(UndoView v, string? selected)
     {
         _app.LogCommands(v.Commands);
-        if (v.LogLine is not null)
-            _app.LogMessage(v.LogLine, v.Style);
+        foreach (var line in v.LogLines)
+            _app.LogMessage(line, v.Style);
 
         var art = _app.Art;
         art.Title = v.Title;

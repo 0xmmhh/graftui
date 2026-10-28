@@ -43,7 +43,8 @@ public static class ChangeRefusals
 
     /// <summary>A saved state that graftui keeps under a ref until the user deals with it. what says whose state it is.</summary>
     public static string RescueSaved(string what, string reference) =>
-        $"{what} is saved in {reference}: inspect it with git show {reference}, restore it with git restore --source={reference} --worktree -- ., or delete it with git update-ref -d {reference}";
+        WithDetail($"{what} is saved in {reference}",
+            $"inspect it with git show {reference}, restore it with git restore --source={reference} --worktree -- ., or delete it with git update-ref -d {reference}");
 
     public static string IntentToAddStash(string path) => $"{path} was added with git add -N: graftui won't stash or pop over it";
 
@@ -65,15 +66,27 @@ public static class ChangeRefusals
 
     /// <summary>
     /// A guard's refusal of the step on top, with the way to drop that step so the older ones become reachable.
-    /// reference is the step's undo ref. The refusal's first sentence is unchanged; the hint follows it.
+    /// reference is the step's undo ref. The refusal itself is the first line, unchanged; the hint is the detail.
     /// </summary>
     public static string WithUndoHint(string refusal, string reference) =>
-        $"{refusal}; the step is {reference}: git update-ref -d {reference} drops it so older steps become reachable";
+        WithDetail(refusal, $"the step is {reference}: git update-ref -d {reference} drops it so older steps become reachable");
 
     /// <summary>The step's record cannot be read, or lacks a field its kind needs. reference is the undo ref.</summary>
     public static string UndoUnreadable(string reference) =>
-        $"the undo history is unreadable ({reference}); delete it with git update-ref -d {reference}";
+        WithDetail($"the undo history is unreadable ({reference})", $"delete it with git update-ref -d {reference}");
 
     /// <summary>git could not list the undo refs at all, so no step can be named.</summary>
     public static string UndoListFailed(string detail) => $"could not read the undo history: {detail}";
+
+    /// <summary>
+    /// A refusal whose detail is too long for a caption or the overlay (a git command to run, say). The first line is the
+    /// reason; each further line is detail. Lines are joined with '\n'. Short and Details read the two parts back.
+    /// </summary>
+    public static string WithDetail(string reason, params string[] detail) => string.Join('\n', [reason, .. detail]);
+
+    /// <summary>The part a caption or the overlay shows: the first line. At 80 columns a caption holds about 85 characters.</summary>
+    public static string Short(string refusal) => refusal.Split('\n')[0];
+
+    /// <summary>The detail lines of a refusal, in full. Empty when it has none.</summary>
+    public static IReadOnlyList<string> Details(string refusal) => refusal.Split('\n')[1..];
 }
