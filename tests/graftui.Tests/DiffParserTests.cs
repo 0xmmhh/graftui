@@ -24,13 +24,28 @@ public class DiffParserTests
 
         Assert.Equal(
             [
-                new DiffLine(DiffLineKind.Hunk, "@@ -1 +1,2 @@"),
+                new DiffLine(DiffLineKind.Hunk, "── line 1 ──"),
                 new DiffLine(DiffLineKind.Removed, "-line 1"),
                 new DiffLine(DiffLineKind.Added, "+line 1 (edited)"),
                 new DiffLine(DiffLineKind.Added, "+extra"),
                 new DiffLine(DiffLineKind.Context, " context"),
             ],
             lines);
+    }
+
+    [Theory]
+    [InlineData("@@ -1 +1,2 @@", "── line 1 ──")]
+    [InlineData("@@ -3,4 +5,6 @@ func", "── line 5 ──")]
+    [InlineData("@@@ -1,2 -1,2 +1,3 @@@", "── line 1 ──")]
+    [InlineData("@@ -1,3 +0,0 @@", "── line 1 ──")]
+    [InlineData("@@ -7,3 +0,0 @@", "── line 7 ──")]
+    [InlineData("@@ -0,0 +1,300 @@", "── line 1 ──")]
+    [InlineData("@@ -12 +40 @@", "── line 40 ──")]
+    [InlineData("@@ garbage", "@@ garbage")]
+    [InlineData("@@", "@@")]
+    public void Hunk_headers_become_a_plain_line_label(string raw, string expected)
+    {
+        Assert.Equal(expected, DiffParser.HunkLabel(raw));
     }
 
     [Fact]

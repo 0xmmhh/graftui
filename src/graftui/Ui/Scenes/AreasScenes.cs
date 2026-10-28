@@ -38,6 +38,7 @@ public static class AreasScenes
     private static readonly Style Inc = new(Ink.Inc), IncB = new(Ink.Inc, true);
     private static readonly Style Bad = new(Ink.Bad), BadB = new(Ink.Bad, true);
     private static readonly Style Hash = new(Ink.Hash);
+    private static readonly Style FrameStyle = new(Ink.Frame);
 
     private const int FlyPathCols = 15;
     private const int FlyBlankCols = 17;
@@ -106,18 +107,25 @@ public static class AreasScenes
         return new SceneFrame(grid, null);
     }
 
-    /// <summary>The message form: the areas at rest, with the labels and counters. The fields are real views drawn over it.</summary>
+    /// <summary>
+    /// The message form: the areas at rest, with the labels and counters. The fields are real views drawn over it. The focused
+    /// field's label is teal and bold; the subject is bold, so its label is the one that stands out when the subject has focus.
+    /// </summary>
     /// <param name="subjectCols">Length of the subject, in columns.</param>
     /// <param name="longestBodyCols">Length of the longest body line.</param>
-    public static SceneFrame Form(ArtGeometry g, AreasModel m, bool amend, int subjectCols, int longestBodyCols)
+    /// <param name="bodyFocused">True when the body field has the focus; the subject field has it otherwise.</param>
+    public static SceneFrame Form(ArtGeometry g, AreasModel m, bool amend, int subjectCols, int longestBodyCols, bool bodyFocused)
     {
         var grid = Static(g, m, new AreasOptions(HideLine: true));
         var L = AreasLayout.For(g.Width, g.Height);
 
         if (L.FormLabelRow >= 0)
             grid.Text(0, L.FormLabelRow, amend ? "Amend the last commit: new message" : "Commit message", FgB);
-        grid.Text(0, L.SubjectRow, "subject  ", Dim);
-        grid.Text(0, L.BodyRow, "body     ", Dim);
+        if (L.FormRuleRow >= 0)
+            for (var x = AreasLayout.FieldX; x < AreasLayout.FieldX + L.FieldWidth; x++)
+                grid.Put(x, L.FormRuleRow, '┄', FrameStyle);
+        grid.Text(0, L.SubjectRow, "subject  ", bodyFocused ? Dim : CurB);
+        grid.Text(0, L.BodyRow, "body     ", bodyFocused ? CurB : Dim);
 
         var subjectStyle = subjectCols <= 50 ? Dim : subjectCols <= 72 ? Warn : Bad;
         grid.Text(L.Width - 6, L.SubjectRow, $"{subjectCols}/50", subjectStyle);
@@ -263,7 +271,7 @@ public static class AreasScenes
 
     private static Style StyleOf(DiffLineKind kind) => kind switch
     {
-        DiffLineKind.Hunk => new Style(Ink.Cur),
+        DiffLineKind.Hunk => Dim,
         DiffLineKind.Added => Ok,
         DiffLineKind.Removed => Bad,
         DiffLineKind.Note => Dim,

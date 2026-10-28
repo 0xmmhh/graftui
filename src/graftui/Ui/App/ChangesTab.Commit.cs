@@ -271,7 +271,7 @@ internal sealed partial class ChangesTab
         var subject = _app.SubjectField.Text ?? "";
         var body = _app.BodyField.Text ?? "";
         var longest = body.Split('\n').Select(TextFit.Columns).DefaultIfEmpty(0).Max();
-        var frame = AreasScenes.Form(geo, Before(), _formAmend, TextFit.Columns(subject), longest);
+        var frame = AreasScenes.Form(geo, Before(), _formAmend, TextFit.Columns(subject), longest, _app.BodyField.HasFocus);
 
         var caption = _formError is not null
             ? new Caption(_formError, Warn)

@@ -227,11 +227,26 @@ public sealed class AppController
             TabKeyAddsTab = false,
             WordWrap = false,
         };
-        SubjectField.SetScheme(Palette.InputScheme);
-        BodyField.SetScheme(Palette.InputScheme);
+        SubjectField.SetScheme(Palette.FieldScheme(false, bold: true));
+        BodyField.SetScheme(Palette.FieldScheme(false, bold: false));
         SubjectField.TextChanged += (_, _) => Art.SetNeedsDraw();
         BodyField.ContentsChanged += (_, _) => Art.SetNeedsDraw();
+        SubjectField.HasFocusChanged += (_, _) => RestyleFields();
+        BodyField.HasFocusChanged += (_, _) => RestyleFields();
         Art.Add(SubjectField, BodyField);
+    }
+
+    /// <summary>
+    /// The focused field takes the selection colour; the other one keeps the chip shade. The form's labels follow the focus too,
+    /// so the art is drawn again.
+    /// </summary>
+    private void RestyleFields()
+    {
+        SubjectField.SetScheme(Palette.FieldScheme(SubjectField.HasFocus, bold: true));
+        BodyField.SetScheme(Palette.FieldScheme(BodyField.HasFocus, bold: false));
+        SubjectField.SetNeedsDraw();
+        BodyField.SetNeedsDraw();
+        Art.SetNeedsDraw();
     }
 
     /// <summary>The art's area inside the art pane, in the pane's own coordinates; null when no art fits.</summary>

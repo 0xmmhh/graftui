@@ -60,9 +60,6 @@ public static class Palette
     public static Scheme FieldScheme(bool focused, bool bold) =>
         new(new Attribute(Fg, focused ? SelRow : Chip, bold ? TextStyle.Bold : TextStyle.None));
 
-    /// <summary>Colours of the message box's subject and body: light text on <see cref="Chip"/>.</summary>
-    public static Scheme InputScheme => new(new Attribute(Fg, Chip));
-
     private static Color ForeColor(Ink ink) => ink switch
     {
         Ink.Fg => Fg,

@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using graftui.Model;
 
 namespace graftui.Git;
@@ -14,6 +16,9 @@ internal static class DiffParser
 
     private const string NoChanges = "(no changes to show)";
     private const int TabWidth = 4;
+
+    // "@@ -a,b +c,d @@ context", or the combined form "@@@ -a -a +c @@@". The old starts are the captures of group 1.
+    private static readonly Regex HunkHeader = new(@"^@@+ (?:-(\d+)(?:,\d+)? )+\+(\d+)(?:,\d+)? @@+", RegexOptions.CultureInvariant);
 
     private static readonly string[] NoteStarts =
     [
@@ -53,7 +58,7 @@ internal static class DiffParser
             if (raw.StartsWith("@@", StringComparison.Ordinal))
             {
                 inHunk = true;
-                lines.Add(new DiffLine(DiffLineKind.Hunk, line));
+                lines.Add(new DiffLine(DiffLineKind.Hunk, HunkLabel(line)));
                 continue;
             }
 
@@ -64,5 +69,26 @@ internal static class DiffParser
         }
 
         return lines.Count > 0 ? lines : [new DiffLine(DiffLineKind.Note, NoChanges)];
+    }
+
+    /// <summary>
+    /// The plain label for a hunk header: "── line 5 ──", where 5 is the first line of the new file in the hunk (the first line of
+    /// the old file when the new side is empty, and 1 when neither is known). A line that is not a hunk header is returned unchanged.
+    /// </summary>
+    internal static string HunkLabel(string raw)
+    {
+        var match = HunkHeader.Match(raw);
+        if (!match.Success || !int.TryParse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var line))
+            return raw;
+
+        if (line == 0)
+        {
+            var oldStart = match.Groups[1].Captures.Count > 0
+                && int.TryParse(match.Groups[1].Captures[0].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var old)
+                    ? old
+                    : 0;
+            line = oldStart > 0 ? oldStart : 1;
+        }
+        return $"── line {line} ──";
     }
 }
