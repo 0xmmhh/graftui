@@ -69,16 +69,16 @@ internal sealed partial class ChangesTab
         if (snap is null)
             return;
 
-        var before = new AreasModel(snap.Status.Unstaged, snap.Status.Staged, snap.Head);
+        var before = new AreasModel(snap.Status.Unstaged, snap.Status.Staged, snap.Head, snap.Stash);
         var staging = request.Action is StageAction.Stage or StageAction.StageAll;
         var areaOp = staging ? AreasOp.Stage : AreasOp.Unstage;
-        var below = ChangesText.Summary(snap.Status, snap.Head);
+        var below = ChangesText.Summary(snap.Status, snap.Head, snap.Stash);
         var stageOp = _app.StageOp;
         var animator = _app.ChangesAnimator;
         BeginBusy();
 
         // Set on the UI thread when the animation starts, read there again when it ends.
-        ChangesAnimation? anim = null;
+        IAreasAnimation? anim = null;
         Func<int, IReadOnlyList<Seg>>? direction = null;
         _app.BeginChangeOutcome();
         _app.ChangesTask = Task.Run<string?>(() =>
@@ -100,7 +100,7 @@ internal sealed partial class ChangesTab
                     return null;
 
                 var moved = ChangesText.What(o.Moved, all);
-                var after = o.Success && o.After is { } s ? new AreasModel(s.Unstaged, s.Staged, snap.Head) : before;
+                var after = o.Success && o.After is { } s ? new AreasModel(s.Unstaged, s.Staged, snap.Head, snap.Stash) : before;
                 var result = o.Success
                     ? new AreasResult(true, after,
                         new Caption(staging

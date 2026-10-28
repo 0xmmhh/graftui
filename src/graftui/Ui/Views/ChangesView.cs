@@ -25,6 +25,9 @@ public sealed class ChangesView : PaneView
     /// <summary>The rows to show. Null until the first read finishes.</summary>
     public WorkingStatus? Status { get; set; }
 
+    /// <summary>The stash count and newest entry, shown as the last line when there are entries.</summary>
+    public StashSummary? Stash { get; set; }
+
     public int Selected { get; set; }
 
     public bool Loading { get; set; }
@@ -48,7 +51,7 @@ public sealed class ChangesView : PaneView
             return true;
         }
 
-        var lines = ChangesList.Build(Status);
+        var lines = ChangesList.Build(Status, Stash);
         var selLine = lines.ToList().FindIndex(l => l.Kind == ChangesLineKind.File && l.Row == Selected);
         if (selLine >= 0)
         {

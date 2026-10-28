@@ -73,7 +73,7 @@ internal sealed class ChangesAnimator(AppController app)
         app.Art.Scene = geo => anim.Render(geo, final);
         app.Art.Title = anim.Title(final);
 
-        var anchor = app.LogCommands(pending.Commands, ShowOutput, r => r.Command.StartsWith("git commit", StringComparison.Ordinal));
+        var anchor = app.LogCommands(pending.Commands, ShowOutput, IsAnchor);
         if (pending.FailureLog is not null)
             app.LogMessage(pending.FailureLog, Bad);
         if (anchor >= 0)
@@ -93,10 +93,24 @@ internal sealed class ChangesAnimator(AppController app)
         pending.OnDone();
     }
 
-    /// <summary>Commit output (the new commit line and the stat) and the output of failed index commands are shown; successful ones stay quiet.</summary>
+    /// <summary>The log jumps to the first commit or stash command of the change.</summary>
+    private static bool IsAnchor(GitResult r) =>
+        r.Command.StartsWith("git commit", StringComparison.Ordinal) || r.Command.StartsWith("git stash", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Shows the output of a commit (the new commit line and the stat), of a stash push, pop or store, and of any failed index or
+    /// work-tree command. Successful quiet commands stay out of the log's output.
+    /// </summary>
     private static bool ShowOutput(GitResult r) =>
         r.Command.StartsWith("git commit", StringComparison.Ordinal)
+        || r.Command.StartsWith("git stash push", StringComparison.Ordinal)
+        || r.Command.StartsWith("git stash pop", StringComparison.Ordinal)
+        || r.Command.StartsWith("git stash store", StringComparison.Ordinal)
         || (!r.Success && (r.Command.StartsWith("git add", StringComparison.Ordinal)
             || r.Command.StartsWith("git restore", StringComparison.Ordinal)
-            || r.Command.StartsWith("git rm", StringComparison.Ordinal)));
+            || r.Command.StartsWith("git rm", StringComparison.Ordinal)
+            || r.Command.StartsWith("git clean", StringComparison.Ordinal)
+            || r.Command.StartsWith("git reset", StringComparison.Ordinal)
+            || r.Command.StartsWith("git update-index", StringComparison.Ordinal)
+            || r.Command.StartsWith("git read-tree", StringComparison.Ordinal)));
 }

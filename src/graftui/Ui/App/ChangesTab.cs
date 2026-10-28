@@ -47,7 +47,7 @@ internal sealed partial class ChangesTab
     private readonly PushedAmendQuestions _questions = new();
 
     // The last change's final frame. It stays on the art until the next Up, Down or Tab, as the mock keeps its result.
-    private ChangesAnimation? _result;
+    private IAreasAnimation? _result;
     private Func<int, IReadOnlyList<Seg>>? _resultDirection;
 
     internal ChangesTab(AppController app)
@@ -154,7 +154,7 @@ internal sealed partial class ChangesTab
     private static string HeadText(string? hash) => string.IsNullOrEmpty(hash) ? "no commits" : Short(hash);
 
     private IReadOnlyList<IReadOnlyList<Seg>> Summary() =>
-        Snapshot is null ? [] : ChangesText.Summary(Snapshot.Status, Snapshot.Head);
+        Snapshot is null ? [] : ChangesText.Summary(Snapshot.Status, Snapshot.Head, Snapshot.Stash);
 
     private void ClearFlash()
     {
@@ -217,7 +217,9 @@ internal sealed partial class ChangesTab
         var unchanged = Snapshot is not null
             && Snapshot.RawStatus == snap.RawStatus
             && Snapshot.Head.HeadHash == snap.Head.HeadHash
-            && Snapshot.Head.Branch == snap.Head.Branch;
+            && Snapshot.Head.Branch == snap.Head.Branch
+            && Snapshot.Stash.TopHash == snap.Stash.TopHash
+            && Snapshot.Stash.Count == snap.Stash.Count;
         if (unchanged)
         {
             RequestDiff();
@@ -236,6 +238,7 @@ internal sealed partial class ChangesTab
         SyncKeyBar();
 
         _app.ChangesList.Status = snap.Status;
+        _app.ChangesList.Stash = snap.Stash;
         _app.ChangesList.Selected = Selected;
         _app.ChangesList.Loading = false;
         _app.ChangesList.SetNeedsDraw();
@@ -271,7 +274,7 @@ internal sealed partial class ChangesTab
     /// After a change: its final frame stays on the art, the selection moves as the operation says (on success), and the
     /// status and branch snapshot are reloaded.
     /// </summary>
-    private void AfterChange(bool success, Func<IReadOnlyList<FileChange>, int> chooseAfter, ChangesAnimation? anim,
+    private void AfterChange(bool success, Func<IReadOnlyList<FileChange>, int>? chooseAfter, IAreasAnimation? anim,
         Func<int, IReadOnlyList<Seg>>? direction)
     {
         if (success)
@@ -288,7 +291,7 @@ internal sealed partial class ChangesTab
         if (_app.ChangesAnimator.Running)
         {
             var failed = new AreasResult(false, Before(), new Caption($"✕ {verb} failed: {ex.Message}", BadB), "Failed", ex.Message);
-            _app.ChangesAnimator.SetPending(failed, [], $"{verb} failed: {ex.Message}", () => AfterChange(false, _ => 0, null, null));
+            _app.ChangesAnimator.SetPending(failed, [], $"{verb} failed: {ex.Message}", () => AfterChange(false, null, null, null));
             return;
         }
         // The error is on screen now (the status bar), so the exit path need not print this change's line again.
@@ -299,7 +302,7 @@ internal sealed partial class ChangesTab
 
     private AreasModel Before() =>
         Snapshot is null ? new AreasModel([], [], new HeadLine("", null, [], false))
-            : new AreasModel(Snapshot.Status.Unstaged, Snapshot.Status.Staged, Snapshot.Head);
+            : new AreasModel(Snapshot.Status.Unstaged, Snapshot.Status.Staged, Snapshot.Head, Snapshot.Stash);
 
     private void BeginBusy()
     {
@@ -411,7 +414,7 @@ internal sealed partial class ChangesTab
         {
             art.Title = done.Result!.Title;
             art.Direction = _resultDirection ?? (_ => []);
-            art.Below = ChangesText.Summary(snap.Status, snap.Head);
+            art.Below = ChangesText.Summary(snap.Status, snap.Head, snap.Stash);
             art.Commits = [];
             art.FallbackCaption = null;
             art.Scene = geo => done.Final(geo);
@@ -432,7 +435,7 @@ internal sealed partial class ChangesTab
 
         var head = snap.Head;
         art.Direction = cols => ChangesText.BrowseDirection(row, head, cols);
-        art.Below = ChangesText.Summary(snap.Status, head);
+        art.Below = ChangesText.Summary(snap.Status, head, snap.Stash);
         art.Commits = [];
 
         if (row is not null && _diff?.File != row)

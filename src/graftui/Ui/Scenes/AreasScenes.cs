@@ -126,11 +126,8 @@ public static class AreasScenes
         return new SceneFrame(grid, null);
     }
 
-    /// <summary>
-    /// The message form for a stash: the areas at rest, with a label and the message field only. There are no counters,
-    /// so <paramref name="messageCols"/> is accepted for symmetry with <see cref="Form"/> and not drawn.
-    /// </summary>
-    public static SceneFrame StashForm(ArtGeometry g, AreasModel m, int messageCols)
+    /// <summary>The message form for a stash: the areas at rest, with a label and the message field only. There are no counters.</summary>
+    public static SceneFrame StashForm(ArtGeometry g, AreasModel m)
     {
         var grid = Static(g, m, new AreasOptions(HideLine: true));
         var L = AreasLayout.For(g.Width, g.Height);
