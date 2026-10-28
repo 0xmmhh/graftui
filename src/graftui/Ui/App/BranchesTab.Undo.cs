@@ -87,7 +87,7 @@ internal sealed partial class BranchesTab
                 });
                 return $"graftui: undo failed: {ex.Message}";
             }
-        });
+        }, CancellationToken.None);
     }
 
     /// <summary>The layout of the named branch in a snapshot, read on the worker; null when the branch is not there.</summary>
