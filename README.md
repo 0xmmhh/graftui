@@ -98,7 +98,10 @@ graftui --help
 | `Space` | Stage or unstage the selected file (Changes) |
 | `a` / `U` | Stage all / unstage all (Changes) |
 | `c` / `A` | Commit what is staged / amend the last commit (Changes) |
-| `Esc` | Quit (if a merge or a commit is running, graftui waits for it to finish first) |
+| `x` | Discard the unstaged change to the selected file, after a question (Changes) |
+| `z` / `Z` | Stash everything / pop the newest stash entry (Changes) |
+| `u` | Undo the last step, on either tab |
+| `Esc` | Quit (if a merge, a commit or another change is running, graftui waits for it to finish first) |
 
 <details>
 <summary>The Changes tab</summary>
@@ -107,7 +110,12 @@ graftui --help
 - **Staging** moves a file between the working tree and the staging area. Each move is animated and logged with its `git add`, `git restore --staged` or `git rm --cached`. Nothing is ever discarded: the edit stays in your working tree.
 - **Committing** opens a message box in the art pane. Type a subject, press `Tab` to reach the body, and press `Enter` to commit (Enter in the body adds a line). `Ctrl+Enter` or `Ctrl+J` saves from either field, if your terminal sends them. `Esc` cancels.
 - **Amending** starts from the last commit's message. If that commit is already on a remote branch, graftui asks three escalating questions first: "Are you sure?" (answer `y`), "Are you really sure?" (answer `1`) and "Last chance, are you still sure?" (answer `2`). Any other key is ignored; `n` or `Esc` cancels at any step. graftui never force-pushes; after an amend you run `git push --force-with-lease` yourself.
-- **Refusals** are shown in the caption and logged: nothing staged, an empty subject, a conflicted file, a nested repository, an unfinished merge, rebase, cherry-pick or revert, or a detached HEAD.
+- **Unstaging hand-picked changes.** A staged file that also differs in the working tree (you staged one version, then edited again) has a staged version that exists only in the index. Unstaging it asks first: "<file> has hand-picked staged changes; unstage them all?" (`y` or `n`). `U` asks once for all of them. `u` restores the exact staged version.
+- **Discard** (`x`) asks first. graftui saves the unstaged change as a stash entry named `graftui: discarded <file>`, then puts the file back. A partly staged file keeps its staged part in the index, and a new file is removed. `git stash list` shows the entry, and `u` brings the change back.
+- **Stash** (`z`) takes every change, untracked files included (`git stash push -u`). A one-line box asks for a message; Enter with it empty uses git's default message.
+- **Pop** (`Z`) runs a plain `git stash pop`: the changes come back unstaged. If git cannot apply the entry, graftui puts the working tree and index back exactly as they were, keeps the stash entry, and lists the conflicting files. The repository is never left with conflict markers.
+- **Undo** (`u`) reverses the newest graftui step, one step per press, newest first: commit, amend, merge, discard, stash, pop and the hand-picked unstage. It refuses when undoing would overwrite something that changed since (the refusal names the file or branch). Steps are kept in private refs under `refs/graftui/undo/`, so they survive a restart. The last 50 are kept.
+- **Refusals** are shown in the caption and logged: nothing staged, an empty subject, a conflicted file, a nested repository, an unfinished merge, rebase, cherry-pick or revert, a submodule, or a detached HEAD.
 
 </details>
 
@@ -170,6 +178,8 @@ graftui refuses, without running `git merge`, when:
 - **Never left mid-merge.** On conflict, graftui always runs `git merge --abort` (falling back to `git reset --merge`) and then checks that the tree is clean with no `MERGE_HEAD`.
 - **Never resets your work.** The rollback only runs when graftui's own merge actually started and `HEAD` hasn't moved. Changes graftui didn't make are reported, never discarded.
 - **Staging and committing never discard work.** Stage and unstage only move entries in the index, and the work tree is never touched. A failed commit leaves `HEAD`, the index and your files as they were. graftui never force-pushes.
+- **Discard is recoverable.** Before a file's unstaged change is removed, it is saved as a stash entry (`graftui: discarded <file>`) and `u` brings it back. The discard is refused when the change can't be saved safely (a submodule, a nested repository, an intent-to-add file or a conflict).
+- **Undo never overwrites.** `u` checks that the state a step left behind is still there, and refuses otherwise. Nothing is dropped silently: a refused step stays on top until you deal with it.
 - **Never waits on an editor, pager or prompt.** graftui sets `GIT_EDITOR=true`, `GIT_PAGER=cat`, `GIT_TERMINAL_PROMPT=0` and `GIT_MERGE_AUTOEDIT=no`, uses `--no-edit`, and closes git's stdin.
 - **Interrupted merges are rolled back.** Quit during a merge and graftui waits for git, then prints the outcome and every command. `Ctrl+C` at that point interrupts git, and graftui rolls back the partial merge.
 - **Slow git is visible.** If a merge takes more than about 5 seconds (a signing prompt or a slow hook), the caption says `git is still running`.
@@ -213,8 +223,8 @@ Develop against the sandbox, never against the graftui repository itself. Warnin
 - `src/graftui/Program.cs` - arguments, startup, terminal teardown, the exit code after a merge
 - `src/graftui/Git/` - `GitClient` (all git CLI access), `RepoReader` (read-only queries for the screen), `Sandbox` (builds `~/.graftui/sandbox`)
 - `src/graftui/Model/` - plain records (branches, commits, layouts, merge outcomes, undo records)
-- `src/graftui/Operations/` - the shared operation shape (`IGitOperation`: check, run, verify, roll back), `MergeOperation`, `StageOperation` and `CommitOperation`
-- `src/graftui/Ui/App/` - `AppController` (wires the views to git), `BranchesTab`, `Animator`, `QuitGate`, `ChangesTab` (the Changes tab, in three files) and `ChangesAnimator`
+- `src/graftui/Operations/` - the shared operation shape (`IGitOperation`: check, run, verify, roll back), `MergeOperation`, `StageOperation`, `CommitOperation`, `DiscardOperation`, `StashOperation`, `PopOperation` and `UndoOperation`, with the undo history in `UndoLog` and the saved working-tree states in `WorkState`
+- `src/graftui/Ui/App/` - `AppController` (wires the views to git), `BranchesTab` (with its undo), `Animator`, `QuitGate`, `ChangesTab` (the Changes tab, in five files: browsing, commit, stage, ask and stash) and `ChangesAnimator`
 - `src/graftui/Ui/Scenes/` and `src/graftui/Ui/Text/` - pure drawing, animation and text code, unit-tested without a terminal
 - `src/graftui/Ui/Views/` - the Terminal.Gui views and `Palette`
 - `tests/graftui.Tests/` - xUnit tests, including the git safety tests (run in temp repositories)
