@@ -105,7 +105,7 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         var index = CallLiteral(log, "ls-files", "-s", "-z", "--", path);
         if (!index.Success)
             return Done(DiscardKind.Failed, path, null, GitClient.Describe(index) + "; nothing was discarded", null, log);
-        var indexBefore = ParseIndex(index.StdOut);
+        var indexBefore = RepoState.ParseIndex(index.StdOut);
         var indexTree = Hash(Call(log, "write-tree"));
         if (indexTree is null)
             return Done(DiscardKind.Failed, path, null, "could not read the index; nothing was discarded", null, log);
@@ -194,7 +194,7 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
             return "the index changed during the discard";
 
         var index = CallLiteral(log, "ls-files", "-s", "-z", "--", path);
-        if (!index.Success || !ParseIndex(index.StdOut).SequenceEqual(indexBefore))
+        if (!index.Success || !RepoState.ParseIndex(index.StdOut).SequenceEqual(indexBefore))
             return $"the index entry for {path} changed during the discard";
 
         return RevParse(log, StashRef) == copy ? null : "the stash entry is not the copy that was saved";
@@ -254,22 +254,6 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         if (row.Kind != file.Kind)
             return (ChangeRefusals.Stale(path), null);
         return (null, row);
-    }
-
-    /// <summary>`git ls-files -s -z` output: "mode blob stage<TAB>path" per NUL-terminated record.</summary>
-    private static List<IndexEntry> ParseIndex(string nulSeparated)
-    {
-        var entries = new List<IndexEntry>();
-        foreach (var record in nulSeparated.Split('\0', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var tab = record.IndexOf('\t');
-            if (tab < 0)
-                continue;
-            var fields = record[..tab].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (fields.Length >= 2)
-                entries.Add(new IndexEntry(record[(tab + 1)..], fields[0], fields[1]));
-        }
-        return entries;
     }
 
     /// <summary>The hash of a ref, "" when the ref does not exist, or null when git fails.</summary>

@@ -9,6 +9,8 @@ namespace graftui.Operations;
 /// Run never resets anything: it only runs add, restore or rm, and never touches the work tree.
 /// Rollback is none: git writes the index atomically, so a failed add, restore or rm leaves the index unchanged.
 /// Verify reads the status again and checks that the moved paths are on the new side.
+/// Hand-picked changes (staged, and also changed in the work tree) are refused until the user confirms them. A confirmed
+/// unstage of them saves an undo step with the index entries from before and after, so the staged version can be put back.
 /// </summary>
 public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, StageCheck, StageOutcome>
 {
@@ -22,18 +24,18 @@ public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, 
             var head = Call(log, "rev-parse", "-q", "--verify", "HEAD");
             // Exit 1 is quiet and means an unborn branch; anything else is a real failure.
             if (!head.Success && head.ExitCode != 1)
-                return new StageCheck(GitClient.Describe(head), false, [], log);
+                return new StageCheck(GitClient.Describe(head), false, [], log, []);
 
             var status = Call(log, StatusArgs);
             if (!status.Success)
-                return new StageCheck(GitClient.Describe(status), head.Success, [], log);
+                return new StageCheck(GitClient.Describe(status), head.Success, [], log, []);
 
-            var (refusal, moving) = Judge(request, StatusParser.Parse(status.StdOut));
-            return new StageCheck(refusal, head.Success, moving, log);
+            var (refusal, moving, handPicked) = Judge(request, StatusParser.Parse(status.StdOut));
+            return new StageCheck(refusal, head.Success, moving, log, handPicked);
         }
         catch (Exception ex)
         {
-            return new StageCheck(ex.Message, false, [], log);
+            return new StageCheck(ex.Message, false, [], log, []);
         }
     }
 
@@ -43,6 +45,13 @@ public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, 
         var moving = check.Moving;
         try
         {
+            // Hand-picked rows: the index entries are read before the act, so the undo step can put them back exactly.
+            var handPicked = check.HandPicked.Count > 0;
+            var paths = moving.SelectMany(f => new[] { f.Path, f.OrigPath }).OfType<string>().ToList();
+            var before = handPicked ? RepoState.IndexEntries(git, paths, log) : null;
+            if (handPicked && before is null)
+                return Done(false, request.Action, moving, null, "could not read the index; nothing was unstaged", log);
+
             var act = Act(log, request.Action, check);
             if (!act.Success)
                 return Done(false, request.Action, moving, null, FirstLine(act), log);
@@ -54,9 +63,12 @@ public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, 
 
             var after = StatusParser.Parse(status.StdOut);
             var problem = Verify(request.Action, moving, after);
-            return problem is null
+            if (problem is not null)
+                return Done(false, request.Action, moving, after, problem, log);
+
+            return before is null
                 ? Done(true, request.Action, moving, after, "", log)
-                : Done(false, request.Action, moving, after, problem, log);
+                : Recorded(request.Action, moving, before, paths, after, log);
         }
         catch (Exception ex)
         {
@@ -64,52 +76,91 @@ public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, 
         }
     }
 
-    /// <summary>Picks the rows an action moves, or the refusal when the list has gone stale.</summary>
-    private static (string? Refusal, IReadOnlyList<FileChange> Moving) Judge(StageRequest r, WorkingStatus s)
+    /// <summary>
+    /// The hand-picked unstage took effect. Its undo step keeps the index entries from before and after. If the step cannot
+    /// be saved, the unstage still stands: the note goes on the message and the outcome carries no undo step.
+    /// </summary>
+    private StageOutcome Recorded(StageAction action, IReadOnlyList<FileChange> moving, IReadOnlyList<IndexEntry> before,
+        IReadOnlyList<string> paths, WorkingStatus after, List<GitResult> log)
+    {
+        var afterEntries = RepoState.IndexEntries(git, paths, log);
+        if (afterEntries is null)
+            return Done(true, action, moving, after, "could not save the undo step: could not read the index", log);
+
+        var what = moving.Count == 1 ? "unstage of " + moving[0].Path : $"unstage of {moving.Count} files";
+        var undo = new UndoRecord(UndoKind.Unstage, what, [], IndexBefore: before, IndexAfter: afterEntries);
+        var problem = new UndoLog(git).Push(undo, log);
+        return problem is null
+            ? Done(true, action, moving, after, "", log, undo)
+            : Done(true, action, moving, after, $"could not save the undo step: {problem}", log);
+    }
+
+    /// <summary>
+    /// Hand-picked: the path is staged, and its unstaged row is Modified, TypeChanged or Deleted. The index then differs from
+    /// both HEAD and the work tree, so the staged version exists only in the index.
+    /// </summary>
+    public static bool IsHandPicked(WorkingStatus status, string path) =>
+        status.Unstaged.Any(f => f.Path == path && f.Kind is (ChangeKind.Modified or ChangeKind.TypeChanged or ChangeKind.Deleted));
+
+    /// <summary>
+    /// Picks the rows an action moves, or the refusal when the list has gone stale. HandPicked lists the moving paths that are
+    /// hand-picked. Unstaging them is refused until the request is confirmed.
+    /// </summary>
+    private static (string? Refusal, IReadOnlyList<FileChange> Moving, IReadOnlyList<string> HandPicked) Judge(StageRequest r, WorkingStatus s)
     {
         switch (r.Action)
         {
             case StageAction.Stage:
             {
                 if (r.File is null)
-                    return (ChangeRefusals.NothingToStage, []);
+                    return (ChangeRefusals.NothingToStage, [], []);
                 var row = s.Unstaged.FirstOrDefault(f => f.Path == r.File.Path);
                 if (row is null)
-                    return (ChangeRefusals.Stale(r.File.Path), []);
+                    return (ChangeRefusals.Stale(r.File.Path), [], []);
                 if (row.Kind == ChangeKind.Conflicted)
-                    return (ChangeRefusals.ConflictFile(row.Path), []);
+                    return (ChangeRefusals.ConflictFile(row.Path), [], []);
                 if (row.IsNestedRepo)
-                    return (ChangeRefusals.NestedRepo(row.Path), []);
-                return (null, [row]);
+                    return (ChangeRefusals.NestedRepo(row.Path), [], []);
+                return (null, [row], []);
             }
             case StageAction.Unstage:
             {
                 if (r.File is null)
-                    return (ChangeRefusals.NothingIsStaged, []);
+                    return (ChangeRefusals.NothingIsStaged, [], []);
                 var row = s.Staged.FirstOrDefault(f => f.Path == r.File.Path);
                 if (row is null)
-                    return (ChangeRefusals.Stale(r.File.Path), []);
-                return (null, [row]);
+                    return (ChangeRefusals.Stale(r.File.Path), [], []);
+                return Unstaging(r, s, [row]);
             }
             case StageAction.StageAll:
             {
                 if (s.Unstaged.Count == 0)
-                    return (ChangeRefusals.NothingToStage, []);
+                    return (ChangeRefusals.NothingToStage, [], []);
                 if (s.HasConflicts)
-                    return (ChangeRefusals.Conflicts, []);
+                    return (ChangeRefusals.Conflicts, [], []);
                 if (s.Unstaged.FirstOrDefault(f => f.IsNestedRepo) is { } nested)
-                    return (ChangeRefusals.NestedRepo(nested.Path), []);
-                return (null, s.Unstaged);
+                    return (ChangeRefusals.NestedRepo(nested.Path), [], []);
+                return (null, s.Unstaged, []);
             }
             default: // UnstageAll
             {
                 if (s.Staged.Count == 0)
-                    return (ChangeRefusals.NothingIsStaged, []);
+                    return (ChangeRefusals.NothingIsStaged, [], []);
                 if (s.HasConflicts)
-                    return (ChangeRefusals.Conflicts, []);
-                return (null, s.Staged);
+                    return (ChangeRefusals.Conflicts, [], []);
+                return Unstaging(r, s, s.Staged);
             }
         }
+    }
+
+    /// <summary>The unstage rows, with their hand-picked paths. Refused while any of them is hand-picked and unconfirmed.</summary>
+    private static (string? Refusal, IReadOnlyList<FileChange> Moving, IReadOnlyList<string> HandPicked) Unstaging(
+        StageRequest r, WorkingStatus s, IReadOnlyList<FileChange> rows)
+    {
+        var handPicked = rows.Where(f => IsHandPicked(s, f.Path)).Select(f => f.Path).ToList();
+        if (handPicked.Count > 0 && !r.HandPickedConfirmed)
+            return (ChangeRefusals.HandPickedNotConfirmed(handPicked[0]), [], handPicked);
+        return (null, rows, handPicked);
     }
 
     private GitResult Act(List<GitResult> log, StageAction action, StageCheck c)
@@ -165,8 +216,8 @@ public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, 
     }
 
     private static StageOutcome Done(bool ok, StageAction action, IReadOnlyList<FileChange> moved, WorkingStatus? after,
-        string message, List<GitResult> log) =>
-        new(ok, action, moved, after, message, log);
+        string message, List<GitResult> log, UndoRecord? undo = null) =>
+        new(ok, action, moved, after, message, log, undo);
 
     private GitResult Call(List<GitResult> log, params string[] args)
     {
