@@ -206,6 +206,7 @@ public class CliArgsTests
     public void HelpText_lists_the_new_options_and_the_keys()
     {
         var help = CliArgs.HelpText;
+        Assert.StartsWith("graftui: an animated git TUI\n\nUsage:", help);
         Assert.Contains("--theme <name>", help);
         Assert.Contains("--version", help);
         Assert.Contains("--help", help);

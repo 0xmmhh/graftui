@@ -13,6 +13,8 @@ internal sealed record CliParse(CliOptions? Options, string? Error);
 internal static class CliArgs
 {
     public const string HelpText = """
+graftui: an animated git TUI
+
 Usage:
   graftui [options] [path-to-repo]   open a repository (default: the current directory)
   graftui --sandbox [options]        rebuild the practice repo at ~/.graftui/sandbox and open it
