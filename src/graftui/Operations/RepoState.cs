@@ -1,4 +1,5 @@
 using graftui.Git;
+using graftui.Model;
 
 namespace graftui.Operations;
 
@@ -31,6 +32,43 @@ internal static class RepoState
         log.Add(r);
         var dir = r.StdOut.Trim();
         return r.Success && dir.Length > 0 ? Path.GetFullPath(Path.Combine(git.RepoPath, dir)) : null;
+    }
+
+    /// <summary>`git ls-files -s -z` output: "mode blob stage<TAB>path" per NUL-terminated record. Lists only the entries git printed.</summary>
+    public static List<IndexEntry> ParseIndex(string nulSeparated)
+    {
+        var entries = new List<IndexEntry>();
+        foreach (var record in nulSeparated.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var tab = record.IndexOf('\t');
+            if (tab < 0)
+                continue;
+            var fields = record[..tab].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (fields.Length >= 2)
+                entries.Add(new IndexEntry(record[(tab + 1)..], fields[0], fields[1]));
+        }
+        return entries;
+    }
+
+    /// <summary>
+    /// The index entries of <paramref name="paths"/> (literal), sorted by path. A path with no entry gets Mode "" and Blob "".
+    /// Null when git fails. The command is added to <paramref name="log"/>.
+    /// </summary>
+    public static IReadOnlyList<IndexEntry>? IndexEntries(GitClient git, IEnumerable<string> paths, List<GitResult> log)
+    {
+        var sorted = paths.Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList();
+        if (sorted.Count == 0)
+            return [];
+
+        var r = git.RunLiteral(["ls-files", "-s", "-z", "--", .. sorted]);
+        log.Add(r);
+        if (!r.Success)
+            return null;
+
+        var found = new Dictionary<string, IndexEntry>(StringComparer.Ordinal);
+        foreach (var e in ParseIndex(r.StdOut))
+            found[e.Path] = e;
+        return sorted.Select(p => found.TryGetValue(p, out var e) ? e : new IndexEntry(p, "", "")).ToList();
     }
 
     /// <summary>
