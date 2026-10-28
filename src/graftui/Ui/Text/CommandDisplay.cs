@@ -76,7 +76,7 @@ public static class CommandDisplay
         {
             null => [],
             { Kind: DisplayKind.Note } => [new LogLine(LogKind.Message, shown.Text, 0, new Style(Ink.Dim))],
-            _ => [new LogLine(LogKind.Command, shown.Text, r.ExitCode, Simple: !shown.Exact, Failed: failed), .. outputs],
+            _ => [new LogLine(LogKind.Command, shown.Text, r.ExitCode, Simple: true, Failed: failed), .. outputs],
         };
         return new LogEntry(exact, simple);
     }

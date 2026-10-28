@@ -448,6 +448,15 @@ public class CommandDisplayTests
     }
 
     [Fact]
+    public void Every_successful_simple_command_line_is_drawn_with_a_tick_even_when_it_is_not_tidied()
+    {
+        var entry = CommandDisplay.Entry(L("stash push -u"), CommandHints.None, showOutput: false);
+
+        Assert.Equal([new LogLine(LogKind.Command, "git stash push -u", 0, Simple: true)], entry.Simple);
+        Assert.Equal([new LogLine(LogKind.Command, "git stash push -u", 0)], entry.Exact);
+    }
+
+    [Fact]
     public void A_hidden_command_has_no_simple_lines()
     {
         var entry = CommandDisplay.Entry(L("rev-parse --verify HEAD"), CommandHints.None, showOutput: false);
@@ -461,9 +470,8 @@ public class CommandDisplayTests
     {
         var entry = CommandDisplay.Entry(L("write-tree", 128), CommandHints.None, showOutput: false);
 
-        var line = new LogLine(LogKind.Command, "git write-tree", 128, Failed: true);
-        Assert.Equal([line], entry.Exact);
-        Assert.Equal([line], entry.Simple);
+        Assert.Equal([new LogLine(LogKind.Command, "git write-tree", 128, Failed: true)], entry.Exact);
+        Assert.Equal([new LogLine(LogKind.Command, "git write-tree", 128, Simple: true, Failed: true)], entry.Simple);
     }
 
     [Fact]

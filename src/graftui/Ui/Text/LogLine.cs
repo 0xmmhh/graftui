@@ -4,7 +4,7 @@ public enum LogKind { Command, Output, Message }
 
 /// <summary>
 /// One line of the Commands pane. ExitCode is only meaningful for commands. Simple marks a command line of the simplified list
-/// (a successful one is drawn with a tick). Failed marks a command that failed: it wraps and is drawn in the failure colour.
+/// (every successful one is drawn with a tick; the exact list keeps `[exit N]`). Failed marks a command that failed: it wraps and is drawn in the failure colour.
 /// </summary>
 public sealed record LogLine(LogKind Kind, string Text, int ExitCode = 0, Style Style = default, bool Simple = false, bool Failed = false);
 
