@@ -164,4 +164,28 @@ public class PopSafetyTests
         Assert.False(check.CanRun);
         Assert.Equal(ChangeRefusals.StashEmpty, check.Refusal);
     }
+
+    [Fact]
+    public void A_pop_is_refused_while_an_intent_to_add_file_is_present_and_changes_nothing()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Write("app.txt", "one\n");
+        repo.Run("stash", "push", "-q");
+        var seen = repo.Run("rev-parse", "stash@{0}");
+        repo.Write("new.txt", "new\n");
+        repo.Run("add", "-N", "new.txt");
+        var before = repo.Status();
+
+        var op = new PopOperation(repo.Git);
+        var request = new PopRequest(seen);
+        var check = op.Check(request);
+        var outcome = op.Run(request, check);
+
+        Assert.False(check.CanRun);
+        Assert.Equal(ChangeRefusals.IntentToAddStash("new.txt"), check.Refusal);
+        Assert.Equal(PopKind.Refused, outcome.Kind);
+        Assert.Equal(before, repo.Status());
+        Assert.Equal(seen, repo.Run("rev-parse", "stash@{0}"));
+    }
 }

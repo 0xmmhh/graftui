@@ -41,6 +41,8 @@ public static class ChangeRefusals
 
     public static string NestedRepoStash(string path) => $"{path} is a separate git repository: graftui won't stash or pop over it";
 
+    public static string IntentToAddStash(string path) => $"{path} was added with git add -N: graftui won't stash or pop over it";
+
     public static string Submodule(string path) => $"{path} is a submodule: graftui won't discard, stash or pop over it";
 
     public static string HandPickedNotConfirmed(string path) => $"{path} has hand-picked staged changes: confirm before unstaging them";
