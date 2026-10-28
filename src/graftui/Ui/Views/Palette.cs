@@ -57,8 +57,12 @@ public static class Palette
     /// One text field's colours: light text on the field's shade, or on the selection colour while the field has focus.
     /// <paramref name="bold"/> is for the subject line.
     /// </summary>
-    public static Scheme FieldScheme(bool focused, bool bold) =>
-        new(new Attribute(Fg, focused ? SelRow : Chip, bold ? TextStyle.Bold : TextStyle.None));
+    public static Scheme FieldScheme(bool focused, bool bold)
+    {
+        var attr = new Attribute(Fg, focused ? SelRow : Chip, bold ? TextStyle.Bold : TextStyle.None);
+        // A TextField edits with the Editable role, which Terminal.Gui would derive as a lighter shade; Focus is set too.
+        return new Scheme(attr) { Focus = attr, Editable = attr };
+    }
 
     private static Color ForeColor(Ink ink) => ink switch
     {
