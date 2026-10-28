@@ -53,8 +53,9 @@ public static class TextFit
     }
 
     /// <summary>
-    /// Two names that share one line of <paramref name="budget"/> columns. When both fit, nothing is cut. Otherwise a name that
-    /// fits in half the budget is kept whole and the other gets the rest; when neither does, each gets half. Each name gets at least
+    /// Two names that share one line of <paramref name="budget"/> columns. When both fit, nothing is cut. Otherwise the shorter
+    /// name is kept whole, and the longer one is cut, until the longer one is down to <paramref name="min"/> columns; only then
+    /// is the shorter one cut too. Two names of equal width split the budget evenly. Each name gets at least
     /// <paramref name="min"/> columns, even when that makes the line longer than the budget.
     /// </summary>
     public static (string A, string B) FitPair(string a, string b, int budget, int min = 8)
@@ -64,25 +65,24 @@ public static class TextFit
         if (wa + wb <= budget)
             return (Fit(a, wa), Fit(b, wb));
 
-        var half = budget / 2;
-        int limitA, limitB;
-        if (wa <= half)
+        if (wa == wb)
         {
-            limitA = wa;
-            limitB = budget - wa;
-        }
-        else if (wb <= half)
-        {
-            limitB = wb;
-            limitA = budget - wb;
-        }
-        else
-        {
-            limitA = half;
-            limitB = budget - half;
+            var half = budget / 2;
+            return (Fit(a, Math.Max(min, half)), Fit(b, Math.Max(min, budget - half)));
         }
 
-        return (Fit(a, Math.Max(min, limitA)), Fit(b, Math.Max(min, limitB)));
+        // The longer name keeps at least min columns (or its whole width, when that is less); the shorter one gets the rest,
+        // up to its own width.
+        var aIsShorter = wa < wb;
+        var shortWidth = aIsShorter ? wa : wb;
+        var longWidth = aIsShorter ? wb : wa;
+        var longFloor = Math.Min(longWidth, min);
+        var shortLimit = Math.Min(shortWidth, budget - longFloor);
+        var longLimit = budget - shortLimit;
+
+        var shortText = aIsShorter ? Fit(a, Math.Max(min, shortLimit)) : Fit(b, Math.Max(min, shortLimit));
+        var longText = aIsShorter ? Fit(b, Math.Max(min, longLimit)) : Fit(a, Math.Max(min, longLimit));
+        return aIsShorter ? (shortText, longText) : (longText, shortText);
     }
 
     /// <summary>

@@ -29,10 +29,21 @@ public class TextFitTests
     }
 
     [Fact]
-    public void FitPair_keeps_the_name_that_fits_half_the_budget_whole()
+    public void FitPair_keeps_the_shorter_name_whole_and_cuts_the_longer_one()
     {
         Assert.Equal(("feature/confl…", "main"), TextFit.FitPair("feature/conflict", "main", 18));
         Assert.Equal(("feature/conflict", "main"), TextFit.FitPair("feature/conflict", "main", 20));
+        Assert.Equal(("main", "feature…"), TextFit.FitPair("main", "feature/conflict", 12));
+        Assert.Equal(("feature…", "main"), TextFit.FitPair("feature/conflict", "main", 12));
+    }
+
+    [Fact]
+    public void FitPair_never_cuts_a_short_name_while_the_other_keeps_more_than_eight_columns()
+    {
+        // The longer name goes down to eight columns first; only then is the shorter one cut.
+        Assert.Equal(("release-2.0", "feature/…"), TextFit.FitPair("release-2.0", "feature/conflict", 20));
+        Assert.Equal(("release…", "feature…"), TextFit.FitPair("release-2.0", "feature/conflict", 16));
+        Assert.Equal(("main", "feature/…"), TextFit.FitPair("main", "feature/long-name-here", 13));
     }
 
     [Fact]
