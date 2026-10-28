@@ -41,6 +41,10 @@ public static class ChangeRefusals
 
     public static string NestedRepoStash(string path) => $"{path} is a separate git repository: graftui won't stash or pop over it";
 
+    /// <summary>A saved state that graftui keeps under a ref until the user deals with it. what says whose state it is.</summary>
+    public static string RescueSaved(string what, string reference) =>
+        $"{what} is saved in {reference}: inspect it with git show {reference}, restore it with git restore --source={reference} --worktree -- ., or delete it with git update-ref -d {reference}";
+
     public static string IntentToAddStash(string path) => $"{path} was added with git add -N: graftui won't stash or pop over it";
 
     public static string Submodule(string path) => $"{path} is a submodule: graftui won't discard, stash or pop over it";

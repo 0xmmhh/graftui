@@ -188,4 +188,56 @@ public class PopSafetyTests
         Assert.Equal(before, repo.Status());
         Assert.Equal(seen, repo.Run("rev-parse", "stash@{0}"));
     }
+
+    [Fact]
+    public void A_pop_is_refused_while_a_rescue_copy_is_kept_and_changes_nothing()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Write("app.txt", "one\n");
+        repo.Run("stash", "push", "-q");
+        var seen = repo.Run("rev-parse", "stash@{0}");
+        repo.Write("app.txt", "two\n");
+        repo.Run("update-ref", "refs/graftui/rescue/pop", "HEAD");
+        var before = repo.Status();
+
+        var op = new PopOperation(repo.Git);
+        var request = new PopRequest(seen);
+        var check = op.Check(request);
+        var outcome = op.Run(request, check);
+
+        Assert.False(check.CanRun);
+        Assert.Equal(ChangeRefusals.RescueSaved("your state from before an earlier pop", "refs/graftui/rescue/pop"), check.Refusal);
+        Assert.Equal(PopKind.Refused, outcome.Kind);
+        Assert.Equal(before, repo.Status());
+        Assert.Equal(seen, repo.Run("rev-parse", "stash@{0}"));
+        Assert.Equal(repo.Head, repo.Run("rev-parse", "refs/graftui/rescue/pop"));
+    }
+
+    [Fact]
+    public void A_copy_that_appears_after_the_check_is_never_overwritten()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Write("app.txt", "one\n");
+        repo.Run("stash", "push", "-q");
+        var seen = repo.Run("rev-parse", "stash@{0}");
+        repo.Commit("other.txt", "o\n", "Add other");
+        var op = new PopOperation(repo.Git);
+        var request = new PopRequest(seen);
+        var check = op.Check(request);
+        Assert.True(check.CanRun, check.Refusal);
+
+        // Another process saves its copy between the check and the run.
+        var earlier = repo.Run("rev-parse", "HEAD~1");
+        repo.Run("update-ref", "refs/graftui/rescue/pop", earlier);
+        var before = repo.Status();
+        var outcome = op.Run(request, check);
+
+        Assert.Equal(PopKind.Failed, outcome.Kind);
+        Assert.Contains("could not save a safety copy", outcome.Message);
+        Assert.Equal(earlier, repo.Run("rev-parse", "refs/graftui/rescue/pop"));
+        Assert.Equal(seen, repo.Run("rev-parse", "stash@{0}"));
+        Assert.Equal(before, repo.Status());
+    }
 }

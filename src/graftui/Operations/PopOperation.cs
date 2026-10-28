@@ -11,6 +11,7 @@ namespace graftui.Operations;
 /// If git refuses, nothing has changed and the copy is dropped. If git conflicts, the state is put back exactly from the
 /// copy, and the stash entry stays. Run never throws.
 /// The undo step is saved after a verified success; until then, and on any failure, the rescue ref keeps the copy.
+/// The ref is create-only, and Check refuses while it exists: the user inspects or deletes it first.
 /// </summary>
 public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopCheck, PopOutcome>
 {
@@ -50,6 +51,13 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
 
     private PopCheck CheckCore(PopRequest request, List<GitResult> log)
     {
+        // 0. The copy from an earlier pop that failed is kept until the user deals with it. A new copy never replaces it.
+        var rescue = Call(log, "rev-parse", "-q", "--verify", RescueRef);
+        if (rescue.Success)
+            return Refused(ChangeRefusals.RescueSaved("your state from before an earlier pop", RescueRef), log);
+        if (rescue.ExitCode != 1)
+            return Refused(GitClient.Describe(rescue), log);
+
         // 1. A stash entry must exist, and it must be the one the user saw.
         var top = Call(log, "rev-parse", "-q", "--verify", StashRef);
         if (!top.Success)
@@ -114,10 +122,11 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         var copy = state.Save(before, head, log);
         if (copy is null)
             return Done(PopKind.Failed, check.TopMessage, [], null, "could not save the working tree; nothing was popped", log);
-        var rescue = Call(log, "update-ref", RescueRef, copy);
-        if (!rescue.Success)
+        // Create-only (the empty old value): if the ref exists, the copy it holds is the only one, so it is not overwritten.
+        var saved = Call(log, "update-ref", RescueRef, copy, "");
+        if (!saved.Success)
             return Done(PopKind.Failed, check.TopMessage, [], null,
-                $"could not save a safety copy ({GitClient.Describe(rescue)}); nothing was popped", log);
+                $"could not save a safety copy ({GitClient.Describe(saved)}); nothing was popped", log);
 
         // 3. The pop itself.
         var pop = Call(log, "stash", "pop");
