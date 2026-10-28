@@ -78,6 +78,12 @@ internal sealed partial class ChangesTab
             e.Handled = true;
             return;
         }
+        if (_stashForm)
+        {
+            HandleStashKey(e);
+            return;
+        }
+
         if (e == Key.Esc)
         {
             e.Handled = true;
@@ -298,6 +304,7 @@ internal sealed partial class ChangesTab
     {
         Mode = ChangesMode.Browse;
         _formError = null;
+        _stashForm = false;
         foreach (var field in new View[] { _app.SubjectField, _app.BodyField })
         {
             field.Visible = false;

@@ -101,8 +101,9 @@ internal sealed partial class ChangesTab
     }
 
     /// <summary>
-    /// Browse-mode keys: Up and Down move, Space stages or unstages the selected row, a stages everything and U (shift) unstages
-    /// everything. Every other key falls through, so Esc still quits. Ignored while git is busy.
+    /// Browse-mode keys: Up and Down move, Space stages or unstages the selected row, a stages everything, U (shift) unstages
+    /// everything, c and A (shift) commit and amend, x discards, z stashes, Z (shift) pops and u undoes. Every other key falls
+    /// through, so Esc still quits. Ignored while git is busy.
     /// </summary>
     internal void HandleKey(Key e)
     {
@@ -146,6 +147,26 @@ internal sealed partial class ChangesTab
         {
             e.Handled = true;
             BeginCommitInput(amend: true);
+        }
+        else if (e == Key.X)
+        {
+            e.Handled = true;
+            AskDiscard();
+        }
+        else if (e == Key.Z)
+        {
+            e.Handled = true;
+            BeginStashInput();
+        }
+        else if (e == Key.Z.WithShift)
+        {
+            e.Handled = true;
+            StartPop();
+        }
+        else if (e == Key.U)
+        {
+            e.Handled = true;
+            StartUndo();
         }
     }
     /// <summary>True when the whole art, and so the message box's fields, fits inside the art pane at this size.</summary>

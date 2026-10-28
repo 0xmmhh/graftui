@@ -26,6 +26,7 @@ public static class ChangeRefusals
     public static string PushedNotConfirmed(string remoteBranch) =>
         $"this commit is already on {remoteBranch}; press A again to confirm amending it";
 
+    public const string NothingToDiscard = "Nothing to discard";
     public const string NoCommitYet = "there are no commits yet: commit once before discarding or stashing";
     public const string NothingToStash = "Nothing to stash: the working tree is clean";
     public const string StashEmpty = "The stash is empty";
