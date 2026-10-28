@@ -13,7 +13,7 @@ internal sealed class ChangesAnimator(AppController app)
 {
     private static readonly Style Bad = new(Ink.Bad);
 
-    private ChangesAnimation? _anim;
+    private IAreasAnimation? _anim;
     private Stopwatch? _clock;
     private (AreasResult Result, IReadOnlyList<GitResult> Commands, string? FailureLog, Action OnDone)? _pending;
 
@@ -21,7 +21,7 @@ internal sealed class ChangesAnimator(AppController app)
     internal bool Running => _anim is not null;
 
     /// <summary>Starts the scene on the art pane. The result may arrive later through <see cref="SetPending"/>.</summary>
-    internal void Begin(ChangesAnimation anim, Func<int, IReadOnlyList<Seg>> direction, IReadOnlyList<IReadOnlyList<Seg>> below)
+    internal void Begin(IAreasAnimation anim, Func<int, IReadOnlyList<Seg>> direction, IReadOnlyList<IReadOnlyList<Seg>> below)
     {
         var clock = Stopwatch.StartNew();
         _anim = anim;

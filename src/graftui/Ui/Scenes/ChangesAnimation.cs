@@ -8,15 +8,17 @@ public enum AreasOp { Stage, Unstage, Commit, Amend }
 
 /// <summary>
 /// What git returned, as the animation shows it. After is the areas once the change landed (ignored on failure).
-/// Message is the failure text in the overlay; null shows the caption's text instead.
+/// Message is the failure text in the overlay; null shows the caption's text instead. Arrived is what a pop brought back:
+/// the rows of After that were not there before, each flying in from the stash (ignored by the other changes).
 /// </summary>
-public sealed record AreasResult(bool Success, AreasModel After, Caption Caption, string Title, string? Message = null);
+public sealed record AreasResult(bool Success, AreasModel After, Caption Caption, string Title, string? Message = null,
+    IReadOnlyList<FileChange>? Arrived = null);
 
 /// <summary>
 /// Drives one change's animation (the mock's stage, unstage and doCommit). Like <see cref="MergeAnimation"/>, the scene is
 /// held at its hold point until git answers; then it plays out from there. A failure jumps straight to the final frame.
 /// </summary>
-public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyList<FileChange> moving, string runningText)
+public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyList<FileChange> moving, string runningText) : IAreasAnimation
 {
     private const long MoveFly = 600, MoveStep = 90, MoveTail = 50;
     private const long CommitFly = 550, CommitBlink = 250, CommitDrop = 650, CommitTail = 250, CommitLanded = 120;
@@ -42,7 +44,7 @@ public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyLis
 
     private bool IsCommit => op is AreasOp.Commit or AreasOp.Amend;
 
-    /// <summary>Records git's answer. <paramref name="elapsedMs"/> is the time on the animation clock.</summary>
+    /// <inheritdoc/>
     public void SetResult(AreasResult r, long elapsedMs)
     {
         Result = r;
@@ -50,13 +52,13 @@ public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyLis
         _offset = r.Success ? Math.Max(0, elapsedMs - HoldMs) : elapsedMs - TotalMs;
     }
 
-    /// <summary>The frame the animation ends on. Only meaningful once <see cref="IsDone"/> is true.</summary>
+    /// <inheritdoc/>
     public SceneFrame Final(ArtGeometry g) => Done(g);
 
-    /// <summary>True once the scene has played out after the result arrived.</summary>
+    /// <inheritdoc/>
     public bool IsDone(long elapsedMs) => Result is not null && TimeOf(elapsedMs) >= TotalMs;
 
-    /// <summary>Running titles while the change is in flight; the result's title once it is done.</summary>
+    /// <inheritdoc/>
     public string Title(long elapsedMs)
     {
         if (IsDone(elapsedMs))
@@ -70,6 +72,7 @@ public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyLis
         };
     }
 
+    /// <inheritdoc/>
     public SceneFrame Render(ArtGeometry g, long elapsedMs)
     {
         if (IsDone(elapsedMs))
