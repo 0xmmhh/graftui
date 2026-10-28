@@ -163,7 +163,7 @@ internal sealed partial class ChangesTab
         art.Title = "Stash";
         art.Direction = cols => ChangesText.OpDirection("stash", MergeScenes.Plural(count, "changed file"), [new Seg("stash", Dim)], cols);
         art.Below = Summary();
-        art.Commits = [];
+        art.Panel = null;
         art.FallbackCaption = null;
         art.Scene = geo => new SceneFrame(AreasScenes.StashForm(geo, Before()).Grid,
             new Caption("Enter stashes · empty uses git's default message · Esc cancels", Dim));

@@ -31,7 +31,7 @@ internal sealed class ChangesAnimator(AppController app)
         app.Art.Title = anim.Title(0);
         app.Art.Direction = direction;
         app.Art.Below = below;
-        app.Art.Commits = [];
+        app.Art.Panel = null;
         app.Art.FallbackCaption = null;
         app.Art.Scene = geo => anim.Render(geo, clock.ElapsedMilliseconds);
         app.Art.SetNeedsDraw();

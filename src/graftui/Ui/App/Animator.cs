@@ -33,7 +33,7 @@ internal sealed class Animator
         var detached = check.CurrentBranch.Length == 0;
         _app.Art.Title = "Refused";
         _app.Art.Direction = cols => DirectionLine.Merge(selName, check.CurrentBranch, detached, cols);
-        _app.Art.Commits = layout is null ? [] : CommitLists.Idle(layout);
+        _app.Art.Panel = layout is null ? null : CommitLists.Idle(layout);
         _app.Art.FallbackCaption = null;
         _app.Art.Scene = geo =>
         {
@@ -67,7 +67,7 @@ internal sealed class Animator
 
         _app.Art.Title = anim.Title(0);
         _app.Art.Direction = cols => DirectionLine.Merge(layout.Selected, layout.Current, detached, cols);
-        _app.Art.Commits = CommitLists.Idle(layout);
+        _app.Art.Panel = CommitLists.Idle(layout);
         _app.Art.FallbackCaption = null;
         _app.Art.Scene = geo => anim.Render(geo, clock.ElapsedMilliseconds);
         _app.Art.SetNeedsDraw();
@@ -109,7 +109,7 @@ internal sealed class Animator
         // Freeze the scene at its final time so the art stops moving.
         _app.Art.Scene = geo => anim.Render(geo, final);
         _app.Art.Title = anim.Title(final);
-        _app.Art.Commits = CommitLists.After(anim.Layout, outcome, pending.MergeCommit);
+        _app.Art.Panel = CommitLists.After(anim.Layout, outcome, pending.MergeCommit);
 
         var mergeIndex = _app.LogCommands(outcome.Commands);
         if (outcome.ConflictFiles.Count > 0)

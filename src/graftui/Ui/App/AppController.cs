@@ -177,6 +177,7 @@ public sealed class AppController
         BranchList.Selected = BranchesTab.Selected;
         _tooSmall.Cols = App.Screen.Width;
         _tooSmall.Rows = App.Screen.Height;
+        Art.ScreenCols = App.Screen.Width;
         BranchesTab.ShowInitialState();
         SyncBranchKeys();
 
@@ -186,6 +187,7 @@ public sealed class AppController
         {
             _tooSmall.Cols = App.Screen.Width;
             _tooSmall.Rows = App.Screen.Height;
+            Art.ScreenCols = App.Screen.Width;
             window.SetNeedsLayout();
             _tooSmall.SetNeedsDraw();
             Art.SetNeedsDraw();

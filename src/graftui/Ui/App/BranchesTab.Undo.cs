@@ -112,7 +112,7 @@ internal sealed partial class BranchesTab
         var art = _app.Art;
         art.Title = v.Title;
         art.Direction = cols => ChangesText.PlainDirection("undo", v.Direction, cols);
-        art.Commits = v.Layout is null ? [] : CommitLists.Idle(v.Layout);
+        art.Panel = v.Layout is null ? null : CommitLists.Idle(v.Layout);
         art.FallbackCaption = null;
         art.Scene = geo =>
         {

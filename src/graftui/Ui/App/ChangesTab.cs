@@ -445,7 +445,7 @@ internal sealed partial class ChangesTab
             art.Title = done.Result!.Title;
             art.Direction = _resultDirection ?? (_ => []);
             art.Below = ChangesText.Summary(snap.Status, snap.Head, snap.Stash);
-            art.Commits = [];
+            art.Panel = null;
             art.FallbackCaption = null;
             art.Scene = geo => done.Final(geo);
             art.SetNeedsDraw();
@@ -456,7 +456,7 @@ internal sealed partial class ChangesTab
         {
             art.Direction = _ => [];
             art.Below = null;
-            art.Commits = [];
+            art.Panel = null;
             art.Scene = null;
             art.FallbackCaption = new Caption("Loading…", Dim);
             art.SetNeedsDraw();
@@ -466,7 +466,7 @@ internal sealed partial class ChangesTab
         var head = snap.Head;
         art.Direction = cols => ChangesText.BrowseDirection(row, head, cols);
         art.Below = ChangesText.Summary(snap.Status, head, snap.Stash);
-        art.Commits = [];
+        art.Panel = null;
 
         if (row is not null && _diff?.File != row)
         {

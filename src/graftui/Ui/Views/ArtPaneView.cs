@@ -13,7 +13,7 @@ public sealed class ArtPaneView : PaneView
 {
     private const int MaxArtWidth = 70;
 
-    private static readonly Style Dim = new(Ink.Dim), Fg = new(Ink.Fg);
+    private static readonly Style Dim = new(Ink.Dim);
     private static readonly Style FrameStyle = new(Ink.Frame);
 
     public Func<ArtGeometry, SceneFrame>? Scene { get; set; }
@@ -21,7 +21,11 @@ public sealed class ArtPaneView : PaneView
     /// <summary>Direction line for a given width. Built on demand so names can be cut to the pane.</summary>
     public Func<int, IReadOnlyList<Seg>> Direction { get; set; } = _ => [];
 
-    public IReadOnlyList<CommitRow> Commits { get; set; } = [];
+    /// <summary>The commit list under the caption, or null when the pane shows none (the Changes tab).</summary>
+    public CommitPanel? Panel { get; set; }
+
+    /// <summary>Width of the whole screen. At least <see cref="CommitPanels.SideBySideMinCols"/> lists the commit groups side by side.</summary>
+    public int ScreenCols { get; set; }
 
     /// <summary>Lines drawn under the caption in place of <see cref="Commits"/> (the Changes tab's summary).</summary>
     public IReadOnlyList<IReadOnlyList<Seg>>? Below { get; set; }
@@ -119,17 +123,11 @@ public sealed class ArtPaneView : PaneView
             return true;
         }
 
-        for (var k = 0; k < layout.BelowRows && k < Commits.Count; k++)
+        if (Panel is { } panel)
         {
-            var row = Commits[k];
-            DrawSegs(4, layout.BelowTop + k,
-            [
-                new Seg(row.Dot.ToString(), row.DotStyle),
-                new Seg(" ", Fg),
-                new Seg(row.Hash.PadRight(7), row.HashStyle),
-                new Seg(" ", Fg),
-                new Seg(row.Subject, row.SubjectStyle),
-            ], cw - 2);
+            var lines = CommitPanels.Render(panel, cw - 2, layout.BelowRows, ScreenCols >= CommitPanels.SideBySideMinCols);
+            for (var k = 0; k < lines.Count; k++)
+                DrawSegs(4, layout.BelowTop + k, lines[k], cw - 2);
         }
         return true;
     }

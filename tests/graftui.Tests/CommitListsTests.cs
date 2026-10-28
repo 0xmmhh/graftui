@@ -10,9 +10,9 @@ public class CommitListsTests
     {
         var outcome = new MergeOutcome(MergeKind.Conflict, "feature", "main", null, ["app.txt"], "merge aborted", []);
 
-        var rows = CommitLists.After(Layouts.Diverged(), outcome, null);
+        var panel = CommitLists.After(Layouts.Diverged(), outcome, null);
 
-        var last = rows[^1];
+        var last = panel.Footer[^1];
         Assert.Equal('✕', last.Dot);
         Assert.Equal("app.txt", last.Hash);
     }

@@ -44,7 +44,7 @@ internal sealed partial class ChangesTab
         art.Title = q.Title;
         art.Direction = q.Direction;
         art.Below = Summary();
-        art.Commits = [];
+        art.Panel = null;
         art.FallbackCaption = null;
         art.Scene = geo =>
         {

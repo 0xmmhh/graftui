@@ -194,7 +194,7 @@ internal sealed partial class BranchesTab
         {
             _app.Art.Title = "Preview";
             _app.Art.FallbackCaption = new Caption("no branches", Muted);
-            _app.Art.Commits = [];
+            _app.Art.Panel = null;
         }
     }
 
@@ -204,7 +204,7 @@ internal sealed partial class BranchesTab
         _app.Art.Direction = _ => DirectionLine.Loading(b.Name);
         _app.Art.Scene = null;
         _app.Art.FallbackCaption = new Caption("Loading…", Muted);
-        _app.Art.Commits = [];
+        _app.Art.Panel = null;
         _app.Art.SetNeedsDraw();
     }
 
@@ -215,7 +215,7 @@ internal sealed partial class BranchesTab
         _app.Status.SetNeedsDraw();
         _app.Art.Title = "Preview";
         _app.Art.Direction = cols => DirectionLine.Browse(layout, cols);
-        _app.Art.Commits = CommitLists.Idle(layout);
+        _app.Art.Panel = CommitLists.Idle(layout);
         _app.Art.FallbackCaption = null;
         _app.Art.Scene = geo =>
         {
