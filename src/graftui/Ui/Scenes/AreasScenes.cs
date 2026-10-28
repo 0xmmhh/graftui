@@ -3,13 +3,17 @@ using graftui.Ui.Text;
 
 namespace graftui.Ui.Scenes;
 
-/// <summary>What the three areas hold at one moment: unstaged and staged rows, and the current branch.</summary>
-public sealed record AreasModel(IReadOnlyList<FileChange> Unstaged, IReadOnlyList<FileChange> Staged, HeadLine Head);
+/// <summary>
+/// What the three areas hold at one moment: unstaged and staged rows, and the current branch. Stash is the stash box's
+/// count and newest entry; null leaves the box out.
+/// </summary>
+public sealed record AreasModel(IReadOnlyList<FileChange> Unstaged, IReadOnlyList<FileChange> Staged, HeadLine Head, StashSummary? Stash = null);
 
 /// <summary>
 /// Options for one drawing of the areas. Hide* keeps rows out of a box while they animate. Line replaces the commit line
 /// (default: the head's commits). LabelAt is the slot the current-branch marker sits on. GhostX draws the faded dot of a
-/// commit that was just amended. HideLine leaves the commit line out (the message form).
+/// commit that was just amended. HideLine leaves the commit line out, and the stash box with it (the message form).
+/// StashCount shows an older count in the stash box; StashTitle replaces the box title's style (it blinks while git runs).
 /// </summary>
 public sealed record AreasOptions(
     IReadOnlySet<string>? HideUnstaged = null,
@@ -17,7 +21,9 @@ public sealed record AreasOptions(
     IReadOnlyList<CommitInfo>? Line = null,
     int? LabelAt = null,
     int? GhostX = null,
-    bool HideLine = false);
+    bool HideLine = false,
+    int? StashCount = null,
+    Style? StashTitle = null);
 
 /// <summary>
 /// The three-areas scenes, ported from the design mock (drawAreas, flyTok, sceneDiff and the message form).
@@ -54,6 +60,8 @@ public static class AreasScenes
         DrawFiles(grid, L, 1, m.Staged.Where(f => !Hidden(o.HideStaged, f)).ToList());
         DrawRepository(grid, L, m.Head);
 
+        if (!o.HideLine && m.Stash is not null)
+            DrawStash(grid, L, m.Stash, o);
         if (!o.HideLine)
             DrawLine(grid, L, m.Head, o);
 
@@ -63,14 +71,18 @@ public static class AreasScenes
         return grid;
     }
 
-    /// <summary>Moves one token of a file from <paramref name="from"/> to <paramref name="to"/>, eased by the caller. Blanks 17 cells first.</summary>
-    public static void FlyToken(ArtGrid grid, (int X, int Y) from, (int X, int Y) to, double p, char letter, string path, Style st)
+    /// <summary>
+    /// Moves one token of a file from <paramref name="from"/> to <paramref name="to"/>, eased by the caller. Blanks 17 cells first.
+    /// The letter is bold unless <paramref name="bold"/> is false; the path takes <paramref name="pathStyle"/> (bold Fg by default).
+    /// </summary>
+    public static void FlyToken(ArtGrid grid, (int X, int Y) from, (int X, int Y) to, double p, char letter, string path, Style st,
+        bool bold = true, Style? pathStyle = null)
     {
         var x = (int)Math.Round(from.X + (to.X - from.X) * p, MidpointRounding.AwayFromZero);
         var y = (int)Math.Round(from.Y + (to.Y - from.Y) * p, MidpointRounding.AwayFromZero);
         grid.Text(x, y, new string(' ', FlyBlankCols), Fg);
-        grid.Put(x, y, letter, new Style(st.Ink, true));
-        grid.Text(x + 2, y, TextFit.Fit(path, FlyPathCols), FgB);
+        grid.Put(x, y, letter, new Style(st.Ink, bold));
+        grid.Text(x + 2, y, TextFit.Fit(path, FlyPathCols), pathStyle ?? FgB);
     }
 
     /// <summary>The diff of the selected file, or the clean-tree message when there is none.</summary>
@@ -111,6 +123,21 @@ public static class AreasScenes
         grid.Text(L.Width - 6, L.SubjectRow, $"{subjectCols}/50", subjectStyle);
         var bodyStyle = longestBodyCols <= 72 ? Dim : Warn;
         grid.Text(L.Width - 6, L.BodyRow, $"{longestBodyCols}/72", bodyStyle);
+        return new SceneFrame(grid, null);
+    }
+
+    /// <summary>
+    /// The message form for a stash: the areas at rest, with a label and the message field only. There are no counters,
+    /// so <paramref name="messageCols"/> is accepted for symmetry with <see cref="Form"/> and not drawn.
+    /// </summary>
+    public static SceneFrame StashForm(ArtGeometry g, AreasModel m, int messageCols)
+    {
+        var grid = Static(g, m, new AreasOptions(HideLine: true));
+        var L = AreasLayout.For(g.Width, g.Height);
+
+        if (L.FormLabelRow >= 0)
+            grid.Text(0, L.FormLabelRow, "Stash everything, untracked files too", FgB);
+        grid.Text(0, L.SubjectRow, "message  ", Dim);
         return new SceneFrame(grid, null);
     }
 
@@ -179,6 +206,37 @@ public static class AreasScenes
             grid.Text(x, 2, TextFit.Fit(tip.ShortHash, cols), Hash);
             grid.Text(x, 3, TextFit.Fit(tip.Subject, cols), Fg);
         }
+    }
+
+    // The stash box: a bordered box with the count in its title and the newest entry under it. Compact, it is "stash n" on the
+    // commit line's row. With no entries the box says "empty".
+    private static void DrawStash(ArtGrid grid, AreasLayout L, StashSummary stash, AreasOptions o)
+    {
+        var count = o.StashCount ?? stash.Count;
+        if (L.StashCompact)
+        {
+            grid.Text(0, L.LineY, $"stash {count}", Inc);
+            return;
+        }
+
+        var w = L.StashBoxW;
+        var top = L.StashTop;
+        var bottom = top + L.StashRows + 1;
+        grid.Text(0, top, "┌" + new string('─', w - 2) + "┐", Dim);
+        for (var y = top + 1; y < bottom; y++)
+        {
+            grid.Put(0, y, '│', Dim);
+            grid.Put(w - 1, y, '│', Dim);
+        }
+        grid.Text(0, bottom, "└" + new string('─', w - 2) + "┘", Dim);
+        grid.Text(2, top, TextFit.Fit($" Stash ({count}) ", w - 3), o.StashTitle ?? IncB);
+
+        if (count == 0)
+            grid.Text(2, top + 1, "empty", Dim);
+        else if (stash.TopMessage is { } message)
+            grid.Text(2, top + 1, TextFit.Fit(message, w - 4), Fg);
+        if (L.StashRows == 2 && count > 1)
+            grid.Text(2, top + 2, $"+{count - 1} more", Dim);
     }
 
     // The commit line: dots joined by rules, the current-branch marker, and its label above the line.

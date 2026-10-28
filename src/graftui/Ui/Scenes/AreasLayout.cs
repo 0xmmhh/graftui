@@ -48,6 +48,21 @@ public sealed record AreasLayout(int Width, int Height, int BoxW, int ListRows, 
 
     public int SubjectRow => Height - 3;
 
+    /// <summary>Width of the stash box: the box's left edge is column 0 and it stops two columns short of the commit line.</summary>
+    public int StashBoxW => Math.Min(21, LineX - 2);
+
+    /// <summary>Too narrow for a box: the stash shows as one line, "stash n", on the commit line's row.</summary>
+    public bool StashCompact => StashBoxW < 12;
+
+    /// <summary>Row of the stash box's top border. It sits below the working-tree and staging boxes.</summary>
+    public int StashTop => Height == 11 ? 7 : 5;
+
+    /// <summary>Entry rows inside the stash box (the newest entry, and "+n more" when there is room).</summary>
+    public int StashRows => Height == 11 ? 2 : 1;
+
+    /// <summary>Where a stash entry's letter sits: the first entry row, or the commit line when compact.</summary>
+    public (int X, int Y) StashPos => StashCompact ? (0, LineY) : (2, StashTop + 1);
+
     /// <summary>The body takes this row and the one below it.</summary>
     public int BodyRow => Height - 2;
 
