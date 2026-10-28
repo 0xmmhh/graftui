@@ -13,7 +13,7 @@ public static class ChangesText
     private const string Arrow = "  ──▶  ";
 
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
-    private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true), Warn = new(Ink.Warn);
+    private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true), Warn = new(Ink.Warn), Inc = new(Ink.Inc);
     private static readonly Style Cur = new(Ink.Cur), CurB = new(Ink.Cur, true), Hash = new(Ink.Hash);
 
     /// <summary>The line above the diff: the selected file and its state, or the clean-tree line when no row is selected.</summary>
@@ -45,7 +45,7 @@ public static class ChangesText
     {
         null => "",
         { Kind: ChangeKind.Conflicted } => "resolve the conflict outside graftui first",
-        { Side: ChangeSide.Unstaged } => "Space stages this file · c commits what is staged",
+        { Side: ChangeSide.Unstaged } => "Space stages this file · x discards it · c commits what is staged",
         _ => "Space unstages this file · c commits what is staged",
     };
 
@@ -67,12 +67,25 @@ public static class ChangesText
         ];
     }
 
+    /// <summary>
+    /// The line of an operation with no target: the verb (padded to 13 columns) and what it acts on, with no arrow.
+    /// Example: "stash pop    wip test".
+    /// </summary>
+    public static IReadOnlyList<Seg> PlainDirection(string verb13, string what, int max)
+    {
+        var verb = verb13.PadRight(VerbCols);
+        return [new Seg(verb, Dim), new Seg(TextFit.Fit(what, Math.Max(8, max - VerbCols)), FgB)];
+    }
+
     /// <summary>The name of what an operation acts on: "README.md", or "3 files" when it covers every row.</summary>
     public static string What(IReadOnlyList<FileChange> files, bool all) =>
         all ? MergeScenes.Plural(files.Count, "file") : files[0].Path;
 
-    /// <summary>The three lines under the art: staged and unstaged counts, and the current branch with its tip.</summary>
-    public static IReadOnlyList<IReadOnlyList<Seg>> Summary(WorkingStatus s, HeadLine h)
+    /// <summary>
+    /// The lines under the art: staged and unstaged counts, the stash count when <paramref name="stash"/> is given, and the
+    /// current branch with its tip.
+    /// </summary>
+    public static IReadOnlyList<IReadOnlyList<Seg>> Summary(WorkingStatus s, HeadLine h, StashSummary? stash = null)
     {
         var head = new List<Seg> { new("HEAD      ", Dim), new(BranchName(h), CurB) };
         var tip = h.Tip;
@@ -86,13 +99,18 @@ public static class ChangesText
             head.Add(new Seg(TextFit.Fit(tip.Subject, 40), Fg));
         }
 
-        return
-        [
-            [new Seg("staged    ", Dim), new Seg(MergeScenes.Plural(s.Staged.Count, "file"), Ok)],
-            [new Seg("unstaged  ", Dim), new Seg(MergeScenes.Plural(s.Unstaged.Count, "file"), Warn)],
-            head,
-        ];
+        var lines = new List<IReadOnlyList<Seg>>
+        {
+            new Seg[] { new("staged    ", Dim), new(MergeScenes.Plural(s.Staged.Count, "file"), Ok) },
+            new Seg[] { new("unstaged  ", Dim), new(MergeScenes.Plural(s.Unstaged.Count, "file"), Warn) },
+        };
+        if (stash is not null)
+            lines.Add([new Seg("stash     ", Dim), new Seg(Entries(stash.Count), Inc)]);
+        lines.Add(head);
+        return lines;
     }
+
+    private static string Entries(int n) => $"{n} {(n == 1 ? "entry" : "entries")}";
 
     private static string BranchName(HeadLine h) => h.Detached ? "HEAD (detached)" : h.Branch;
 }

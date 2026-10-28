@@ -63,4 +63,24 @@ public class ChangesListTests
         Assert.Equal(new Style(Ink.Ok, true), files[0].Style);
         Assert.Equal(new Style(Ink.Bad, true), files[1].Style);
     }
+
+    [Fact]
+    public void A_stash_line_ends_the_list_with_the_count_and_the_newest_message()
+    {
+        var status = new WorkingStatus([Staged("s.txt")], []);
+
+        var lines = ChangesList.Build(status, new StashSummary(1, "a1", "On main: wip"));
+
+        Assert.Equal(ChangesLineKind.Stash, lines[^1].Kind);
+        Assert.Equal("Stash (1) On main: wip", lines[^1].Text);
+    }
+
+    [Fact]
+    public void A_stash_line_follows_the_clean_line_and_an_empty_stash_adds_nothing()
+    {
+        var clean = ChangesList.Build(WorkingStatus.Empty, new StashSummary(2, "a1", "wip"));
+
+        Assert.Equal(["✔ working tree clean", "Stash (2) wip"], clean.Select(l => l.Text).ToArray());
+        Assert.Single(ChangesList.Build(WorkingStatus.Empty, StashSummary.None));
+    }
 }
