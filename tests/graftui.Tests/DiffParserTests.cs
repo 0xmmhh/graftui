@@ -5,6 +5,8 @@ namespace graftui.Tests;
 
 public class DiffParserTests
 {
+    [Fact] public void CiProbe() => Assert.True(false);
+
     [Fact]
     public void Headers_are_dropped_and_hunk_lines_keep_their_kind()
     {
