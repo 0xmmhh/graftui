@@ -10,6 +10,10 @@ namespace graftui.Tests;
 /// </summary>
 public class UndoSafetyTests
 {
+    /// <summary>The refusal of the step on top, with the drop hint that a guard refusal carries (see ChangeRefusals.WithUndoHint).</summary>
+    private static string Hinted(TempRepo repo, string refusal) =>
+        ChangeRefusals.WithUndoHint(refusal, new UndoLog(repo.Git).Top([])!.Ref);
+
     private static UndoCheck CheckOnly(TempRepo repo) => new UndoOperation(repo.Git).Check(new UndoRequest(null));
 
     private static UndoOutcome Undo(TempRepo repo)
@@ -139,7 +143,7 @@ public class UndoSafetyTests
 
         var check = CheckOnly(repo);
 
-        Assert.Equal(ChangeRefusals.UndoDirty, check.Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoDirty), check.Refusal);
         Assert.Equal(merged, repo.Head);
         Assert.Equal(" M app.txt", repo.Status());
         Assert.Single(UndoRefs(repo));
@@ -156,10 +160,10 @@ public class UndoSafetyTests
         var committed = repo.Head;
 
         repo.Run("switch", "-q", "-c", "other");
-        Assert.Equal(ChangeRefusals.UndoWrongBranch("main"), CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoWrongBranch("main")), CheckOnly(repo).Refusal);
 
         repo.Run("switch", "-q", "--detach");
-        Assert.Equal(ChangeRefusals.UndoWrongBranch("main"), CheckOnly(repo).Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoWrongBranch("main")), CheckOnly(repo).Refusal);
         Assert.Equal(committed, repo.Head);
         Assert.Single(UndoRefs(repo));
     }
@@ -177,7 +181,7 @@ public class UndoSafetyTests
 
         var check = CheckOnly(repo);
 
-        Assert.Equal(ChangeRefusals.UndoHeadMoved("main"), check.Refusal);
+        Assert.Equal(Hinted(repo, ChangeRefusals.UndoHeadMoved("main")), check.Refusal);
         Assert.Equal(newer, repo.Head);
         Assert.Single(UndoRefs(repo));
     }

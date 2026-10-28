@@ -63,6 +63,13 @@ public static class ChangeRefusals
 
     public static string UndoWrongBranch(string branch) => $"that commit is on {branch}: switch back to it first";
 
+    /// <summary>
+    /// A guard's refusal of the step on top, with the way to drop that step so the older ones become reachable.
+    /// reference is the step's undo ref. The refusal's first sentence is unchanged; the hint follows it.
+    /// </summary>
+    public static string WithUndoHint(string refusal, string reference) =>
+        $"{refusal}; the step is {reference}: git update-ref -d {reference} drops it so older steps become reachable";
+
     /// <summary>The step's record cannot be read, or lacks a field its kind needs. reference is the undo ref.</summary>
     public static string UndoUnreadable(string reference) =>
         $"the undo history is unreadable ({reference}); delete it with git update-ref -d {reference}";
