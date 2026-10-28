@@ -80,6 +80,9 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
             return Refused(ChangeRefusals.NestedRepoStash(nested.Path), log);
         if (status.Rows.FirstOrDefault(f => f.IsSubmodule) is { } sub)
             return Refused(ChangeRefusals.Submodule(sub.Path), log);
+        // git add -N makes an index entry with no content; the pop would not restore it, so it is refused as Discard refuses it.
+        if (status.Unstaged.FirstOrDefault(f => f.Kind == ChangeKind.Added) is { } intent)
+            return Refused(ChangeRefusals.IntentToAddStash(intent.Path), log);
 
         // 4. The entry's message, as the stash list shows it. It is stored back if the undo step runs.
         var message = Call(log, "stash", "list", "-n", "1", "--format=%gs");
