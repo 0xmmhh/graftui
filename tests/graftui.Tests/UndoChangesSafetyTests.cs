@@ -458,4 +458,54 @@ public class UndoChangesSafetyTests
         Assert.Empty(UndoRefs(repo));
         Assert.Equal("", repo.Run("for-each-ref", "refs/graftui/"));
     }
+
+    [Fact]
+    public void A_failed_undo_of_a_pop_keeps_the_state_after_the_pop_under_a_ref_and_refuses_until_it_is_dealt_with()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Write("app.txt", "line 1 (edited)\n");
+        Stash(repo);
+        Pop(repo);
+        var step = new UndoLog(repo.Git).Top([])!.Step!;
+        var afterPop = Text(repo, "app.txt");
+
+        // A lock on the branch makes the reset that the undo needs fail after the guard has passed. The guard only reads.
+        var branchLock = Path.Combine(repo.Dir, ".git", "refs", "heads", "main.lock");
+        var op = new UndoOperation(repo.Git);
+        var check = op.Check(new UndoRequest(null));
+        Assert.True(check.CanRun, check.Refusal);
+        File.WriteAllText(branchLock, "");
+        UndoOutcome outcome;
+        try
+        {
+            outcome = op.Run(new UndoRequest(check.StepRef), check);
+        }
+        finally
+        {
+            File.Delete(branchLock);
+        }
+
+        Assert.Equal(UndoOutcomeKind.Failed, outcome.Kind);
+        Assert.Contains("refs/graftui/rescue/undo-pop", outcome.Message);
+        Assert.Contains("git restore --source=" + step.StateAfter, outcome.Message);
+        Assert.Equal(step.StateAfter, repo.Run("rev-parse", "refs/graftui/rescue/undo-pop"));
+        Assert.Equal(afterPop, repo.Run("show", step.StateAfter + ":app.txt") + "\n");
+        Assert.Equal(2, UndoRefs(repo).Count);
+
+        // While the copy is kept, nothing is undone, and the refusal says how to deal with it.
+        Assert.Equal(ChangeRefusals.RescueSaved("the state after a pop, from an undo of it that failed", "refs/graftui/rescue/undo-pop"),
+            CheckOnly(repo).Refusal);
+
+        // Restoring from the copy, as the message says, and deleting it, lets the undo go through.
+        repo.Run("restore", "--source=" + step.StateAfter, "--worktree", "--", ".");
+        repo.Run("update-ref", "-d", "refs/graftui/rescue/undo-pop");
+        Assert.Equal(afterPop, Text(repo, "app.txt"));
+        Assert.Equal(UndoOutcomeKind.Undone, Undo(repo).Kind);
+        Assert.Single(UndoRefs(repo));
+        Assert.Equal(UndoRefs(repo), repo.Run("for-each-ref", "--format=%(refname)", "refs/graftui/").Split('\n').ToList());
+        Assert.Equal("line 1\n", Text(repo, "app.txt"));
+        Assert.Equal("", repo.Status());
+        Assert.Single(repo.Run("stash", "list").Split('\n'));
+    }
 }
