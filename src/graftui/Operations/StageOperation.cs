@@ -45,14 +45,23 @@ public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, 
         var moving = check.Moving;
         try
         {
-            // Hand-picked rows: the index entries are read before the act, so the undo step can put them back exactly.
-            var handPicked = check.HandPicked.Count > 0;
+            // Trust nothing from Check: the status is read again and the request is judged again right before the act.
+            var now = Call(log, StatusArgs);
+            if (!now.Success)
+                return Done(false, request.Action, moving, null, "could not read the status: " + FirstLine(now), log);
+            var judged = Judge(request, StatusParser.Parse(now.StdOut));
+            if (judged.Refusal is not null)
+                return Done(false, request.Action, moving, null, judged.Refusal, log);
+            moving = judged.Moving;
+
+            // Hand-picked rows at this point: the index entries are read before the act, so the undo step can put them back exactly.
+            var handPicked = judged.HandPicked.Count > 0;
             var paths = moving.SelectMany(f => new[] { f.Path, f.OrigPath }).OfType<string>().ToList();
             var before = handPicked ? RepoState.IndexEntries(git, paths, log) : null;
             if (handPicked && before is null)
                 return Done(false, request.Action, moving, null, "could not read the index; nothing was unstaged", log);
 
-            var act = Act(log, request.Action, check);
+            var act = Act(log, request.Action, moving, check.HasHead);
             if (!act.Success)
                 return Done(false, request.Action, moving, null, FirstLine(act), log);
 
@@ -163,18 +172,18 @@ public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, 
         return (null, rows, handPicked);
     }
 
-    private GitResult Act(List<GitResult> log, StageAction action, StageCheck c)
+    private GitResult Act(List<GitResult> log, StageAction action, IReadOnlyList<FileChange> moving, bool hasHead)
     {
         switch (action)
         {
             case StageAction.Stage:
-                return CallLiteral(log, "add", "--", c.Moving[0].Path);
+                return CallLiteral(log, "add", "--", moving[0].Path);
             case StageAction.StageAll:
                 return Call(log, "add", "-A");
             case StageAction.Unstage:
             {
-                var f = c.Moving[0];
-                if (!c.HasHead)
+                var f = moving[0];
+                if (!hasHead)
                     return CallLiteral(log, "rm", "--cached", "-q", "-f", "--", f.Path);
                 // A staged rename has two paths; both must be restored, or the old name stays staged as a deletion.
                 return f.OrigPath is null
@@ -182,7 +191,7 @@ public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, 
                     : CallLiteral(log, "restore", "--staged", "--", f.Path, f.OrigPath);
             }
             default: // UnstageAll
-                return c.HasHead
+                return hasHead
                     ? CallLiteral(log, "restore", "--staged", "--", ".")
                     : CallLiteral(log, "rm", "--cached", "-r", "-q", "-f", "--", ".");
         }
