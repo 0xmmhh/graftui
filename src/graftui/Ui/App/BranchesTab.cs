@@ -210,7 +210,6 @@ internal sealed partial class BranchesTab
 
     private void ShowPreview(GraphLayout layout)
     {
-        var clean = _app.Snapshot.Clean;
         // A preview that loaded is proof that git answers again, so an earlier preview error no longer applies.
         _app.Status.ErrorText = null;
         _app.Status.SetNeedsDraw();
@@ -227,11 +226,6 @@ internal sealed partial class BranchesTab
             {
                 MergeScenes.RefusedOverlay(grid, "HEAD is detached");
                 caption = new Caption("Switch to a branch first", Warn);
-            }
-            else if (!clean)
-            {
-                MergeScenes.RefusedOverlay(grid, "working tree has uncommitted changes");
-                caption = new Caption("Commit or stash your changes first", Warn);
             }
             else if (layout.Kind == GraphKind.Same)
             {

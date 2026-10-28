@@ -28,6 +28,9 @@ public sealed class ArtPaneView : PaneView
 
     public Caption? FallbackCaption { get; set; }
 
+    /// <summary>The rule under the direction line. Off on Branches, where the direction line stands alone; the row stays blank.</summary>
+    public bool DirectionRule { get; set; } = true;
+
     /// <summary>
     /// Where the art's grid is drawn in a pane of the given size (viewport coordinates), or null when no art fits.
     /// Used by the views and by the message form, which is laid over the art.
@@ -72,7 +75,8 @@ public sealed class ArtPaneView : PaneView
         var ah = ih >= 17 ? 11 : 8;
 
         DrawSegs(2, 1, Direction(cw), cw);
-        DrawRule(2, 2, cw);
+        if (DirectionRule)
+            DrawRule(2, 2, cw);
 
         var area = ArtArea(pw, ph);
         SceneFrame? frame = null;

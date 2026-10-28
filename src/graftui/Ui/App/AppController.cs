@@ -143,6 +143,7 @@ public sealed class AppController
             Y = 1,
             Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().Cols - CurrentLayout().BranchWidth),
             Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
+            DirectionRule = false,
         };
         Log = new LogView
         {
@@ -309,6 +310,8 @@ public sealed class AppController
         Keys.SetNeedsDraw();
         BranchList.SetNeedsDraw();
         ChangesList.SetNeedsDraw();
+        Art.DirectionRule = onChanges;
+        Art.SetNeedsDraw();
 
         if (onChanges)
         {

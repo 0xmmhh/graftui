@@ -4,11 +4,11 @@ using Terminal.Gui.ViewBase;
 
 namespace graftui.Ui.Views;
 
-/// <summary>The branch list: mark, name, ahead/behind and short hash. Columns are dropped as the pane narrows.</summary>
+/// <summary>The branch list: mark, name and ahead/behind. The ahead/behind column is dropped when the pane is too narrow for it.</summary>
 public sealed class BranchesView : PaneView
 {
     private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim), CurB = new(Ink.Cur, true);
-    private static readonly Style Inc = new(Ink.Inc), Warn = new(Ink.Warn), Hash = new(Ink.Hash);
+    private static readonly Style Inc = new(Ink.Inc), Warn = new(Ink.Warn);
 
     private int _top;
 
@@ -46,15 +46,9 @@ public sealed class BranchesView : PaneView
 
         var abW = AbWidth(Branches, Counts);
 
-        // mark + space + name + space + ab + space + hash(7) = 11 columns beyond the name and ab.
-        var nameW = innerW - 2 - 1 - abW - 1 - 7;
-        var showHash = true;
+        // mark, space, name, space, ab: the name takes what the ab column and its space leave.
+        var nameW = innerW - 4 - abW;
         var showAb = true;
-        if (nameW < 14)
-        {
-            nameW += 8; // hide the hash and its space
-            showHash = false;
-        }
         if (nameW < 6)
         {
             nameW += abW + 1; // hide the ab column and its space
@@ -77,8 +71,6 @@ public sealed class BranchesView : PaneView
             var nameStyle = b.IsCurrent ? CurB : Fg;
             DrawText(nameX, row, b.Name, nameW, nameStyle, isSel);
 
-            var x = nameX + nameW + 1;
-            var abX = x;
             if (showAb)
             {
                 if (!b.IsCurrent && Counts.TryGetValue(b.Name, out var c))
@@ -88,13 +80,9 @@ public sealed class BranchesView : PaneView
                         new($"↑{c.Ahead}", c.Ahead > 0 ? Inc : Dim),
                         new($"↓{c.Behind}", c.Behind > 0 ? Warn : Dim),
                     };
-                    Paint.Segs(this, abX, row, segs, abW, isSel);
+                    Paint.Segs(this, nameX + nameW + 1, row, segs, abW, isSel);
                 }
-                x += abW + 1;
             }
-
-            if (showHash)
-                DrawText(x, row, b.ShortHash, 7, Hash, isSel);
         }
         return true;
     }
@@ -112,7 +100,7 @@ public sealed class BranchesView : PaneView
     }
 
     /// <summary>
-    /// Pane width (border included) that shows the longest branch name in full, with its mark, the ↑↓ column and the hash.
+    /// Pane width (border included) that shows the longest branch name in full, with its mark and the ↑↓ column.
     /// The layout clamps this to its own bounds; a narrower pane truncates names.
     /// </summary>
     public static int WantedWidth(IReadOnlyList<Branch> branches, IReadOnlyDictionary<string, (int Ahead, int Behind)> counts)
@@ -120,7 +108,7 @@ public sealed class BranchesView : PaneView
         var longest = 0;
         foreach (var b in branches)
             longest = Math.Max(longest, TextFit.Columns(TextFit.Sanitize(b.Name)));
-        // border 2 + mark and space 2 + name + space 1 + ab + space 1 + hash 7
-        return 2 + 2 + longest + 1 + AbWidth(branches, counts) + 1 + 7;
+        // border 2 + mark and space 2 + name + space 1 + ab
+        return 2 + 2 + longest + 1 + AbWidth(branches, counts);
     }
 }

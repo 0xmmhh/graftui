@@ -53,6 +53,39 @@ public static class TextFit
     }
 
     /// <summary>
+    /// Two names that share one line of <paramref name="budget"/> columns. When both fit, nothing is cut. Otherwise a name that
+    /// fits in half the budget is kept whole and the other gets the rest; when neither does, each gets half. Each name gets at least
+    /// <paramref name="min"/> columns, even when that makes the line longer than the budget.
+    /// </summary>
+    public static (string A, string B) FitPair(string a, string b, int budget, int min = 8)
+    {
+        var wa = Columns(a);
+        var wb = Columns(b);
+        if (wa + wb <= budget)
+            return (Fit(a, wa), Fit(b, wb));
+
+        var half = budget / 2;
+        int limitA, limitB;
+        if (wa <= half)
+        {
+            limitA = wa;
+            limitB = budget - wa;
+        }
+        else if (wb <= half)
+        {
+            limitB = wb;
+            limitA = budget - wb;
+        }
+        else
+        {
+            limitA = half;
+            limitB = budget - half;
+        }
+
+        return (Fit(a, Math.Max(min, limitA)), Fit(b, Math.Max(min, limitB)));
+    }
+
+    /// <summary>
     /// Splits the text over at most two lines of <paramref name="width"/> columns. Text that fits is (Fit(s), null).
     /// Otherwise the first line ends at the last space that fits, and the second line goes through <see cref="Fit"/>.
     /// With no usable space the first line is cut at <paramref name="width"/>, and the rest goes through Fit.

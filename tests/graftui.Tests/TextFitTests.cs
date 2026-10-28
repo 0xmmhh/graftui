@@ -23,6 +23,40 @@ public class TextFitTests
     }
 
     [Fact]
+    public void FitPair_cuts_nothing_when_both_names_fit()
+    {
+        Assert.Equal(("feature", "main"), TextFit.FitPair("feature", "main", 20));
+    }
+
+    [Fact]
+    public void FitPair_keeps_the_name_that_fits_half_the_budget_whole()
+    {
+        Assert.Equal(("feature/confl…", "main"), TextFit.FitPair("feature/conflict", "main", 18));
+        Assert.Equal(("feature/conflict", "main"), TextFit.FitPair("feature/conflict", "main", 20));
+    }
+
+    [Fact]
+    public void FitPair_splits_the_budget_evenly_when_neither_name_fits_half()
+    {
+        var a = new string('a', 20);
+        var b = new string('b', 20);
+
+        var (x, y) = TextFit.FitPair(a, b, 20);
+
+        Assert.Equal(new string('a', 9) + "…", x);
+        Assert.Equal(new string('b', 9) + "…", y);
+    }
+
+    [Fact]
+    public void FitPair_gives_each_name_at_least_eight_columns()
+    {
+        var (x, y) = TextFit.FitPair(new string('a', 30), new string('b', 30), 10);
+
+        Assert.Equal(new string('a', 7) + "…", x);
+        Assert.Equal(new string('b', 7) + "…", y);
+    }
+
+    [Fact]
     public void Columns_counts_wide_characters_as_two()
     {
         Assert.Equal(4, TextFit.Columns("日本"));
