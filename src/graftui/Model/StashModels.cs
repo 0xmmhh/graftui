@@ -1,4 +1,5 @@
 using graftui.Git;
+using graftui.Operations;
 
 namespace graftui.Model;
 
@@ -72,3 +73,25 @@ public sealed record PopOutcome(
     string Message,
     IReadOnlyList<GitResult> Commands,
     UndoRecord? Undo = null);
+
+/// <summary>Undo the newest step. ExpectedStepRef is the step the user saw; null skips that check.</summary>
+public sealed record UndoRequest(string? ExpectedStepRef);
+
+/// <summary>
+/// Result of the checks before an undo. StepRef and StepCommit name the step on top; Step is its record, null when there is none or
+/// it cannot be read. Refusal is null when the undo may run.
+/// </summary>
+public sealed record UndoCheck(string? Refusal, string? StepRef, string? StepCommit, UndoRecord? Step, string GitDir, IReadOnlyList<GitResult> Commands)
+{
+    public bool CanRun => Refusal is null;
+
+    public bool NothingToUndo => Step is null && Refusal == ChangeRefusals.NothingToUndo;
+}
+
+public enum UndoOutcomeKind { Undone, Failed }
+
+/// <summary>
+/// Result of an undo. Caption is the line for the screen (for example "↶ Undid the commit: ..."); it is empty when the undo failed,
+/// and Message says why.
+/// </summary>
+public sealed record UndoOutcome(UndoOutcomeKind Kind, UndoRecord? Step, string Caption, string Message, IReadOnlyList<GitResult> Commands);
