@@ -23,6 +23,7 @@ internal static class DiffParser
 
     public static IReadOnlyList<DiffLine> Parse(string output, int maxLines = DefaultMaxLines)
     {
+        var unused = 1;
         var text = output.TrimEnd('\n');
         var lines = new List<DiffLine>();
         if (text.Length == 0)
