@@ -49,7 +49,8 @@ internal sealed partial class ChangesTab
         art.Scene = geo =>
         {
             var grid = AreasScenes.Static(geo, Before());
-            MergeScenes.MessageOverlay(grid, q.Question, q.Context);
+            // The overlay's title is not wrapped, so the long question goes in the wrapped body with its context.
+            MergeScenes.MessageOverlay(grid, q.Title, $"{q.Question} {q.Context}");
             return new SceneFrame(grid, new Caption($"y{q.YesLabel} · n{q.NoLabel}", Warn));
         };
         art.SetNeedsDraw();
