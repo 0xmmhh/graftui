@@ -199,11 +199,11 @@ graftui refuses, without running `git merge`, when:
 
 ## Status and plans
 
-Early, and deliberately narrow: **graftui does merges, and does them safely.** Planned next, roughly in this order (ideas, not promises):
+Early, and deliberately narrow: **graftui does merges, and does them safely.** It also covers everyday local work: the Changes tab stages, unstages, commits and amends, discards (always recoverable), stashes and pops, and `u` undoes the last steps one at a time. Planned next, roughly in this order (ideas, not promises):
 
-1. **Everyday local work** - a Changes view with diffs, stage and unstage, commit and amend, discard (always recoverable), stash, and switch, create, rename and delete branches, each with its own animation
+1. **Branches** - switch, create, rename and delete branches, each with its own animation, and "stash, merge, pop" as one guided step
 2. **Remotes** - fetch, pull (fast-forward first) and push (never forced), with ahead/behind against `origin`
-3. **History tools** - cherry-pick, rebase, undo, and a choice of merge types (no-ff, ff-only, squash, linear)
+3. **History tools** - cherry-pick, rebase, and a choice of merge types (no-ff, ff-only, squash, linear)
 4. **The smart layer** - a forecast of what each key would do, resolving conflicts inside graftui, interactive rebase, a whole-repo graph view, and plain-English explanations of each command
 
 ## Development
