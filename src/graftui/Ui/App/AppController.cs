@@ -40,6 +40,10 @@ public sealed class AppController
         MergeOp = new MergeOperation(git);
         StageOp = new StageOperation(rootGit);
         CommitOp = new CommitOperation(rootGit);
+        DiscardOp = new DiscardOperation(rootGit);
+        StashOp = new StashOperation(rootGit);
+        PopOp = new PopOperation(rootGit);
+        UndoOp = new UndoOperation(rootGit);
         Snapshot = initial;
         _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
         _repoDisplay = repoDisplay;
@@ -84,6 +88,10 @@ public sealed class AppController
     internal MergeOperation MergeOp { get; }
     internal StageOperation StageOp { get; }
     internal CommitOperation CommitOp { get; }
+    internal DiscardOperation DiscardOp { get; }
+    internal StashOperation StashOp { get; }
+    internal PopOperation PopOp { get; }
+    internal UndoOperation UndoOp { get; }
     internal QuitGate Gate { get; } = new();
 
     /// <summary>The top-level repo. The Changes tab's paths are relative to it, so its reads and writes run here.</summary>
