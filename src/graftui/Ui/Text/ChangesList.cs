@@ -3,7 +3,7 @@ using graftui.Ui.Scenes;
 
 namespace graftui.Ui.Text;
 
-public enum ChangesLineKind { Header, File, Empty, Clean }
+public enum ChangesLineKind { Header, File, Empty, Clean, Stash }
 
 /// <summary>
 /// One line of the Changes list. Row is the index into <see cref="WorkingStatus.Rows"/> for file lines, or -1.
@@ -11,15 +11,27 @@ public enum ChangesLineKind { Header, File, Empty, Clean }
 /// </summary>
 public sealed record ChangesLine(ChangesLineKind Kind, string Text, Style Style, FileChange? File, int Row);
 
-/// <summary>The Changes list, as lines: the staged group, then the unstaged group (mock changesHtml).</summary>
+/// <summary>
+/// The Changes list, as lines: the staged group, then the unstaged group (mock changesHtml). With a stash that has entries,
+/// a last line names the count and the newest entry.
+/// </summary>
 public static class ChangesList
 {
     private static readonly Style OkB = new(Ink.Ok, true), WarnB = new(Ink.Warn, true), Dim = new(Ink.Dim);
 
-    public static IReadOnlyList<ChangesLine> Build(WorkingStatus s)
+    public static IReadOnlyList<ChangesLine> Build(WorkingStatus s, StashSummary? stash = null)
     {
+        var stashLine = stash is { Count: > 0 } st
+            ? new ChangesLine(ChangesLineKind.Stash, $"Stash ({st.Count}) {st.TopMessage}", Dim, null, -1)
+            : null;
+
         if (s.Rows.Count == 0)
-            return [new ChangesLine(ChangesLineKind.Clean, "✔ working tree clean", new Style(Ink.Ok), null, -1)];
+        {
+            var clean = new List<ChangesLine> { new(ChangesLineKind.Clean, "✔ working tree clean", new Style(Ink.Ok), null, -1) };
+            if (stashLine is not null)
+                clean.Add(stashLine);
+            return clean;
+        }
 
         var lines = new List<ChangesLine>
         {
@@ -36,6 +48,8 @@ public static class ChangesList
         for (var j = 0; j < s.Unstaged.Count; j++)
             lines.Add(FileLine(s.Unstaged[j], s.Staged.Count + j));
 
+        if (stashLine is not null)
+            lines.Add(stashLine);
         return lines;
     }
 

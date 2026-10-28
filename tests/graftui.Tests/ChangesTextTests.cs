@@ -19,7 +19,7 @@ public class ChangesTextTests
     [Fact]
     public void The_hint_says_what_space_does_to_the_selected_row()
     {
-        Assert.Equal("Space stages this file · c commits what is staged",
+        Assert.Equal("Space stages this file · x discards it · c commits what is staged",
             ChangesText.BrowseHint(new FileChange("a", null, ChangeSide.Unstaged, ChangeKind.Modified)));
         Assert.Equal("Space unstages this file · c commits what is staged",
             ChangesText.BrowseHint(new FileChange("a", null, ChangeSide.Staged, ChangeKind.Modified)));
@@ -56,5 +56,33 @@ public class ChangesTextTests
         Assert.Equal("staged    1 file", string.Concat(lines[0].Select(s => s.Text)));
         Assert.Equal("unstaged  0 files", string.Concat(lines[1].Select(s => s.Text)));
         Assert.Equal("HEAD      main abc1234 Add app", string.Concat(lines[2].Select(s => s.Text)));
+    }
+
+    [Fact]
+    public void The_summary_adds_a_stash_line_before_the_head_when_there_is_a_stash()
+    {
+        var status = new WorkingStatus([], []);
+
+        var lines = ChangesText.Summary(status, Head, new StashSummary(1, "a1", "On main: wip"));
+
+        Assert.Equal(4, lines.Count);
+        Assert.Equal("stash     1 entry", string.Concat(lines[2].Select(s => s.Text)));
+        Assert.StartsWith("HEAD      ", string.Concat(lines[3].Select(s => s.Text)));
+    }
+
+    [Fact]
+    public void The_stash_line_counts_entries_in_the_plural()
+    {
+        var lines = ChangesText.Summary(WorkingStatus.Empty, Head, new StashSummary(3, "a1", "x"));
+
+        Assert.Equal("stash     3 entries", string.Concat(lines[2].Select(s => s.Text)));
+    }
+
+    [Fact]
+    public void The_plain_direction_has_the_verb_and_the_subject_and_no_arrow()
+    {
+        var segs = ChangesText.PlainDirection("stash pop", "wip test", 200);
+
+        Assert.Equal("stash pop    wip test", string.Concat(segs.Select(s => s.Text)));
     }
 }
