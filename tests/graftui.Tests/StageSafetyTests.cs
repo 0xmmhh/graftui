@@ -422,4 +422,49 @@ public class StageSafetyTests
         Assert.Equal([new IndexEntry("new.txt", "", "")], outcome.Undo!.IndexAfter);
         Assert.Equal("100644", outcome.Undo.IndexBefore![0].Mode);
     }
+
+    [Fact]
+    public void A_row_that_becomes_hand_picked_after_the_check_is_refused_until_it_is_confirmed()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "base\n", "Add app");
+        repo.Write("app.txt", "staged\n");
+        repo.Run("add", "app.txt");
+        var request = new StageRequest(StageAction.Unstage, Find(repo, ChangeSide.Staged, "app.txt"));
+        var op = new StageOperation(repo.Git);
+        var check = op.Check(request);
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Empty(check.HandPicked);
+
+        // Edited between the check and the run: the staged version is now hand-picked.
+        repo.Write("app.txt", "edited again\n");
+        var before = repo.Status();
+        var outcome = op.Run(request, check);
+
+        Assert.False(outcome.Success);
+        Assert.Equal(ChangeRefusals.HandPickedNotConfirmed("app.txt"), outcome.Message);
+        Assert.Null(outcome.Undo);
+        Assert.Equal(before, repo.Status());
+    }
+
+    [Fact]
+    public void A_confirmed_run_saves_the_index_entries_of_what_is_hand_picked_at_run_time()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "base\n", "Add app");
+        repo.Write("app.txt", "staged\n");
+        repo.Run("add", "app.txt");
+        var request = new StageRequest(StageAction.Unstage, Find(repo, ChangeSide.Staged, "app.txt"), HandPickedConfirmed: true);
+        var op = new StageOperation(repo.Git);
+        var check = op.Check(request);
+        Assert.True(check.CanRun, check.Refusal);
+
+        repo.Write("app.txt", "edited again\n");
+        var outcome = op.Run(request, check);
+
+        Assert.True(outcome.Success, outcome.Message);
+        Assert.NotNull(outcome.Undo);
+        Assert.Equal("app.txt", outcome.Undo!.IndexBefore![0].Path);
+        Assert.Equal(" M app.txt", repo.Status());
+    }
 }
