@@ -14,6 +14,17 @@ namespace graftui.Operations;
 public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, UndoCheck, UndoOutcome>
 {
     private const string StashRef = "refs/stash";
+    private const string UndoPopRescue = "refs/graftui/rescue/undo-pop";
+    private const string UndoStashRescue = "refs/graftui/rescue/undo-stash";
+
+    /// <summary>The copies that a failed pop or undo keeps. While one exists, nothing is undone: the user inspects or deletes it first.</summary>
+    private static readonly (string Ref, string What)[] KeptCopies =
+    [
+        (PopOperation.RescueRef, "the state from before an earlier pop"),
+        (UndoPopRescue, "the state after a pop, from an undo of it that failed"),
+        (UndoStashRescue, "the state from before a stash undo that failed"),
+    ];
+
     private static readonly string[] StatusArgs = ["status", "--porcelain=v2", "-z", "--untracked-files=all"];
 
     public UndoCheck Check(UndoRequest request)
@@ -102,6 +113,10 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (Malformed(step))
             return ChangeRefusals.UndoUnreadable(entry.Ref);
 
+        var kept = KeptCopy(log);
+        if (kept is not null)
+            return kept;
+
         var inProgress = RepoState.InProgress(a => Call(log, a), gitDir);
         if (inProgress is not null)
             return ChangeRefusals.InProgress(inProgress);
@@ -122,6 +137,33 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
             UndoKind.Pop => PopGuard(step, gitDir, log),
             _ => UnstageGuard(step, log),
         };
+    }
+
+    /// <summary>The refusal for the first kept copy that exists, or null when none does (or git fails, which is returned as the reason).</summary>
+    private string? KeptCopy(List<GitResult> log)
+    {
+        foreach (var (reference, what) in KeptCopies)
+        {
+            var r = Call(log, "rev-parse", "-q", "--verify", reference);
+            if (r.Success)
+                return ChangeRefusals.RescueSaved(what, reference);
+            if (r.ExitCode != 1)
+                return GitClient.Describe(r);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Saves a copy create-only under a rescue ref, so that a failed undo never leaves the only copy of a state behind. The
+    /// message names the ref, the commit and how to restore it. Nothing is undone, and the undo step stays on top.
+    /// </summary>
+    private string SaveCopy(List<GitResult> log, string reference, string commit, string problem)
+    {
+        var saved = Call(log, "update-ref", reference, commit, "");
+        var where = saved.Success
+            ? $"your changes are saved in {reference} (commit {commit}): restore them with git restore --source={commit} --worktree -- ., then git update-ref -d {reference}"
+            : $"your changes are in commit {commit} ({GitClient.Describe(saved)})";
+        return $"{problem}; {where}; the undo step is kept";
     }
 
     /// <summary>A record that lacks a field its kind needs. Such a record is refused, never run with a null or empty value.</summary>
@@ -344,30 +386,40 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (copy is null)
             return ("could not save the working tree; nothing was undone", "");
 
+        // Create-only, before git moves anything: a copy kept by an earlier failed undo is never replaced.
+        var saved = Call(log, "update-ref", UndoStashRescue, copy, "");
+        if (!saved.Success)
+            return ($"could not save a safety copy ({GitClient.Describe(saved)}); nothing was undone", "");
+
         var pop = Call(log, "stash", "pop", "-q", "--index");
         if (!pop.Success)
         {
             if (state.Take(log) == before)
+            {
+                Call(log, "update-ref", "-d", UndoStashRescue, copy);
                 return ($"git refused to bring the stash back ({FirstLine(pop)}); nothing changed, the entry is kept", "");
+            }
 
             var removable = StashUntracked(s.StashCommit!, log);
             var problem = removable is null ? "could not list the stash's untracked files" : state.RestoreTo(before, copy, removable, log);
-            return problem is null
-                ? ($"git stash pop failed ({FirstLine(pop)}); the state was put back and the stash entry is kept", "")
-                : ($"{problem}; the state before the undo is commit {copy}", "");
+            if (problem is not null)
+                return (SaveCopy(log, UndoStashRescue, copy, problem), "");
+            Call(log, "update-ref", "-d", UndoStashRescue, copy);
+            return ($"git stash pop failed ({FirstLine(pop)}); the state was put back and the stash entry is kept", "");
         }
 
-        // Verify: the stash list is as it was before the stash, and the index is the stash's index.
+        // Verify: the stash list is as it was before the stash, and the index is the stash's index. The copy is kept if not.
         if (RevParse(log, StashRef) != s.StashBelow)
-            return ("the stash list is not as expected after the undo; check git stash list", "");
+            return (SaveCopy(log, UndoStashRescue, copy, "the stash list is not as expected after the undo; check git stash list"), "");
         var indexTree = Hash(Call(log, "write-tree"));
         var stashIndex = Hash(Call(log, "rev-parse", "-q", "--verify", s.StashCommit + "^2^{tree}"));
         if (indexTree is null || indexTree != stashIndex)
-            return ("the index is not the stash's index after the undo; check git status", "");
+            return (SaveCopy(log, UndoStashRescue, copy, "the index is not the stash's index after the undo; check git status"), "");
 
         var st = Call(log, StatusArgs);
         if (!st.Success)
-            return ("could not read the status after the undo: " + GitClient.Describe(st), "");
+            return (SaveCopy(log, UndoStashRescue, copy, "could not read the status after the undo: " + GitClient.Describe(st)), "");
+        Call(log, "update-ref", "-d", UndoStashRescue, copy);
         var count = StatusParser.Parse(st.StdOut).ChangedPaths;
         return (null, $"↶ Unstashed {count} {(count == 1 ? "file" : "files")}");
     }
@@ -393,7 +445,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
 
         var problem = state.RestoreTo(before, s.StateBefore!, untracked, log);
         if (problem is not null)
-            return ($"{problem}; the undo step is kept", "");
+            return (SaveCopy(log, UndoPopRescue, s.StateAfter!, problem), "");
 
         var store = Call(log, "stash", "store", "-m", s.StashMessage!, s.StashCommit!);
         if (!store.Success)

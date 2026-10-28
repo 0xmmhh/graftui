@@ -16,7 +16,7 @@ namespace graftui.Operations;
 public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopCheck, PopOutcome>
 {
     private const string StashRef = "refs/stash";
-    private const string RescueRef = "refs/graftui/rescue/pop";
+    public const string RescueRef = "refs/graftui/rescue/pop";
     private static readonly string[] StatusArgs = ["status", "--porcelain=v2", "-z", "--untracked-files=all"];
 
     public PopCheck Check(PopRequest request)
