@@ -248,6 +248,9 @@ internal sealed partial class ChangesTab
             && Snapshot.Stash.Count == snap.Stash.Count;
         if (unchanged)
         {
+            // The same rows and head, but the undo state may have moved (a merge saved a step): keep the newer snapshot.
+            Snapshot = snap;
+            SyncKeyBar();
             RequestDiff();
             return;
         }
@@ -500,13 +503,21 @@ internal sealed partial class ChangesTab
         return -1;
     }
 
-    /// <summary>The key bar's Space label follows the selected row: unstage for a staged row, stage otherwise.</summary>
+    /// <summary>The Changes key bar: which keys act now, from the last status read and the selected row.</summary>
     private void SyncKeyBar()
     {
-        var label = SelectedRow?.Side == ChangeSide.Staged ? "unstage" : "stage";
-        if (_app.Keys.SpaceLabel == label)
+        var snap = Snapshot;
+        var state = snap is null ? ChangesKeyState.Empty : new ChangesKeyState(
+            RowCount: Rows.Count,
+            SelectedSide: SelectedRow?.Side,
+            HasUnstaged: snap.Status.Unstaged.Count > 0,
+            HasStaged: snap.Status.Staged.Count > 0,
+            HasHead: snap.Head.HeadHash is not null,
+            HasStash: snap.Stash.Count > 0,
+            HasUndo: snap.HasUndo);
+        if (_app.Keys.ChangesState == state)
             return;
-        _app.Keys.SpaceLabel = label;
+        _app.Keys.ChangesState = state;
         _app.Keys.SetNeedsDraw();
     }
 }

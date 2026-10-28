@@ -84,7 +84,7 @@ try
 
     // Changes-tab paths are relative to the top-level folder, so that work runs there even when graftui was started in a subfolder.
     var root = git.GetTopLevel() ?? git.RepoPath;
-    gui = new AppController(app, git, new GitClient(root), snapshot, repoDisplay, sandboxMode);
+    gui = new AppController(app, git, new GitClient(root), snapshot, repoDisplay);
     var window = gui.BuildWindow();
     windowHandle = window;
     app.Run(window);

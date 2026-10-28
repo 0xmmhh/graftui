@@ -229,4 +229,30 @@ public class RepoReaderChangesTests
 
         Assert.Equal(new DiffLine(DiffLineKind.Note, "a separate git repository; not previewed"), Assert.Single(diff.Lines));
     }
+
+    [Fact]
+    public void Has_undo_is_false_until_an_undo_step_is_saved_and_both_reads_agree()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("a.txt", "a\n", "Add a");
+        var reader = new RepoReader(repo.Git);
+
+        Assert.False(reader.LoadSnapshot(withCounts: false, CancellationToken.None).HasUndo);
+        Assert.False(reader.LoadChanges(CancellationToken.None).HasUndo);
+
+        repo.Run("update-ref", "refs/graftui/undo/000001", repo.Head, "");
+
+        Assert.True(repo.Git.HasUndoSteps());
+        Assert.True(reader.LoadSnapshot(withCounts: false, CancellationToken.None).HasUndo);
+        Assert.True(reader.LoadChanges(CancellationToken.None).HasUndo);
+    }
+
+    [Fact]
+    public void Has_undo_steps_is_not_logged_as_a_command()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("a.txt", "a\n", "Add a");
+
+        Assert.False(repo.Git.HasUndoSteps());
+    }
 }

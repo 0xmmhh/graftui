@@ -4,10 +4,12 @@ namespace graftui.Model;
 /// The branch list and working-tree state at one moment.
 /// CurrentBranch is "" when HEAD is detached; HeadHash is null when there are no commits yet.
 /// Counts maps branch name to (Ahead, Behind) relative to HEAD. Missing entries are unknown.
+/// HasUndo is true when an undo step is saved (a ref under refs/graftui/undo/).
 /// </summary>
 public sealed record RepoSnapshot(
     string CurrentBranch,
     string? HeadHash,
     bool Clean,
     IReadOnlyList<Branch> Branches,
-    IReadOnlyDictionary<string, (int Ahead, int Behind)> Counts);
+    IReadOnlyDictionary<string, (int Ahead, int Behind)> Counts,
+    bool HasUndo = false);

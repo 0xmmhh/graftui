@@ -23,14 +23,13 @@ public sealed class AppController
     private static readonly Style Bad = new(Ink.Bad);
 
     private readonly string _repoDisplay;
-    private readonly bool _sandboxMode;
     private int _wantedBranchWidth;
     private volatile bool _outcomeShown;
 
     private TooSmallView _tooSmall = null!;
     private Window? _window;
 
-    public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay, bool sandboxMode)
+    public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay)
     {
         App = app;
         Git = git;
@@ -47,7 +46,6 @@ public sealed class AppController
         Snapshot = initial;
         _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
         _repoDisplay = repoDisplay;
-        _sandboxMode = sandboxMode;
         BranchesTab = new BranchesTab(this);
         ChangesTab = new ChangesTab(this);
         ChangesAnimator = new ChangesAnimator(this);
@@ -162,7 +160,7 @@ public sealed class AppController
             Visible = false,
         };
         BuildMessageBox();
-        Keys = new KeyBarView { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1, SandboxMode = _sandboxMode };
+        Keys = new KeyBarView { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1 };
         _tooSmall = new TooSmallView
         {
             X = 0,
@@ -176,10 +174,10 @@ public sealed class AppController
         BranchList.Branches = Snapshot.Branches;
         BranchList.Counts = Snapshot.Counts;
         BranchList.Selected = BranchesTab.Selected;
-        Keys.SandboxMode = _sandboxMode;
         _tooSmall.Cols = App.Screen.Width;
         _tooSmall.Rows = App.Screen.Height;
         BranchesTab.ShowInitialState();
+        SyncBranchKeys();
 
         window.Add(Status, BranchList, ChangesList, Art, Log, Keys, _tooSmall);
 
@@ -339,6 +337,7 @@ public sealed class AppController
         _wantedBranchWidth = BranchesView.WantedWidth(s.Branches, s.Counts);
         _window?.SetNeedsLayout();
         BranchesTab.KeepSelection(selName, s);
+        SyncBranchKeys();
 
         Status.Snapshot = s;
         Status.ErrorText = null;
@@ -348,6 +347,21 @@ public sealed class AppController
         BranchList.Counts = s.Counts;
         BranchList.Selected = BranchesTab.Selected;
         BranchList.SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// The Branches key bar: m shows when the selected branch can be merged (it is not the current one, and it is ahead of HEAD or
+    /// its counts are not known yet), u when there is an undo step. Called whenever the snapshot or the selection changes.
+    /// </summary>
+    internal void SyncBranchKeys()
+    {
+        var s = Snapshot;
+        var sel = BranchesTab.Selected < s.Branches.Count ? s.Branches[BranchesTab.Selected] : null;
+        var state = new BranchesKeyState(s.Branches.Count, BranchesKeyState.MergeOffered(sel, s.Counts), s.HasUndo);
+        if (Keys is null || Keys.BranchesState == state)
+            return;
+        Keys.BranchesState = state;
+        Keys.SetNeedsDraw();
     }
 
     internal void ShowGitError(Exception ex)

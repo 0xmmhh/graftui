@@ -58,6 +58,7 @@ internal sealed partial class BranchesTab
         _app.Result = null;
         _app.BranchList.Selected = _selected;
         _app.BranchList.SetNeedsDraw();
+        _app.SyncBranchKeys();
         RequestPreview();
     }
 

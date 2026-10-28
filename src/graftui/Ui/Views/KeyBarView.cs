@@ -1,3 +1,4 @@
+using graftui.Model;
 using graftui.Ui.Text;
 using Terminal.Gui.ViewBase;
 using Attribute = Terminal.Gui.Drawing.Attribute;
@@ -7,21 +8,23 @@ namespace graftui.Ui.Views;
 /// <summary>Which keys the bar lists: the branches, the changes, a commit message form, a yes/no question, or a one-line message box.</summary>
 public enum KeyBarMode { Branches, Changes, Input, Ask, Message }
 
-/// <summary>Bottom row: the keys that work right now. While a merge or another git call runs, only quit is offered.</summary>
+/// <summary>
+/// Bottom row: the keys that work right now. While a merge or another git call runs, only quit is offered.
+/// The keys follow <see cref="ChangesState"/> and <see cref="BranchesState"/>, which the tabs keep up to date.
+/// </summary>
 public sealed class KeyBarView : View
 {
-    private const string SandboxNote = "practice sandbox · rebuilt on every --sandbox launch";
-
-    private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim);
+    private static readonly Style Fg = new(Ink.Fg);
 
     public bool Busy { get; set; }
 
-    public bool SandboxMode { get; set; }
-
     public KeyBarMode Mode { get; set; } = KeyBarMode.Branches;
 
-    /// <summary>What Space does on the Changes tab: "stage" or "unstage", by the selected row.</summary>
-    public string SpaceLabel { get; set; } = "stage";
+    /// <summary>What the Changes tab's keys depend on. Empty until the first status read.</summary>
+    public ChangesKeyState ChangesState { get; set; } = ChangesKeyState.Empty;
+
+    /// <summary>What the Branches tab's keys depend on.</summary>
+    public BranchesKeyState BranchesState { get; set; } = BranchesKeyState.Empty;
 
     /// <summary>The key that answers yes to the question on screen: "y", "1" or "2".</summary>
     public string AskKey { get; set; } = "y";
@@ -60,20 +63,13 @@ public sealed class KeyBarView : View
             }
         }
 
-        if (SandboxMode)
-        {
-            var cols = TextFit.Columns(SandboxNote);
-            var start = Math.Max(x + 2, w - 2 - cols);
-            if (start < w - 1)
-                Paint.Text(this, start, 0, SandboxNote, w - 1 - start, Dim);
-        }
         return true;
     }
 
     /// <summary>The (key, label, priority) items for the current mode. Labels start with a space.</summary>
     private IReadOnlyList<(string Key, string Label, int Priority)> Items() => Mode switch
     {
-        KeyBarMode.Changes => ChangesItems(SpaceLabel),
+        KeyBarMode.Changes => ChangesItems(ChangesState),
         KeyBarMode.Input =>
         [
             ("Enter", " save", 4),
@@ -92,38 +88,55 @@ public sealed class KeyBarView : View
             ("n", AskNoLabel, 4),
             ("Esc", " cancel", 5),
         ],
-        _ => BranchesItems(),
+        _ => BranchesItems(BranchesState),
     };
 
     /// <summary>
-    /// The Changes tab's keys, in the order they are listed. Priority decides what is dropped first when the bar is narrow
-    /// (higher is kept): Esc, Space, c, x, z, Z, u, A, a, U, Tab, ↑↓.
+    /// The Changes tab's keys that act now, in the order they are listed. Priority decides what is dropped first when the bar is
+    /// narrow (higher is kept): Esc, Space, c, x, z, Z, u, A, a, U, Tab, ↑↓. Space says stage or unstage by the selected row.
     /// </summary>
-    internal static IReadOnlyList<(string Key, string Label, int Priority)> ChangesItems(string spaceLabel) =>
-    [
-        ("Tab", " branches", 2),
-        ("↑↓", " file", 1),
-        ("Space", " " + spaceLabel, 11),
-        ("a", " stage all", 4),
-        ("U", " unstage all", 3),
-        ("c", " commit", 10),
-        ("A", " amend", 5),
-        ("x", " discard", 9),
-        ("z", " stash", 8),
-        ("Z", " pop", 7),
-        ("u", " undo", 6),
-        ("Esc", " quit", 12),
-    ];
+    internal static IReadOnlyList<(string Key, string Label, int Priority)> ChangesItems(ChangesKeyState s)
+    {
+        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " branches", 2) };
+        if (s.RowCount >= 2)
+            items.Add(("↑↓", " file", 1));
+        if (s.SelectedSide is { } side)
+            items.Add(("Space", side == ChangeSide.Staged ? " unstage" : " stage", 11));
+        if (s.HasUnstaged)
+            items.Add(("a", " stage all", 4));
+        if (s.HasStaged)
+            items.Add(("U", " unstage all", 3));
+        if (s.HasStaged)
+            items.Add(("c", " commit", 10));
+        if (s.HasHead)
+            items.Add(("A", " amend", 5));
+        if (s.SelectedSide == ChangeSide.Unstaged)
+            items.Add(("x", " discard", 9));
+        if (s.RowCount > 0)
+            items.Add(("z", " stash", 8));
+        if (s.HasStash)
+            items.Add(("Z", " pop", 7));
+        if (s.HasUndo)
+            items.Add(("u", " undo", 6));
+        items.Add(("Esc", " quit", 12));
+        return items;
+    }
 
-    /// <summary>The Branches tab's keys. Priority: Esc, m, u, ↑↓, Tab.</summary>
-    internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems() =>
-    [
-        ("Tab", " changes", 1),
-        ("↑↓", " select", 2),
-        ("m", " merge", 4),
-        ("u", " undo", 3),
-        ("Esc", " quit", 5),
-    ];
+    /// <summary>
+    /// The Branches tab's keys that act now. Priority: Esc, m, u, ↑↓, Tab.
+    /// </summary>
+    internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s)
+    {
+        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " changes", 1) };
+        if (s.BranchCount >= 2)
+            items.Add(("↑↓", " select", 2));
+        if (s.CanMerge)
+            items.Add(("m", " merge", 4));
+        if (s.HasUndo)
+            items.Add(("u", " undo", 3));
+        items.Add(("Esc", " quit", 5));
+        return items;
+    }
 
     /// <summary>
     /// The items that fit in <paramref name="width"/> columns, in their original order. Two spaces between items when all of them

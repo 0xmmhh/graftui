@@ -38,7 +38,8 @@ public sealed class RepoReader(GitClient git)
             }
         }
 
-        return new RepoSnapshot(current, head, clean, branches, counts);
+        ct.ThrowIfCancellationRequested();
+        return new RepoSnapshot(current, head, clean, branches, counts, git.HasUndoSteps());
     }
 
     public GraphLayout LoadLayout(RepoSnapshot snap, Branch sel, CancellationToken ct)
@@ -111,7 +112,8 @@ public sealed class RepoReader(GitClient git)
         if (!stashes.Success)
             throw new InvalidOperationException(GitClient.Describe(stashes));
 
-        return new ChangesSnapshot(working, line, status.StdOut, StashSummaryOf(stashes.StdOut));
+        ct.ThrowIfCancellationRequested();
+        return new ChangesSnapshot(working, line, status.StdOut, StashSummaryOf(stashes.StdOut), git.HasUndoSteps());
     }
 
     /// <summary>The stash list's lines: their number, and the newest entry's commit and reflog subject (line 1).</summary>
