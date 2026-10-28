@@ -200,7 +200,7 @@ internal sealed partial class ChangesTab
 
         art.Title = "Amend pushed commit?";
         art.Direction = cols => [new Seg("amend        ", Dim), new Seg(TextFit.Fit($"{shortHash} {subject}", Math.Max(8, cols - 13)), FgB)];
-        art.Below = Summary();
+        art.Below = HeadBelow();
         art.Panel = null;
         art.FallbackCaption = null;
         art.Scene = geo =>
@@ -258,7 +258,7 @@ internal sealed partial class ChangesTab
         var branch = check.Branch.Length == 0 ? "HEAD" : check.Branch;
         art.Direction = cols => ChangesText.OpDirection(amend ? "amend" : "commit", MergeScenes.Plural(staged, "staged file"),
             [new Seg(branch, CurB), new Seg(" (current)", Dim)], cols);
-        art.Below = Summary();
+        art.Below = HeadBelow();
         art.Panel = null;
         art.FallbackCaption = null;
         art.Scene = geo => FormFrame(geo);
@@ -322,7 +322,7 @@ internal sealed partial class ChangesTab
     private void StartCommit(CommitRequest request)
     {
         var before = Before();
-        var below = Summary();
+        IReadOnlyList<IReadOnlyList<Seg>> below = HeadBelow();
         var commitOp = _app.CommitOp;
         var animator = _app.ChangesAnimator;
         var areaOp = request.Amend ? AreasOp.Amend : AreasOp.Commit;

@@ -43,7 +43,7 @@ internal sealed partial class ChangesTab
         var art = _app.Art;
         art.Title = q.Title;
         art.Direction = q.Direction;
-        art.Below = Summary();
+        art.Below = HeadBelow();
         art.Panel = null;
         art.FallbackCaption = null;
         art.Scene = geo =>

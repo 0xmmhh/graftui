@@ -17,18 +17,6 @@ public class ChangesTextTests
     }
 
     [Fact]
-    public void The_hint_says_what_space_does_to_the_selected_row()
-    {
-        Assert.Equal("Space stages this file · x discards it · c commits what is staged",
-            ChangesText.BrowseHint(new FileChange("a", null, ChangeSide.Unstaged, ChangeKind.Modified)));
-        Assert.Equal("Space unstages this file · c commits what is staged",
-            ChangesText.BrowseHint(new FileChange("a", null, ChangeSide.Staged, ChangeKind.Modified)));
-        Assert.Equal("resolve the conflict outside graftui first",
-            ChangesText.BrowseHint(new FileChange("a", null, ChangeSide.Unstaged, ChangeKind.Conflicted)));
-        Assert.Equal("", ChangesText.BrowseHint(null));
-    }
-
-    [Fact]
     public void Stage_direction_names_the_file_and_the_target()
     {
         var segs = ChangesText.OpDirection("stage", "README.md", [new Seg("staging area", new Style(Ink.Dim))], 200);
@@ -46,36 +34,33 @@ public class ChangesTextTests
     }
 
     [Fact]
-    public void The_summary_has_three_lines_with_the_counts_and_the_head()
+    public void The_head_line_is_one_line_with_the_stash_count_before_the_subject()
     {
-        var status = new WorkingStatus([new FileChange("a", null, ChangeSide.Staged, ChangeKind.Modified)], []);
+        var line = ChangesText.HeadStashLine(Head, new StashSummary(0, null, null));
 
-        var lines = ChangesText.Summary(status, Head);
-
-        Assert.Equal(3, lines.Count);
-        Assert.Equal("staged    1 file", string.Concat(lines[0].Select(s => s.Text)));
-        Assert.Equal("unstaged  0 files", string.Concat(lines[1].Select(s => s.Text)));
-        Assert.Equal("HEAD      main abc1234 Add app", string.Concat(lines[2].Select(s => s.Text)));
+        Assert.Equal("HEAD  main abc1234  ·  stash 0  ·  Add app", string.Concat(line.Select(s => s.Text)));
+        Assert.Equal(Ink.Dim, line.First(s => s.Text == "stash 0").Style.Ink);
     }
 
     [Fact]
-    public void The_summary_adds_a_stash_line_before_the_head_when_there_is_a_stash()
+    public void The_stash_count_is_coloured_when_there_are_entries_and_is_left_out_without_a_stash()
     {
-        var status = new WorkingStatus([], []);
+        var line = ChangesText.HeadStashLine(Head, new StashSummary(3, "a1", "x"));
+        Assert.Equal("HEAD  main abc1234  ·  stash 3  ·  Add app", string.Concat(line.Select(s => s.Text)));
+        Assert.Equal(Ink.Inc, line.First(s => s.Text == "stash 3").Style.Ink);
 
-        var lines = ChangesText.Summary(status, Head, new StashSummary(1, "a1", "On main: wip"));
-
-        Assert.Equal(4, lines.Count);
-        Assert.Equal("stash     1 entry", string.Concat(lines[2].Select(s => s.Text)));
-        Assert.StartsWith("HEAD      ", string.Concat(lines[3].Select(s => s.Text)));
+        Assert.Equal("HEAD  main abc1234  ·  Add app", string.Concat(ChangesText.HeadStashLine(Head, null).Select(s => s.Text)));
     }
 
     [Fact]
-    public void The_stash_line_counts_entries_in_the_plural()
+    public void The_head_line_says_detached_and_no_commits_when_there_is_nothing_to_name()
     {
-        var lines = ChangesText.Summary(WorkingStatus.Empty, Head, new StashSummary(3, "a1", "x"));
+        var detached = new HeadLine("", "abc1234def", [Layouts.C("abc1234def", 1, "Add app")], false);
+        var unborn = new HeadLine("main", null, [], false);
 
-        Assert.Equal("stash     3 entries", string.Concat(lines[2].Select(s => s.Text)));
+        Assert.Equal("HEAD  HEAD (detached) abc1234  ·  stash 0  ·  Add app",
+            string.Concat(ChangesText.HeadStashLine(detached, new StashSummary(0, null, null)).Select(s => s.Text)));
+        Assert.Equal("HEAD  main no commits  ·  stash 0", string.Concat(ChangesText.HeadStashLine(unborn, new StashSummary(0, null, null)).Select(s => s.Text)));
     }
 
     [Fact]

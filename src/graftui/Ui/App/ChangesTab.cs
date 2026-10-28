@@ -179,8 +179,8 @@ internal sealed partial class ChangesTab
     /// <summary>The short hash of HEAD, or "no commits" on an unborn branch.</summary>
     private static string HeadText(string? hash) => string.IsNullOrEmpty(hash) ? "no commits" : Short(hash);
 
-    private IReadOnlyList<IReadOnlyList<Seg>> Summary() =>
-        Snapshot is null ? [] : ChangesText.Summary(Snapshot.Status, Snapshot.Head, Snapshot.Stash);
+    private IReadOnlyList<IReadOnlyList<Seg>> HeadBelow() =>
+        Snapshot is null ? [] : [ChangesText.HeadStashLine(Snapshot.Head, Snapshot.Stash)];
 
     private void ClearFlash()
     {
@@ -432,7 +432,7 @@ internal sealed partial class ChangesTab
         });
     }
 
-    /// <summary>Draws the browse screen: the selected file's diff, its direction line, the summary and the hint.</summary>
+    /// <summary>Draws the browse screen: the selected file's diff, its direction line, and the HEAD and stash line.</summary>
     private void ShowBrowse()
     {
         var art = _app.Art;
@@ -444,7 +444,7 @@ internal sealed partial class ChangesTab
         {
             art.Title = done.Result!.Title;
             art.Direction = _resultDirection ?? (_ => []);
-            art.Below = ChangesText.Summary(snap.Status, snap.Head, snap.Stash);
+            art.Below = [ChangesText.HeadStashLine(snap.Head, snap.Stash)];
             art.Panel = null;
             art.FallbackCaption = null;
             art.Scene = geo => done.Final(geo);
@@ -465,7 +465,7 @@ internal sealed partial class ChangesTab
 
         var head = snap.Head;
         art.Direction = cols => ChangesText.BrowseDirection(row, head, cols);
-        art.Below = ChangesText.Summary(snap.Status, head, snap.Stash);
+        art.Below = [ChangesText.HeadStashLine(head, snap.Stash)];
         art.Panel = null;
 
         if (row is not null && _diff?.File != row)
@@ -476,10 +476,9 @@ internal sealed partial class ChangesTab
         else
         {
             var diff = row is null ? null : _diff;
-            var hint = new Caption(ChangesText.BrowseHint(row), Dim);
             art.FallbackCaption = null;
-            // The flash (a refusal or a notice) replaces the hint until the next key.
-            art.Scene = geo => new SceneFrame(AreasScenes.Diff(geo, diff).Grid, _flash ?? hint);
+            // The flash (a refusal or a notice) is the only caption; it goes at the next key.
+            art.Scene = geo => new SceneFrame(AreasScenes.Diff(geo, diff).Grid, _flash);
         }
         art.SetNeedsDraw();
     }

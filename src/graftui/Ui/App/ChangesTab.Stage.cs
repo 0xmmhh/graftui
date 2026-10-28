@@ -91,7 +91,7 @@ internal sealed partial class ChangesTab
         var before = new AreasModel(snap.Status.Unstaged, snap.Status.Staged, snap.Head, snap.Stash);
         var staging = request.Action is StageAction.Stage or StageAction.StageAll;
         var areaOp = staging ? AreasOp.Stage : AreasOp.Unstage;
-        var below = ChangesText.Summary(snap.Status, snap.Head, snap.Stash);
+        IReadOnlyList<IReadOnlyList<Seg>> below = [ChangesText.HeadStashLine(snap.Head, snap.Stash)];
         var stageOp = _app.StageOp;
         var animator = _app.ChangesAnimator;
         BeginBusy();
