@@ -48,7 +48,7 @@ New operations follow the shape in `src/graftui/Operations/IGitOperation.cs`: ch
 ## Pull requests
 
 - One change per pull request, on a branch of its own.
-- `dotnet build graftui.slnx` must have **no warnings** (warnings are errors), and `dotnet test graftui.slnx` must pass.
+- `dotnet build graftui.slnx` must have **no warnings** (warnings are errors), and `dotnet test graftui.slnx` must pass. CI runs both on every pull request to `main`, and the pull request can't be merged until the `build-and-test` check is green.
 - Match the style of the code around you. Comments explain why, not what.
 - Write commit messages that say what changed and why, in the imperative ("Add stash pop", not "Added stash pop").
 - If the change is visible, describe what you see before and after, or attach a screenshot.
