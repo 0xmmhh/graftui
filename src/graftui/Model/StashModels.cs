@@ -1,5 +1,4 @@
 using graftui.Git;
-using graftui.Operations;
 
 namespace graftui.Model;
 
@@ -79,13 +78,12 @@ public sealed record UndoRequest(string? ExpectedStepRef);
 
 /// <summary>
 /// Result of the checks before an undo. StepRef and StepCommit name the step on top; Step is its record, null when there is none or
-/// it cannot be read. Refusal is null when the undo may run.
+/// it cannot be read. Refusal is null when the undo may run. NothingToUndo is set when the history is empty (not a refusal of a step).
 /// </summary>
-public sealed record UndoCheck(string? Refusal, string? StepRef, string? StepCommit, UndoRecord? Step, string GitDir, IReadOnlyList<GitResult> Commands)
+public sealed record UndoCheck(string? Refusal, string? StepRef, string? StepCommit, UndoRecord? Step, string GitDir, IReadOnlyList<GitResult> Commands,
+    bool NothingToUndo = false)
 {
     public bool CanRun => Refusal is null;
-
-    public bool NothingToUndo => Step is null && Refusal == ChangeRefusals.NothingToUndo;
 }
 
 public enum UndoOutcomeKind { Undone, Failed }

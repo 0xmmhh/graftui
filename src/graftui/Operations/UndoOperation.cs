@@ -52,7 +52,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (listing is not null)
             return Refused(listing, log);
         if (entry is null)
-            return Refused(ChangeRefusals.NothingToUndo, log);
+            return NothingLeft(log);
         if (entry.Step is null)
             return new UndoCheck(ChangeRefusals.UndoUnreadable(entry.Ref), entry.Ref, entry.Commit, null, "", log);
 
@@ -507,6 +507,9 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
 
     private static UndoCheck Refused(string reason, List<GitResult> log) =>
         new(reason, null, null, null, "", log);
+
+    private static UndoCheck NothingLeft(List<GitResult> log) =>
+        new(ChangeRefusals.NothingToUndo, null, null, null, "", log, NothingToUndo: true);
 
     private static UndoOutcome Done(UndoOutcomeKind kind, UndoRecord? step, string caption, string message, List<GitResult> log) =>
         new(kind, step, caption, message, log);
