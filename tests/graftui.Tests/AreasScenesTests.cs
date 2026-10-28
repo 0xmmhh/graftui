@@ -189,4 +189,99 @@ public class AreasScenesTests
         Assert.Equal(new Style(Ink.Ok, true), AreasScenes.LetterStyle(Unstaged("a", ChangeKind.Added)));
         Assert.Equal(new Style(Ink.Bad, true), AreasScenes.LetterStyle(Unstaged("a", ChangeKind.Conflicted)));
     }
+
+    private static AreasModel WithStash(int count, string top = "On main: wip") =>
+        new([], [], Head(3), new StashSummary(count, "a1b2c3d", top));
+
+    [Fact]
+    public void The_stash_box_has_its_count_in_the_title_and_the_newest_entry_under_it()
+    {
+        var g46 = ArtGeometry.For(46, 11)!;
+
+        var grid = AreasScenes.Static(g46, WithStash(2));
+
+        Assert.Equal(" Stash (2) ", Row(grid, 7).Substring(2, 11));
+        Assert.Equal('┌', grid[0, 7].Ch);
+        Assert.Equal('└', grid[0, 10].Ch);
+        Assert.Equal("On main: wip", Row(grid, 8).Substring(2, 12));
+        Assert.Equal("+1 more", Row(grid, 9).Substring(2, 7));
+    }
+
+    [Fact]
+    public void The_stash_box_is_one_entry_row_at_the_short_size()
+    {
+        var g = ArtGeometry.For(46, 8)!;
+
+        var grid = AreasScenes.Static(g, WithStash(2));
+
+        Assert.Equal(" Stash (2) ", Row(grid, 5).Substring(2, 11));
+        Assert.Equal("On main: wip", Row(grid, 6).Substring(2, 12));
+        Assert.Equal('└', grid[0, 7].Ch);
+    }
+
+    [Fact]
+    public void The_stash_is_one_line_when_the_areas_are_too_narrow_for_a_box()
+    {
+        var g30 = ArtGeometry.For(30, 11)!;
+        var line = AreasLayout.For(30, 11).LineY;
+
+        var grid = AreasScenes.Static(g30, WithStash(2));
+
+        Assert.Equal("stash 2", Row(grid, line).Substring(0, 7));
+        Assert.DoesNotContain("┌", Row(grid, 7));
+    }
+
+    [Fact]
+    public void A_stash_count_option_shows_the_older_count()
+    {
+        var grid = AreasScenes.Static(ArtGeometry.For(46, 11)!, WithStash(2), new AreasOptions(StashCount: 1));
+
+        Assert.Equal(" Stash (1) ", Row(grid, 7).Substring(2, 11));
+    }
+
+    [Fact]
+    public void The_message_form_has_no_stash_box_and_no_model_has_no_box()
+    {
+        var g46 = ArtGeometry.For(46, 11)!;
+
+        var hidden = AreasScenes.Static(g46, WithStash(2), new AreasOptions(HideLine: true));
+        var none = AreasScenes.Static(g46, Model());
+
+        Assert.DoesNotContain("Stash", Text(hidden));
+        Assert.DoesNotContain("Stash", Text(none));
+    }
+
+    [Fact]
+    public void An_empty_stash_box_says_empty_and_has_no_more_line()
+    {
+        var grid = AreasScenes.Static(ArtGeometry.For(46, 11)!, new AreasModel([], [], Head(3), StashSummary.None));
+
+        Assert.Equal(" Stash (0) ", Row(grid, 7).Substring(2, 11));
+        Assert.Equal("empty", Row(grid, 8).Substring(2, 5));
+        Assert.DoesNotContain("more", Text(grid));
+    }
+
+    [Fact]
+    public void The_stash_entry_position_follows_the_box_or_the_compact_line()
+    {
+        Assert.Equal((2, 8), AreasLayout.For(46, 11).StashPos);
+        Assert.Equal((2, 6), AreasLayout.For(46, 8).StashPos);
+        Assert.Equal((0, 9), AreasLayout.For(30, 11).StashPos);
+        Assert.Equal(21, AreasLayout.For(69, 11).StashBoxW);
+        Assert.False(AreasLayout.For(69, 11).StashCompact);
+    }
+
+    [Fact]
+    public void The_stash_form_labels_the_message_field_and_has_no_counters()
+    {
+        var frame = AreasScenes.StashForm(Wide, Model(), messageCols: 12);
+        var grid = frame.Grid;
+
+        Assert.StartsWith("Stash everything, untracked files too", Row(grid, 7));
+        Assert.StartsWith("message  ", Row(grid, 8));
+        Assert.DoesNotContain("body", Text(grid));
+        Assert.DoesNotContain("/50", Text(grid));
+        Assert.DoesNotContain("/72", Text(grid));
+        Assert.Null(frame.Caption);
+    }
 }
