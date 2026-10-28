@@ -45,6 +45,25 @@ public class RepoReaderChangesTests
     }
 
     [Fact]
+    public void The_stash_summary_counts_the_entries_and_names_the_newest()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("a.txt", "a\n", "Add a");
+        Assert.Equal(StashSummary.None, new RepoReader(repo.Git).LoadChanges(CancellationToken.None).Stash);
+
+        repo.Write("a.txt", "one\n");
+        repo.Run("stash", "push", "-q", "-m", "first");
+        repo.Write("a.txt", "two\n");
+        repo.Run("stash", "push", "-q", "-m", "second");
+
+        var stash = new RepoReader(repo.Git).LoadChanges(CancellationToken.None).Stash;
+
+        Assert.Equal(2, stash.Count);
+        Assert.Equal(repo.Run("rev-parse", "refs/stash"), stash.TopHash);
+        Assert.Equal("On main: second", stash.TopMessage);
+    }
+
+    [Fact]
     public void A_repo_with_no_commits_has_an_empty_head_line()
     {
         using var repo = TempRepo.Create();
