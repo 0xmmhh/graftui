@@ -93,19 +93,26 @@ internal sealed class ChangesAnimator(AppController app)
         pending.OnDone();
     }
 
-    /// <summary>The log jumps to the first commit or stash command of the change.</summary>
-    private static bool IsAnchor(GitResult r) =>
-        r.Command.StartsWith("git commit", StringComparison.Ordinal) || r.Command.StartsWith("git stash", StringComparison.Ordinal);
+    /// <summary>The log jumps to the first commit or stash-change command of the change.</summary>
+    private static bool IsAnchor(GitResult r) => IsCommit(r) || IsStashChange(r);
+
+    /// <summary>`git commit` itself, not the `git commit-tree` calls that save undo steps.</summary>
+    private static bool IsCommit(GitResult r) =>
+        r.Command == "git commit" || r.Command.StartsWith("git commit ", StringComparison.Ordinal);
+
+    /// <summary>A stash push, pop or store: the commands that move the stash entry.</summary>
+    private static bool IsStashChange(GitResult r) =>
+        r.Command.StartsWith("git stash push", StringComparison.Ordinal)
+        || r.Command.StartsWith("git stash pop", StringComparison.Ordinal)
+        || r.Command.StartsWith("git stash store", StringComparison.Ordinal);
 
     /// <summary>
     /// Shows the output of a commit (the new commit line and the stat), of a stash push, pop or store, and of any failed index or
     /// work-tree command. Successful quiet commands stay out of the log's output.
     /// </summary>
     private static bool ShowOutput(GitResult r) =>
-        r.Command.StartsWith("git commit", StringComparison.Ordinal)
-        || r.Command.StartsWith("git stash push", StringComparison.Ordinal)
-        || r.Command.StartsWith("git stash pop", StringComparison.Ordinal)
-        || r.Command.StartsWith("git stash store", StringComparison.Ordinal)
+        IsCommit(r)
+        || IsStashChange(r)
         || (!r.Success && (r.Command.StartsWith("git add", StringComparison.Ordinal)
             || r.Command.StartsWith("git restore", StringComparison.Ordinal)
             || r.Command.StartsWith("git rm", StringComparison.Ordinal)
