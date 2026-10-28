@@ -139,7 +139,7 @@ internal sealed partial class ChangesTab
                     EndBusy();
                 });
             }
-        });
+        }, CancellationToken.None);
     }
 
     /// <summary>The message box: one field over the art, with the hint. An empty message means git's default.</summary>
