@@ -30,17 +30,36 @@ internal sealed partial class ChangesTab
         }
         else
         {
+            // A hand-picked row is asked about first; the answer re-runs the unstage with the confirmation set.
             var position = Selected;
-            StartStage(new StageRequest(StageAction.Unstage, row), "Unstage", all: false,
-                rows => AfterUnstage(rows, row.Path, position));
+            Func<IReadOnlyList<FileChange>, int> after = rows => AfterUnstage(rows, row.Path, position);
+            if (StageOperation.IsHandPicked(snap.Status, row.Path))
+                AskHandPicked([row.Path], () => StartStage(new StageRequest(StageAction.Unstage, row, HandPickedConfirmed: true), "Unstage",
+                    all: false, after));
+            else
+                StartStage(new StageRequest(StageAction.Unstage, row), "Unstage", all: false, after);
         }
     }
 
     private void StageAll() =>
         StartStage(new StageRequest(StageAction.StageAll, null), "Stage", all: true, _ => 0);
 
-    private void UnstageAll() =>
-        StartStage(new StageRequest(StageAction.UnstageAll, null), "Unstage", all: true, _ => 0);
+    /// <summary>Unstages everything. When any of the staged files are hand-picked, one question covers them all first.</summary>
+    private void UnstageAll()
+    {
+        var snap = Snapshot;
+        if (snap is null)
+            return;
+
+        var handPicked = snap.Status.Staged.Where(f => StageOperation.IsHandPicked(snap.Status, f.Path)).Select(f => f.Path).ToList();
+        if (handPicked.Count == 0)
+        {
+            StartStage(new StageRequest(StageAction.UnstageAll, null), "Unstage", all: true, _ => 0);
+            return;
+        }
+        AskHandPicked(handPicked, () => StartStage(new StageRequest(StageAction.UnstageAll, null, HandPickedConfirmed: true), "Unstage",
+            all: true, _ => 0));
+    }
 
     private static int AfterStage(IReadOnlyList<FileChange> rows, string path, int position)
     {
