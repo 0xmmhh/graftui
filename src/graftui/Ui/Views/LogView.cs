@@ -149,7 +149,7 @@ public sealed class LogView : PaneView
 
     /// <summary>
     /// The rows a line takes at maxCols. A message wraps at word boundaries and each row keeps the line's leading spaces.
-    /// A failed command wraps like a message, as "$ command  [exit N]" in the failure colour.
+    /// A failed command wraps without cutting, as "$ command  [exit N]" in the failure colour.
     /// Other command and output lines take one row, cut at the pane width.
     /// </summary>
     internal static IReadOnlyList<LogLine> Rows(LogLine line, int maxCols)
@@ -173,12 +173,12 @@ public sealed class LogView : PaneView
     }
 
     /// <summary>
-    /// A failed command: "$ command" wrapped at words, then "  [exit N]" after the last word when it fits, else on a row of its own.
-    /// All in the failure colour.
+    /// A failed command: "$ command" wrapped at spaces, with a word longer than the pane broken over rows (never cut), then
+    /// "  [exit N]" after the last word when it fits, else on a row of its own. All in the failure colour.
     /// </summary>
     private static IReadOnlyList<LogLine> FailedRows(LogLine line, int maxCols)
     {
-        var texts = TextFit.WrapWords("$ " + line.Text, maxCols);
+        var texts = TextFit.WrapExact("$ " + line.Text, maxCols);
         var suffix = $"  [exit {line.ExitCode}]";
         if (texts.Count > 0 && TextFit.Columns(texts[^1] + suffix) <= maxCols)
             texts[^1] += suffix;
@@ -186,6 +186,15 @@ public sealed class LogView : PaneView
             texts.Add(TextFit.Fit(suffix.TrimStart(), maxCols));
         return texts.Select(t => new LogLine(LogKind.Message, t, 0, Bad)).ToList();
     }
+
+    /// <summary>
+    /// The text of a successful simplified command at maxCols: cut with "…" when it is too long, so the "  ✔" after it always shows.
+    /// The row is "$ " + text + "  ✔", which takes <see cref="SimpleOkReserve"/> columns beside the text.
+    /// </summary>
+    internal static string SimpleOkText(string text, int maxCols) => TextFit.Fit(text, maxCols - SimpleOkReserve);
+
+    /// <summary>Columns beside the text of a successful simplified command: "$ " at the start and "  ✔" at the end.</summary>
+    internal const int SimpleOkReserve = 5;
 
     private void DrawLine(int x, int y, LogLine l, int maxCols)
     {
@@ -196,7 +205,7 @@ public sealed class LogView : PaneView
                 [
                     new Seg("$", Dim),
                     new Seg(" ", Fg),
-                    new Seg(l.Text, Fg),
+                    new Seg(SimpleOkText(l.Text, maxCols), Fg),
                     new Seg("  ", Fg),
                     new Seg("✔", Ok),
                 ], maxCols);

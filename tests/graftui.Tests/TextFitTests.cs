@@ -12,6 +12,35 @@ public class TextFitTests
         Assert.Empty(TextFit.WrapWords("   ", 5));
     }
 
+    [Fact]
+    public void WrapExact_breaks_a_word_longer_than_the_line_into_pieces_instead_of_cutting_it()
+    {
+        // The end of a long path must not be lost: every piece is kept, in order.
+        var lines = TextFit.WrapExact("$ git restore -- some/very/long/path.txt", 12);
+
+        Assert.Equal(new[] { "$ git", "restore --", "some/very/lo", "ng/path.txt" }, lines);
+        Assert.DoesNotContain(lines, l => l.Contains(TextFit.Ellipsis));
+    }
+
+    [Fact]
+    public void WrapExact_keeps_runs_of_spaces_inside_a_line()
+    {
+        Assert.Equal(new[] { "ab    cd" }, TextFit.WrapExact("ab    cd", 10));
+    }
+
+    [Fact]
+    public void WrapExact_takes_one_rune_per_line_when_a_wide_rune_is_wider_than_the_line()
+    {
+        Assert.Equal(new[] { "中", "文" }, TextFit.WrapExact("中文", 1));
+    }
+
+    [Fact]
+    public void WrapExact_is_empty_for_no_text_or_no_width()
+    {
+        Assert.Empty(TextFit.WrapExact("", 10));
+        Assert.Empty(TextFit.WrapExact("abc", 0));
+    }
+
     [Theory]
     [InlineData("abcdef", 3, "ab…")]
     [InlineData("abc", 3, "abc")]

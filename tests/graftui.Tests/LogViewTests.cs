@@ -130,6 +130,33 @@ public class LogViewTests
     }
 
     [Fact]
+    public void A_failed_command_with_a_long_path_keeps_every_character_of_it()
+    {
+        var path = "some/very/long/path/that/goes/on/and/on/and/on/file.txt";
+        var line = new LogLine(LogKind.Command, "git restore -- " + path, 1, Failed: true);
+
+        var rows = LogView.Rows(line, 24);
+
+        Assert.All(rows, r => Assert.True(TextFit.Columns(r.Text) <= 24, r.Text));
+        Assert.DoesNotContain(rows, r => r.Text.Contains(TextFit.Ellipsis));
+        Assert.Contains(path, string.Concat(rows.Select(r => r.Text)));
+        Assert.EndsWith("[exit 1]", rows[^1].Text);
+    }
+
+    [Fact]
+    public void A_successful_simplified_command_is_cut_so_that_its_tick_still_fits()
+    {
+        var text = "git commit -m \"a subject that is much longer than the pane is wide\"";
+
+        var shown = LogView.SimpleOkText(text, 30);
+
+        Assert.EndsWith(TextFit.Ellipsis, shown);
+        // The reserve covers "$ " before the text and "  ✔" after it: the row is at most the pane wide.
+        Assert.True(TextFit.Columns(shown) + LogView.SimpleOkReserve <= 30);
+        Assert.Equal(text, LogView.SimpleOkText(text, 200));
+    }
+
+    [Fact]
     public void A_successful_command_stays_one_row_however_long()
     {
         var line = new LogLine(LogKind.Command, "git merge feature/a-branch-with-a-long-name-that-goes-on", 0, Simple: true);

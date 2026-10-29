@@ -149,6 +149,47 @@ public static class TextFit
         return lines;
     }
 
+    /// <summary>
+    /// Wraps text to lines of <paramref name="width"/> columns without cutting any of it. A line ends at the last space that fits;
+    /// a word wider than the line is broken into width-sized pieces instead of ending in "…". Spaces inside a line are kept, so
+    /// the text reads back as it was. Used for a failed command, whose exact text has to be readable in full.
+    /// Empty when there is no text or width is 0 or less.
+    /// </summary>
+    public static List<string> WrapExact(string s, int width)
+    {
+        var lines = new List<string>();
+        if (width <= 0)
+            return lines;
+
+        var rest = Sanitize(s);
+        while (rest.Length > 0)
+        {
+            if (Columns(rest) <= width)
+            {
+                lines.Add(rest);
+                break;
+            }
+
+            // At least one rune per line, so a rune wider than the line still moves the text on.
+            var end = FitEnd(rest, width);
+            if (end == 0)
+                end = rest.EnumerateRunes().First().Utf16SequenceLength;
+
+            var space = rest.LastIndexOf(' ', end - 1, end);
+            if (space > 0 && rest[..space].Trim(' ').Length > 0)
+            {
+                lines.Add(rest[..space].TrimEnd(' '));
+                rest = rest[(space + 1)..];
+            }
+            else
+            {
+                lines.Add(rest[..end]);
+                rest = rest[end..];
+            }
+        }
+        return lines;
+    }
+
     /// <summary>Length in UTF-16 units of the longest prefix that fits in width columns, never splitting a rune.</summary>
     private static int FitEnd(string s, int width)
     {
