@@ -275,9 +275,7 @@ internal sealed partial class ChangesTab
 
         var caption = _formError is not null
             ? new Caption(_formError, Warn)
-            : new Caption(_formAmend
-                ? "Enter amends · Tab moves to the body · Ctrl+Enter saves from the body · Esc cancels"
-                : "Enter commits · Tab moves to the body · Ctrl+Enter saves from the body · Esc cancels", Dim);
+            : new Caption(CommitFormHint.For(_formAmend, _app.BodyField.HasFocus), Dim);
         return new SceneFrame(frame.Grid, caption);
     }
 

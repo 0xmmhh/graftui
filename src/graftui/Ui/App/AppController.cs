@@ -237,8 +237,8 @@ public sealed class AppController
     }
 
     /// <summary>
-    /// The focused field takes the selection colour; the other one keeps the chip shade. The form's labels follow the focus too,
-    /// so the art is drawn again.
+    /// The focused field takes the selection colour; the other one keeps the chip shade. The form's labels, its hint and the key
+    /// bar follow the focus too, so they are drawn again.
     /// </summary>
     private void RestyleFields()
     {
@@ -246,6 +246,9 @@ public sealed class AppController
         BodyField.SetScheme(Palette.FieldScheme(BodyField.HasFocus, bold: false));
         SubjectField.SetNeedsDraw();
         BodyField.SetNeedsDraw();
+        // The bar and the hint line depend on the focused field: Enter saves from the subject only.
+        Keys.BodyFocused = BodyField.HasFocus;
+        Keys.SetNeedsDraw();
         Art.SetNeedsDraw();
     }
 

@@ -26,6 +26,9 @@ public sealed class KeyBarView : View
     /// <summary>What the Branches tab's keys depend on.</summary>
     public BranchesKeyState BranchesState { get; set; } = BranchesKeyState.Empty;
 
+    /// <summary>In the commit form: the body field has the focus (the subject does not). Decides which keys the bar lists.</summary>
+    public bool BodyFocused { get; set; }
+
     /// <summary>The key that answers yes to the question on screen: "y", "1" or "2".</summary>
     public string AskKey { get; set; } = "y";
 
@@ -70,13 +73,7 @@ public sealed class KeyBarView : View
     private IReadOnlyList<(string Key, string Label, int Priority)> Items() => Mode switch
     {
         KeyBarMode.Changes => ChangesItems(ChangesState),
-        KeyBarMode.Input =>
-        [
-            ("Enter", " save", 5),
-            ("Tab", " next field", 4),
-            ("Ctrl+Enter", " save from body", 3),
-            ("Esc", " cancel", 6),
-        ],
+        KeyBarMode.Input => InputItems(BodyFocused),
         KeyBarMode.Message =>
         [
             ("Enter", " stash", 4),
@@ -121,6 +118,25 @@ public sealed class KeyBarView : View
         items.Add(("Esc", " quit", 12));
         return items;
     }
+
+    /// <summary>
+    /// The commit form's keys. In the subject, Enter saves; in the body Enter adds a line, so Ctrl+J saves there instead.
+    /// Tab and Esc are always listed; Ctrl+Enter is the lowest item and goes first when the bar is narrow.
+    /// </summary>
+    internal static IReadOnlyList<(string Key, string Label, int Priority)> InputItems(bool bodyFocused) => bodyFocused
+        ?
+        [
+            ("Ctrl+J", " save", 5),
+            ("Tab", " next field", 4),
+            ("Esc", " cancel", 6),
+        ]
+        :
+        [
+            ("Enter", " save", 5),
+            ("Tab", " next field", 4),
+            ("Ctrl+Enter", " save from body", 3),
+            ("Esc", " cancel", 6),
+        ];
 
     /// <summary>
     /// The Branches tab's keys that act now. Priority: Esc, Tab, m, u, ↑↓.

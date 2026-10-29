@@ -57,6 +57,39 @@ public class KeyBarFitTests
         Assert.Contains("Esc", kept);
     }
 
+    [Theory]
+    [InlineData(64)]
+    [InlineData(80)]
+    [InlineData(100)]
+    public void Input_bar_keeps_tab_next_field_before_ctrl_enter_save_from_body(int width)
+    {
+        // Subject focused, the bar of the commit form. At 64 columns the lowest item, Ctrl+Enter, goes before Tab does.
+        var kept = Keys(KeyBarView.FitItems(KeyBarView.InputItems(bodyFocused: false), width, out _));
+
+        Assert.Contains("Tab", kept);
+        Assert.Contains("Esc", kept);
+        Assert.Contains("Enter", kept);
+        if (width == 64)
+            Assert.DoesNotContain("Ctrl+Enter", kept);
+    }
+
+    [Fact]
+    public void Changes_bar_at_200_columns_keeps_everything_with_two_spaces()
+    {
+        var all = KeyBarView.ChangesItems(AllChanges);
+        var kept = KeyBarView.FitItems(all, 200, out var separator);
+
+        Assert.Equal(all.Select(i => i.Key), Keys(kept));
+        Assert.Equal(2, separator);
+    }
+
+    [Fact]
+    public void In_the_body_the_bar_says_ctrl_j_saves_because_enter_adds_a_line()
+    {
+        Assert.Equal("Ctrl+J save  Tab next field  Esc cancel", Bar(KeyBarView.InputItems(bodyFocused: true)));
+        Assert.Equal("Enter save  Tab next field  Ctrl+Enter save from body  Esc cancel", Bar(KeyBarView.InputItems(bodyFocused: false)));
+    }
+
     [Fact]
     public void Branches_bar_at_40_columns_keeps_tab_merge_and_esc()
     {
