@@ -33,6 +33,8 @@ public static class BranchRefusals
 
     public static string UpToDate(string branch, string into) => $"{branch} is already part of {into}: nothing to merge";
 
+    public const string SameName = "same name: nothing changed";
+
     public static string NotMergedNow(string name) => $"{name} has commits that the current branch doesn't have; nothing was deleted";
 
     public static string TipMoved(string name) => $"{name} moved since you pressed the key; nothing changed";
