@@ -19,6 +19,13 @@ public class UndoJsonTests
         UndoKind.Stash => new(kind, "stash", [], StashCommit: HashA, StashBelow: "", Head: HashB),
         UndoKind.Pop => new(kind, "stash pop", [], StashCommit: HashA, StashMessage: "On main: wip", StashBelow: "",
             StateBefore: HashA, StateAfter: HashB, Head: HashB),
+        UndoKind.CreateBranch => new(kind, "creation of topic", [new RefChange("refs/heads/topic", "", HashA)], Branch: "topic",
+            Head: HashA, OtherBranch: "main"),
+        UndoKind.RenameBranch => new(kind, "rename of feature/x", [], Branch: "feature/y", Head: HashA, OtherBranch: "feature/x"),
+        UndoKind.DeleteBranch => new(kind, "deletion of feature/x", [new RefChange("refs/heads/feature/x", HashA, "")],
+            Branch: "feature/x", Head: HashA),
+        UndoKind.StashMerge => new(kind, "merge of feature/x over your changes", [new RefChange("refs/heads/main", HashA, HashB)],
+            Branch: "main", Head: HashB, StashCommit: HashA, StashBelow: "", StateBefore: HashA, StateAfter: HashB),
         _ => new(kind, "unstage of app.txt", [], IndexBefore: [new IndexEntry("app.txt", "100644", HashA)],
             IndexAfter: [new IndexEntry("app.txt", "", "")]),
     };
@@ -35,6 +42,10 @@ public class UndoJsonTests
     [InlineData(UndoKind.Stash)]
     [InlineData(UndoKind.Pop)]
     [InlineData(UndoKind.Unstage)]
+    [InlineData(UndoKind.CreateBranch)]
+    [InlineData(UndoKind.RenameBranch)]
+    [InlineData(UndoKind.DeleteBranch)]
+    [InlineData(UndoKind.StashMerge)]
     public void Every_kind_round_trips(UndoKind kind)
     {
         var record = Sample(kind);
@@ -44,6 +55,34 @@ public class UndoJsonTests
         Assert.NotNull(parsed);
         Assert.Equal(kind, parsed.Kind);
         AssertSameRecord(record, parsed);
+    }
+
+    [Theory]
+    [InlineData(UndoKind.CreateBranch, "main")]
+    [InlineData(UndoKind.RenameBranch, "feature/x")]
+    public void Other_branch_round_trips(UndoKind kind, string other)
+    {
+        var record = Sample(kind);
+
+        var parsed = UndoJson.Parse(UndoJson.Message(record));
+
+        Assert.NotNull(parsed);
+        Assert.Equal(other, parsed.OtherBranch);
+        Assert.Contains("\"otherBranch\":\"" + other + "\"", UndoJson.Message(record), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_step_written_before_otherBranch_existed_still_parses()
+    {
+        const string json = "{\"v\":1,\"step\":{\"kind\":\"Commit\",\"what\":\"commit\",\"changes\":[{\"ref\":\"refs/heads/main\",\"before\":\"" + HashA
+            + "\",\"after\":\"" + HashB + "\"}],\"branch\":\"main\",\"head\":\"" + HashB + "\"}}";
+
+        var parsed = UndoJson.Parse("graftui undo: commit\n\n" + json);
+
+        Assert.NotNull(parsed);
+        Assert.Equal(UndoKind.Commit, parsed.Kind);
+        Assert.Null(parsed.OtherBranch);
+        Assert.Equal("main", parsed.Branch);
     }
 
     [Fact]

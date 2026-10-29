@@ -5,7 +5,8 @@ namespace graftui.Model;
 /// <summary>A ref moved from one full hash to another. An empty Before or After means the ref did not exist.</summary>
 public sealed record RefChange(string Ref, string Before, string After);
 
-public enum UndoKind { Commit, Amend, Merge, Discard, Stash, Pop, Unstage }
+/// <summary>Append only: the JSON stores the names, so a step written by an older graftui still reads.</summary>
+public enum UndoKind { Commit, Amend, Merge, Discard, Stash, Pop, Unstage, CreateBranch, RenameBranch, DeleteBranch, StashMerge }
 
 /// <summary>One stage-0 index entry from `git ls-files -s -z`. Mode "" = path absent from the index.</summary>
 public sealed record IndexEntry(string Path, string Mode, string Blob);
@@ -29,7 +30,8 @@ public sealed record UndoRecord(
     IReadOnlyList<IndexEntry>? IndexBefore = null, // discard: F's entry (guard); unstage: entries to restore
     IReadOnlyList<IndexEntry>? IndexAfter = null,  // unstage: entries the guard expects now
     string? StateBefore = null,                    // pop: snapshot commit (see WorkState)
-    string? StateAfter = null)                     // pop
+    string? StateAfter = null,                     // pop
+    string? OtherBranch = null)                    // create: the branch HEAD was on; rename: the old name
 {
     /// <summary>The kind as a lowercase word. Not stored: the JSON has only Kind.</summary>
     [JsonIgnore]
