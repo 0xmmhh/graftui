@@ -18,7 +18,9 @@ internal static class DiffParser
     private const int TabWidth = 4;
 
     // "@@ -a,b +c,d @@ context", or the combined form "@@@ -a -a +c @@@". The old starts are the captures of group 1.
-    private static readonly Regex HunkHeader = new(@"^@@+ (?:-(\d+)(?:,\d+)? )+\+(\d+)(?:,\d+)? @@+", RegexOptions.CultureInvariant);
+    // The timeout bounds a match on a hostile line; a line that times out is shown raw.
+    private static readonly Regex HunkHeader = new(@"^@@+ (?:-(\d+)(?:,\d+)? )+\+(\d+)(?:,\d+)? @@+",
+        RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
     private static readonly string[] NoteStarts =
     [
@@ -77,7 +79,15 @@ internal static class DiffParser
     /// </summary>
     internal static string HunkLabel(string raw)
     {
-        var match = HunkHeader.Match(raw);
+        Match match;
+        try
+        {
+            match = HunkHeader.Match(raw);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return raw;
+        }
         if (!match.Success || !int.TryParse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var line))
             return raw;
 
