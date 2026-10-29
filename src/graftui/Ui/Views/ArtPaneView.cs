@@ -27,7 +27,7 @@ public sealed class ArtPaneView : PaneView
     /// <summary>Width of the whole screen. At least <see cref="CommitPanels.SideBySideMinCols"/> lists the commit groups side by side.</summary>
     public int ScreenCols { get; set; }
 
-    /// <summary>Lines drawn under the caption in place of <see cref="Commits"/> (the Changes tab's summary).</summary>
+    /// <summary>Lines drawn under the caption in place of <see cref="Panel"/> (the Changes tab's summary).</summary>
     public IReadOnlyList<IReadOnlyList<Seg>>? Below { get; set; }
 
     public Caption? FallbackCaption { get; set; }
