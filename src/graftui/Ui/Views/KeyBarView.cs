@@ -72,10 +72,10 @@ public sealed class KeyBarView : View
         KeyBarMode.Changes => ChangesItems(ChangesState),
         KeyBarMode.Input =>
         [
-            ("Enter", " save", 4),
-            ("Tab", " next field", 2),
+            ("Enter", " save", 5),
+            ("Tab", " next field", 4),
             ("Ctrl+Enter", " save from body", 3),
-            ("Esc", " cancel", 5),
+            ("Esc", " cancel", 6),
         ],
         KeyBarMode.Message =>
         [
@@ -93,47 +93,47 @@ public sealed class KeyBarView : View
 
     /// <summary>
     /// The Changes tab's keys that act now, in the order they are listed. Priority decides what is dropped first when the bar is
-    /// narrow (higher is kept): Esc, Space, c, x, z, Z, u, A, a, U, Tab, ↑↓. Space says stage or unstage by the selected row.
+    /// narrow (higher is kept): Esc, Tab, Space, c, x, z, Z, u, A, a, U, ↑↓. Space says stage or unstage by the selected row.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> ChangesItems(ChangesKeyState s)
     {
-        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " branches", 2) };
+        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " branches", 11) };
         if (s.RowCount >= 2)
             items.Add(("↑↓", " file", 1));
         if (s.SelectedSide is { } side)
-            items.Add(("Space", side == ChangeSide.Staged ? " unstage" : " stage", 11));
+            items.Add(("Space", side == ChangeSide.Staged ? " unstage" : " stage", 10));
         if (s.HasUnstaged)
-            items.Add(("a", " stage all", 4));
+            items.Add(("a", " stage all", 3));
         if (s.HasStaged)
-            items.Add(("U", " unstage all", 3));
+            items.Add(("U", " unstage all", 2));
         if (s.HasStaged)
-            items.Add(("c", " commit", 10));
+            items.Add(("c", " commit", 9));
         if (s.HasHead)
-            items.Add(("A", " amend", 5));
+            items.Add(("A", " amend", 4));
         if (s.SelectedSide == ChangeSide.Unstaged)
-            items.Add(("x", " discard", 9));
+            items.Add(("x", " discard", 8));
         if (s.RowCount > 0)
-            items.Add(("z", " stash", 8));
+            items.Add(("z", " stash", 7));
         if (s.HasStash)
-            items.Add(("Z", " pop", 7));
+            items.Add(("Z", " pop", 6));
         if (s.HasUndo)
-            items.Add(("u", " undo", 6));
+            items.Add(("u", " undo", 5));
         items.Add(("Esc", " quit", 12));
         return items;
     }
 
     /// <summary>
-    /// The Branches tab's keys that act now. Priority: Esc, m, u, ↑↓, Tab.
+    /// The Branches tab's keys that act now. Priority: Esc, Tab, m, u, ↑↓.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s)
     {
-        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " changes", 1) };
+        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " changes", 4) };
         if (s.BranchCount >= 2)
-            items.Add(("↑↓", " select", 2));
+            items.Add(("↑↓", " select", 1));
         if (s.CanMerge)
-            items.Add(("m", " merge", 4));
+            items.Add(("m", " merge", 3));
         if (s.HasUndo)
-            items.Add(("u", " undo", 3));
+            items.Add(("u", " undo", 2));
         items.Add(("Esc", " quit", 5));
         return items;
     }

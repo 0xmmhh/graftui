@@ -22,31 +22,48 @@ public class KeyBarFitTests
     // ----- fitting a narrow bar -----
 
     [Fact]
-    public void Changes_bar_at_80_columns_keeps_space_c_x_z_Z_u_and_esc_in_order()
+    public void Changes_bar_at_80_columns_keeps_tab_space_c_x_z_and_esc_in_order()
     {
+        // Tab is second only to Esc, so it stays; the lower ones (u, Z, A, a, U, ↑↓) go first.
         var kept = KeyBarView.FitItems(KeyBarView.ChangesItems(AllChanges), 80, out var separator);
 
-        Assert.Equal(new[] { "Space", "c", "x", "z", "Z", "u", "Esc" }, Keys(kept));
+        Assert.Equal(new[] { "Tab", "Space", "c", "x", "z", "Esc" }, Keys(kept));
         Assert.Equal(1, separator);
     }
 
-    [Fact]
-    public void Changes_bar_at_200_columns_keeps_everything_with_two_spaces()
+    [Theory]
+    [InlineData(100)]
+    [InlineData(80)]
+    [InlineData(64)]
+    [InlineData(40)]
+    public void Tab_and_Esc_stay_on_the_changes_bar_at_every_width(int width)
     {
-        var all = KeyBarView.ChangesItems(AllChanges);
-        var kept = KeyBarView.FitItems(all, 200, out var separator);
+        var kept = Keys(KeyBarView.FitItems(KeyBarView.ChangesItems(AllChanges), width, out _));
 
-        Assert.Equal(all.Select(i => i.Key), Keys(kept));
-        Assert.Equal(2, separator);
+        Assert.Contains("Tab", kept);
+        Assert.Contains("Esc", kept);
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(80)]
+    [InlineData(64)]
+    [InlineData(40)]
+    public void Tab_and_Esc_stay_on_the_branches_bar_at_every_width(int width)
+    {
+        var kept = Keys(KeyBarView.FitItems(KeyBarView.BranchesItems(AllBranches), width, out _));
+
+        Assert.Contains("Tab", kept);
+        Assert.Contains("Esc", kept);
     }
 
     [Fact]
-    public void Branches_bar_at_40_columns_keeps_merge_undo_and_esc()
+    public void Branches_bar_at_40_columns_keeps_tab_merge_and_esc()
     {
         // At 64 columns every Branches key fits, so the narrow case is the one that drops keys.
         var kept = KeyBarView.FitItems(KeyBarView.BranchesItems(AllBranches), 40, out _);
 
-        Assert.Equal(new[] { "m", "u", "Esc" }, Keys(kept));
+        Assert.Equal(new[] { "Tab", "m", "Esc" }, Keys(kept));
     }
 
     [Fact]
