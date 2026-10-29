@@ -13,7 +13,7 @@ public static class ChangesText
     private const string Arrow = "  ──▶  ";
 
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
-    private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true), Warn = new(Ink.Warn), Inc = new(Ink.Inc);
+    private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true), Inc = new(Ink.Inc);
     private static readonly Style Cur = new(Ink.Cur), CurB = new(Ink.Cur, true), Hash = new(Ink.Hash);
 
     /// <summary>The line above the diff: the selected file and its state, or the clean-tree line when no row is selected.</summary>
@@ -38,15 +38,6 @@ public static class ChangesText
         ChangeKind.Copied => f.OrigPath is null ? "copied" : $"copied from {f.OrigPath}",
         ChangeKind.TypeChanged => "type changed",
         _ => "conflicted",
-    };
-
-    /// <summary>The caption under the diff: what Space does to this row.</summary>
-    public static string BrowseHint(FileChange? f) => f switch
-    {
-        null => "",
-        { Kind: ChangeKind.Conflicted } => "resolve the conflict outside graftui first",
-        { Side: ChangeSide.Unstaged } => "Space stages this file · x discards it · c commits what is staged",
-        _ => "Space unstages this file · c commits what is staged",
     };
 
     /// <summary>
@@ -82,35 +73,34 @@ public static class ChangesText
         all ? MergeScenes.Plural(files.Count, "file") : files[0].Path;
 
     /// <summary>
-    /// The lines under the art: staged and unstaged counts, the stash count when <paramref name="stash"/> is given, and the
-    /// current branch with its tip.
+    /// The one line under the art: "HEAD  main be0126e  ·  stash 0  ·  Add app". The stash count comes before the subject, so a
+    /// narrow pane drops the subject first. Null stash leaves the count out.
     /// </summary>
-    public static IReadOnlyList<IReadOnlyList<Seg>> Summary(WorkingStatus s, HeadLine h, StashSummary? stash = null)
+    public static IReadOnlyList<Seg> HeadStashLine(HeadLine h, StashSummary? stash)
     {
-        var head = new List<Seg> { new("HEAD      ", Dim), new(BranchName(h), CurB) };
+        var line = new List<Seg> { new("HEAD  ", Dim), new(BranchName(h), CurB) };
         var tip = h.Tip;
         if (tip is null)
-            head.Add(new Seg(" no commits", Dim));
+            line.Add(new Seg(" no commits", Dim));
         else
         {
-            head.Add(new Seg(" ", Fg));
-            head.Add(new Seg(tip.ShortHash, Hash));
-            head.Add(new Seg(" ", Fg));
-            head.Add(new Seg(TextFit.Fit(tip.Subject, 40), Fg));
+            line.Add(new Seg(" ", Fg));
+            line.Add(new Seg(tip.ShortHash, Hash));
         }
 
-        var lines = new List<IReadOnlyList<Seg>>
-        {
-            new Seg[] { new("staged    ", Dim), new(MergeScenes.Plural(s.Staged.Count, "file"), Ok) },
-            new Seg[] { new("unstaged  ", Dim), new(MergeScenes.Plural(s.Unstaged.Count, "file"), Warn) },
-        };
         if (stash is not null)
-            lines.Add([new Seg("stash     ", Dim), new Seg(Entries(stash.Count), Inc)]);
-        lines.Add(head);
-        return lines;
-    }
+        {
+            line.Add(new Seg("  ·  ", Dim));
+            line.Add(new Seg($"stash {stash.Count}", stash.Count > 0 ? Inc : Dim));
+        }
 
-    private static string Entries(int n) => $"{n} {(n == 1 ? "entry" : "entries")}";
+        if (tip is not null)
+        {
+            line.Add(new Seg("  ·  ", Dim));
+            line.Add(new Seg(TextFit.Fit(tip.Subject, 40), Fg));
+        }
+        return line;
+    }
 
     private static string BranchName(HeadLine h) => h.Detached ? "HEAD (detached)" : h.Branch;
 }

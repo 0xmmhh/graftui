@@ -15,7 +15,7 @@ internal sealed class ChangesAnimator(AppController app)
 
     private IAreasAnimation? _anim;
     private Stopwatch? _clock;
-    private (AreasResult Result, IReadOnlyList<GitResult> Commands, string? FailureLog, Action OnDone)? _pending;
+    private (AreasResult Result, IReadOnlyList<GitResult> Commands, string? FailureLog, Action OnDone, CommandHints Hints)? _pending;
 
     /// <summary>True from <see cref="Begin"/> until the animation has finished.</summary>
     internal bool Running => _anim is not null;
@@ -31,7 +31,7 @@ internal sealed class ChangesAnimator(AppController app)
         app.Art.Title = anim.Title(0);
         app.Art.Direction = direction;
         app.Art.Below = below;
-        app.Art.Commits = [];
+        app.Art.Panel = null;
         app.Art.FallbackCaption = null;
         app.Art.Scene = geo => anim.Render(geo, clock.ElapsedMilliseconds);
         app.Art.SetNeedsDraw();
@@ -40,8 +40,8 @@ internal sealed class ChangesAnimator(AppController app)
     }
 
     /// <summary>Records git's answer. The animation ends once it has played out past this point.</summary>
-    internal void SetPending(AreasResult r, IReadOnlyList<GitResult> commands, string? failureLog, Action onDone) =>
-        _pending = (r, commands, failureLog, onDone);
+    internal void SetPending(AreasResult r, IReadOnlyList<GitResult> commands, string? failureLog, Action onDone, CommandHints? hints = null) =>
+        _pending = (r, commands, failureLog, onDone, hints ?? CommandHints.None);
 
     private bool Tick()
     {
@@ -73,7 +73,7 @@ internal sealed class ChangesAnimator(AppController app)
         app.Art.Scene = geo => anim.Render(geo, final);
         app.Art.Title = anim.Title(final);
 
-        var anchor = app.LogCommands(pending.Commands, ShowOutput, IsAnchor);
+        var anchor = app.LogCommands(pending.Commands, ShowOutput, IsAnchor, pending.Hints);
         if (pending.FailureLog is not null)
             app.LogMessage(pending.FailureLog, Bad);
         if (anchor >= 0)

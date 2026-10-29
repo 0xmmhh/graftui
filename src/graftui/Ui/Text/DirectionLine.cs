@@ -9,27 +9,24 @@ public static class DirectionLine
     private static readonly Style IncB = new(Ink.Inc, true);
     private static readonly Style CurB = new(Ink.Cur, true);
 
+    /// <summary>
+    /// "feature/x  is 1 ahead, 1 behind  main": the selected branch, the counts, then the current branch. Only a detached HEAD
+    /// is labelled; the art already marks the current branch.
+    /// </summary>
     public static IReadOnlyList<Seg> Browse(GraphLayout L, int maxCols)
     {
         var cur = L.Detached ? "HEAD" : L.Current;
-        var curExtra = L.Detached ? " (detached)" : " (current)";
-        // Only the current branch itself gets the short form. Another branch on the same commit is named like any other.
+        var extra = L.Detached ? " (detached)" : "";
+        // The current branch itself, compared with itself, is just its name.
         if (L.Kind == GraphKind.Same && L.Selected == L.Current)
-        {
-            var limit = NameLimit(maxCols, curExtra);
-            return [new Seg(TextFit.Fit(cur, limit), CurB), new Seg(curExtra, Dim)];
-        }
+            return [new Seg(TextFit.Fit(cur, maxCols), CurB)];
 
         var middle = $"  is {L.Ahead} ahead, {L.Behind} behind  ";
-        var fixedCols = TextFit.Columns(middle) + TextFit.Columns(curExtra);
-        var names = NameLimit(maxCols, fixedCols);
-        return
-        [
-            new Seg(TextFit.Fit(L.Selected, names), IncB),
-            new Seg(middle, Dim),
-            new Seg(TextFit.Fit(cur, names), CurB),
-            new Seg(curExtra, Dim),
-        ];
+        var (sel, curName) = TextFit.FitPair(L.Selected, cur, maxCols - TextFit.Columns(middle) - TextFit.Columns(extra));
+        List<Seg> segs = [new Seg(sel, IncB), new Seg(middle, Dim), new Seg(curName, CurB)];
+        if (extra.Length > 0)
+            segs.Add(new Seg(extra, Dim));
+        return segs;
     }
 
     public static IReadOnlyList<Seg> Merge(string sel, string cur, bool detached, int maxCols)
@@ -38,22 +35,18 @@ public static class DirectionLine
         var curExtra = detached ? " (detached)" : " (current)";
         const string verb = "merge        ";
         const string arrow = "  ──▶ into  ";
-        var names = NameLimit(maxCols, TextFit.Columns(verb) + TextFit.Columns(arrow) + TextFit.Columns(curExtra));
+        var (selName, curShown) = TextFit.FitPair(sel, curName,
+            maxCols - TextFit.Columns(verb) - TextFit.Columns(arrow) - TextFit.Columns(curExtra));
         return
         [
             new Seg(verb, Dim),
-            new Seg(TextFit.Fit(sel, names), IncB),
+            new Seg(selName, IncB),
             new Seg(arrow, Dim),
-            new Seg(TextFit.Fit(curName, names), CurB),
+            new Seg(curShown, CurB),
             new Seg(curExtra, Dim),
         ];
     }
 
     public static IReadOnlyList<Seg> Loading(string sel) =>
         [new Seg(sel, IncB), new Seg("  …", Dim)];
-
-    // Each of the two names gets half of what the fixed text leaves, but never less than 8 columns.
-    private static int NameLimit(int maxCols, string fixedText) => NameLimit(maxCols, TextFit.Columns(fixedText));
-
-    private static int NameLimit(int maxCols, int fixedCols) => Math.Max(8, (maxCols - fixedCols) / 2);
 }

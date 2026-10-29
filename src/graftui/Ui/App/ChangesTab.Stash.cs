@@ -162,8 +162,8 @@ internal sealed partial class ChangesTab
 
         art.Title = "Stash";
         art.Direction = cols => ChangesText.OpDirection("stash", MergeScenes.Plural(count, "changed file"), [new Seg("stash", Dim)], cols);
-        art.Below = Summary();
-        art.Commits = [];
+        art.Below = HeadBelow();
+        art.Panel = null;
         art.FallbackCaption = null;
         art.Scene = geo => new SceneFrame(AreasScenes.StashForm(geo, Before()).Grid,
             new Caption("Enter stashes · empty uses git's default message · Esc cancels", Dim));
@@ -363,7 +363,7 @@ internal sealed partial class ChangesTab
         Func<TCheck, ChangeStart> begin, Func<TOut, ChangeFinish> finish, Action<TCheck>? refused = null) where TOut : class
     {
         var animator = _app.ChangesAnimator;
-        var below = Summary();
+        IReadOnlyList<IReadOnlyList<Seg>> below = HeadBelow();
         BeginBusy();
 
         // Set on the UI thread when the animation starts, read there again when it ends.

@@ -1,46 +1,41 @@
+using graftui;
 using graftui.Git;
 using graftui.Model;
 using graftui.Ui.App;
+using graftui.Ui.Views;
 using Terminal.Gui.App;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
-const string HelpText = """
-graftui: an animated git TUI
-
-Usage:
-  graftui [path-to-repo]   open a repository (default: the current directory)
-  graftui --sandbox        rebuild the practice repo at ~/.graftui/sandbox and open it
-  graftui --help           show this help
-
-Keys: Tab Branches/Changes · ↑/↓ select · m merge · Space stage/unstage · a stage all · U unstage all · c commit · A amend · Esc quit
-
-""";
-
-if (args.Length > 1)
+var parsed = CliArgs.Parse(args);
+if (parsed.Error is not null)
 {
-    Console.Error.WriteLine("graftui: too many arguments");
+    Console.Error.WriteLine(parsed.Error);
     Console.Error.WriteLine("Try 'graftui --help'.");
     return 2;
 }
 
-var argument = args.Length == 1 ? args[0] : null;
-if (argument is "--help" or "-h")
+var options = parsed.Options!;
+if (options.Help)
 {
-    Console.Out.Write(HelpText);
+    Console.Out.Write(CliArgs.HelpText);
     return 0;
 }
 
-if (argument is not null && argument.StartsWith('-') && argument != "--sandbox")
+if (options.Version)
 {
-    Console.Error.WriteLine($"graftui: unknown option '{argument}'");
-    Console.Error.WriteLine("Try 'graftui --help'.");
-    return 2;
+    Console.Out.WriteLine(CliArgs.VersionLine());
+    return 0;
 }
+
+// Colours are global and read by every view, so they are set before any view or Application exists.
+// The theme was checked by CliArgs, so TryGet finds it; the default is used when no --theme was given.
+Themes.TryGet(options.Theme ?? Themes.Default.Name, out var theme);
+Palette.Apply(theme);
 
 // Repo to operate on: the given path, the practice sandbox, or the current directory.
 // During development, point this at the sandbox (graftui --sandbox), not at graftui itself.
-var sandboxMode = argument == "--sandbox";
+var sandboxMode = options.Sandbox;
 if (sandboxMode)
 {
     try
@@ -54,7 +49,7 @@ if (sandboxMode)
     }
 }
 
-var git = new GitClient(sandboxMode ? Sandbox.DefaultPath : argument ?? Directory.GetCurrentDirectory());
+var git = new GitClient(sandboxMode ? Sandbox.DefaultPath : options.RepoPath ?? Directory.GetCurrentDirectory());
 
 RepoSnapshot snapshot;
 try
@@ -89,7 +84,7 @@ try
 
     // Changes-tab paths are relative to the top-level folder, so that work runs there even when graftui was started in a subfolder.
     var root = git.GetTopLevel() ?? git.RepoPath;
-    gui = new AppController(app, git, new GitClient(root), snapshot, repoDisplay, sandboxMode);
+    gui = new AppController(app, git, new GitClient(root), snapshot, repoDisplay);
     var window = gui.BuildWindow();
     windowHandle = window;
     app.Run(window);

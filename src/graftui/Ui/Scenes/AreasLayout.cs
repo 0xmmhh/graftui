@@ -46,7 +46,8 @@ public sealed record AreasLayout(int Width, int Height, int BoxW, int ListRows, 
 
     public int SlotX(int i) => LineX + Step * i;
 
-    public int SubjectRow => Height - 3;
+    /// <summary>Row of the subject field. The tall layout puts the form one row higher, to make room for the rule.</summary>
+    public int SubjectRow => Height == 11 ? 7 : Height - 3;
 
     /// <summary>Width of the stash box: the box's left edge is column 0 and it stops two columns short of the commit line.</summary>
     public int StashBoxW => Math.Min(21, LineX - 2);
@@ -67,7 +68,10 @@ public sealed record AreasLayout(int Width, int Height, int BoxW, int ListRows, 
     public int BodyRow => Height - 2;
 
     /// <summary>The form's label row. Only the tall layout has room for it.</summary>
-    public int FormLabelRow => Height == 11 ? Height - 4 : -1;
+    public int FormLabelRow => Height == 11 ? 6 : -1;
+
+    /// <summary>The dotted rule between subject and body. Only the tall layout has a spare row for it.</summary>
+    public int FormRuleRow => Height == 11 ? 8 : -1;
 
     public int FieldWidth => Width - 9 - 7;
 }

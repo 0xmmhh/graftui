@@ -53,6 +53,39 @@ public static class TextFit
     }
 
     /// <summary>
+    /// Two names that share one line of <paramref name="budget"/> columns. When both fit, nothing is cut. Otherwise the shorter
+    /// name is kept whole, and the longer one is cut, until the longer one is down to <paramref name="min"/> columns; only then
+    /// is the shorter one cut too. Two names of equal width split the budget evenly. Each name gets at least
+    /// <paramref name="min"/> columns, even when that makes the line longer than the budget.
+    /// </summary>
+    public static (string A, string B) FitPair(string a, string b, int budget, int min = 8)
+    {
+        var wa = Columns(a);
+        var wb = Columns(b);
+        if (wa + wb <= budget)
+            return (Fit(a, wa), Fit(b, wb));
+
+        if (wa == wb)
+        {
+            var half = budget / 2;
+            return (Fit(a, Math.Max(min, half)), Fit(b, Math.Max(min, budget - half)));
+        }
+
+        // The longer name keeps at least min columns (or its whole width, when that is less); the shorter one gets the rest,
+        // up to its own width.
+        var aIsShorter = wa < wb;
+        var shortWidth = aIsShorter ? wa : wb;
+        var longWidth = aIsShorter ? wb : wa;
+        var longFloor = Math.Min(longWidth, min);
+        var shortLimit = Math.Min(shortWidth, budget - longFloor);
+        var longLimit = budget - shortLimit;
+
+        var shortText = aIsShorter ? Fit(a, Math.Max(min, shortLimit)) : Fit(b, Math.Max(min, shortLimit));
+        var longText = aIsShorter ? Fit(b, Math.Max(min, longLimit)) : Fit(a, Math.Max(min, longLimit));
+        return aIsShorter ? (shortText, longText) : (longText, shortText);
+    }
+
+    /// <summary>
     /// Splits the text over at most two lines of <paramref name="width"/> columns. Text that fits is (Fit(s), null).
     /// Otherwise the first line ends at the last space that fits, and the second line goes through <see cref="Fit"/>.
     /// With no usable space the first line is cut at <paramref name="width"/>, and the rest goes through Fit.
@@ -113,6 +146,47 @@ public static class TextFit
         }
         if (current.Length > 0)
             lines.Add(current);
+        return lines;
+    }
+
+    /// <summary>
+    /// Wraps text to lines of <paramref name="width"/> columns without cutting any of it. A line ends at the last space that fits;
+    /// a word wider than the line is broken into width-sized pieces instead of ending in "…". Spaces inside a line are kept, so
+    /// the text reads back as it was. Used for a failed command, whose exact text has to be readable in full.
+    /// Empty when there is no text or width is 0 or less.
+    /// </summary>
+    public static List<string> WrapExact(string s, int width)
+    {
+        var lines = new List<string>();
+        if (width <= 0)
+            return lines;
+
+        var rest = Sanitize(s);
+        while (rest.Length > 0)
+        {
+            if (Columns(rest) <= width)
+            {
+                lines.Add(rest);
+                break;
+            }
+
+            // At least one rune per line, so a rune wider than the line still moves the text on.
+            var end = FitEnd(rest, width);
+            if (end == 0)
+                end = rest.EnumerateRunes().First().Utf16SequenceLength;
+
+            var space = rest.LastIndexOf(' ', end - 1, end);
+            if (space > 0 && rest[..space].Trim(' ').Length > 0)
+            {
+                lines.Add(rest[..space].TrimEnd(' '));
+                rest = rest[(space + 1)..];
+            }
+            else
+            {
+                lines.Add(rest[..end]);
+                rest = rest[end..];
+            }
+        }
         return lines;
     }
 

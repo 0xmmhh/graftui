@@ -32,7 +32,7 @@ graftui is a thin, safety-first layer over the git CLI. It never reimplements gi
 
 - **Animated merges.** Every outcome has its own animation: fast-forward, merge commit, already up to date, conflict and refused
 - **Branch overview.** Local branches with ahead/behind counts and a preview of how each one relates to the current branch
-- **Nothing hidden.** A live log of every git command that ran, with its exit code and git's output
+- **Nothing hidden.** A live log of the git commands that ran, each one as the command you would type. Press `v` for the exact list, with exit codes and git's output
 - **Safe by default.** Refuses to merge over uncommitted work or a detached HEAD, and aborts conflicts automatically so the repo is never left mid-merge
 - **Practice sandbox.** `graftui --sandbox` builds a throwaway repo with one branch per merge outcome
 - **Tested against real git.** Every safety rule has a test that runs git in a throwaway repository
@@ -85,14 +85,22 @@ graftui path/to/repo    # or a specific one
 ## Usage
 
 ```
-graftui [path-to-repo]
-graftui --sandbox
+graftui [options] [path-to-repo]
+graftui --sandbox [options]
 graftui --help
+graftui --version
 ```
+
+| Option | Meaning |
+|---|---|
+| `--theme <name>` | Colours: `default`, `lifted`, `muted`, `high-contrast` or `light`. It combines with `--sandbox` and a path (`--theme=<name>` works too) |
+| `--version` | Print the version and exit |
+| `--help` | Print the usage and the keys, then exit |
 
 | Key | Action |
 |---|---|
 | `Tab` | Switch between Branches and Changes |
+| `v` | Switch the Commands pane between the simplified commands and the exact list |
 | `↑` / `↓` | Select a branch (Branches) or a file (Changes) |
 | `m` | Merge the selected branch into the current branch (Branches) |
 | `Space` | Stage or unstage the selected file (Changes) |
@@ -106,7 +114,7 @@ graftui --help
 <details>
 <summary>The Changes tab</summary>
 
-- **Changes (left):** the staged files, then the unstaged ones (`M` modified, `A` added, `D` deleted, `R` renamed, `?` untracked, `U` conflicted). The right pane shows the selected file's diff and a summary of the three areas: the working tree, the staging area and the repository.
+- **Changes (left):** the staged files, then the unstaged ones (`M` modified, `A` added, `D` deleted, `R` renamed, `?` untracked, `U` conflicted). The right pane shows the selected file's diff, with each hunk marked as `── line N ──` (the line where it starts in the file), and under it one line with HEAD and the stash count. During a change the three areas animate: the working tree, the staging area and the repository.
 - **Staging** moves a file between the working tree and the staging area. Each move is animated and logged with its `git add`, `git restore --staged` or `git rm --cached`. Nothing is ever discarded: the edit stays in your working tree.
 - **Committing** opens a message box in the art pane. Type a subject, press `Tab` to reach the body, and press `Enter` to commit (Enter in the body adds a line). `Ctrl+Enter` or `Ctrl+J` saves from either field, if your terminal sends them. `Esc` cancels.
 - **Amending** starts from the last commit's message. If that commit is already on a remote branch, graftui asks three escalating questions first: "Are you sure?" (answer `y`), "Are you really sure?" (answer `1`) and "Last chance, are you still sure?" (answer `2`). Any other key is ignored; `n` or `Esc` cancels at any step. graftui never force-pushes; after an amend you run `git push --force-with-lease` yourself.
@@ -114,7 +122,7 @@ graftui --help
 - **Discard** (`x`) asks first. graftui saves the unstaged change as a stash entry named `graftui: discarded <file>`, then puts the file back. A partly staged file keeps its staged part in the index, and a new file is removed. `git stash list` shows the entry, and `u` brings the change back.
 - **Stash** (`z`) takes every change, untracked files included (`git stash push -u`). A one-line box asks for a message; Enter with it empty uses git's default message.
 - **Pop** (`Z`) runs a plain `git stash pop`: the changes come back unstaged. If git cannot apply the entry, graftui puts the working tree and index back exactly as they were, keeps the stash entry, and lists the conflicting files. The repository is never left with conflict markers.
-- **Undo** (`u`) reverses the newest graftui step, one step per press, newest first: commit, amend, merge, discard, stash, pop and the hand-picked unstage. It refuses when undoing would overwrite something that changed since (the refusal names the file or branch). Steps are kept in private refs under `refs/graftui/undo/`, so they survive a restart. The last 50 are kept.
+- **Undo** (`u`) reverses the newest graftui step, one step per press, newest first: commit, amend, merge, discard, stash, pop and the hand-picked unstage. It refuses when undoing would overwrite something that changed since (the refusal names the file or branch). Undo steps are commits under `refs/graftui/undo/`, so `git log --all`, gitk and other git GUIs show them (as "graftui undo: …"). They are harmless, and only the last 50 are kept.
 - **Refusals** are shown in the caption and logged: nothing staged, an empty subject, a conflicted file, a nested repository, an unfinished merge, rebase, cherry-pick or revert, a submodule, or a detached HEAD.
 
 </details>
@@ -124,8 +132,8 @@ graftui --help
 
 - **Status bar (top):** the repository, the current branch, and whether the working tree is clean. When merging is disabled, the bar says why.
 - **Branches (left):** every local branch, with `*` on the current one. `↑2` means the branch has 2 commits the current branch lacks; `↓1` means the current branch has 1 commit the branch lacks.
-- **Preview and animation (right):** how the selected branch relates to the current one, a picture of the two branches, a caption and the commits involved. During a merge the two lines grow together; afterwards it shows the result.
-- **Commands:** every git command graftui ran, with its exit code and the output of `git merge`.
+- **Preview and animation (right):** how the selected branch relates to the current one, a picture of the two branches, a caption and the commits involved. The commits are listed side by side: the selected branch's on the left, `main`'s on the right, with their headers. Narrower terminals (under 70 columns) stack them. During a merge the two lines grow together; afterwards it shows the result.
+- **Commands:** the git commands graftui ran, each as the command you would type (`$ git merge feature/x  ✔`), with git's output. A failed command is shown exactly, with its exit code. Press `v` to see the exact list instead: every git call, with its exit code and the reads graftui hides by default.
 - **Key bar (bottom):** the keys that work right now.
 
 The terminal must be at least 64×22. Names that don't fit are cut with `…`.
@@ -169,7 +177,7 @@ graftui refuses, without running `git merge`, when:
 |---|---|
 | `0` | Normal exit, `--help`, or a merge that succeeded |
 | `1` | Startup error (not a repository, folder not found, git not on `PATH`, `--sandbox` refused), a UI error, or a merge that finished after you quit and ended in a conflict or failure |
-| `2` | Bad command line (unknown option, too many arguments) |
+| `2` | Bad command line (unknown option, too many arguments, unknown theme) |
 
 </details>
 
@@ -235,7 +243,7 @@ Develop against the sandbox, never against the graftui repository itself. Warnin
 
 Contributions are welcome: bug reports, ideas and pull requests.
 
-- **Found a bug?** [Open an issue](https://github.com/0xmmhh/graftui/issues) with what you did, what you expected and what happened. Include the Commands pane output if it's relevant: it lists every git command graftui ran.
+- **Found a bug?** [Open an issue](https://github.com/0xmmhh/graftui/issues) with what you did, what you expected and what happened. Include the Commands pane output if it's relevant: press `v` for the exact list of every git command graftui ran.
 - **Have an idea?** Open an issue before starting anything big, so we can agree on the approach first. The plans above are a good place to start.
 - **Sending a pull request?** Keep it focused on one change, make sure `dotnet build` has no warnings and `dotnet test` passes, and add a test for anything that changes how graftui touches a repository.
 

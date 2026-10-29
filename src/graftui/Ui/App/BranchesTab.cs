@@ -16,7 +16,7 @@ internal sealed partial class BranchesTab
     private readonly AppController _app;
 
     // Keyed by the selected branch's name as well as its tip: branches that share a commit have different layouts.
-    private readonly Dictionary<(string Current, string Head, string Name, string Tip, bool Clean), GraphLayout> _cache = new();
+    private readonly Dictionary<(string Current, string Head, string Name, string Tip), GraphLayout> _cache = new();
 
     private int _selected;
     private CancellationTokenSource? _previewCts;
@@ -58,6 +58,7 @@ internal sealed partial class BranchesTab
         _app.Result = null;
         _app.BranchList.Selected = _selected;
         _app.BranchList.SetNeedsDraw();
+        _app.SyncBranchKeys();
         RequestPreview();
     }
 
@@ -193,7 +194,7 @@ internal sealed partial class BranchesTab
         {
             _app.Art.Title = "Preview";
             _app.Art.FallbackCaption = new Caption("no branches", Muted);
-            _app.Art.Commits = [];
+            _app.Art.Panel = null;
         }
     }
 
@@ -203,19 +204,18 @@ internal sealed partial class BranchesTab
         _app.Art.Direction = _ => DirectionLine.Loading(b.Name);
         _app.Art.Scene = null;
         _app.Art.FallbackCaption = new Caption("Loading…", Muted);
-        _app.Art.Commits = [];
+        _app.Art.Panel = null;
         _app.Art.SetNeedsDraw();
     }
 
     private void ShowPreview(GraphLayout layout)
     {
-        var clean = _app.Snapshot.Clean;
         // A preview that loaded is proof that git answers again, so an earlier preview error no longer applies.
         _app.Status.ErrorText = null;
         _app.Status.SetNeedsDraw();
         _app.Art.Title = "Preview";
         _app.Art.Direction = cols => DirectionLine.Browse(layout, cols);
-        _app.Art.Commits = CommitLists.Idle(layout);
+        _app.Art.Panel = CommitLists.Idle(layout);
         _app.Art.FallbackCaption = null;
         _app.Art.Scene = geo =>
         {
@@ -226,11 +226,6 @@ internal sealed partial class BranchesTab
             {
                 MergeScenes.RefusedOverlay(grid, "HEAD is detached");
                 caption = new Caption("Switch to a branch first", Warn);
-            }
-            else if (!clean)
-            {
-                MergeScenes.RefusedOverlay(grid, "working tree has uncommitted changes");
-                caption = new Caption("Commit or stash your changes first", Warn);
             }
             else if (layout.Kind == GraphKind.Same)
             {
@@ -246,8 +241,8 @@ internal sealed partial class BranchesTab
         _app.Art.SetNeedsDraw();
     }
 
-    private static (string Current, string Head, string Name, string Tip, bool Clean) CacheKey(RepoSnapshot snap, Branch b) =>
-        (snap.CurrentBranch, snap.HeadHash ?? "", b.Name, b.Hash, snap.Clean);
+    private static (string Current, string Head, string Name, string Tip) CacheKey(RepoSnapshot snap, Branch b) =>
+        (snap.CurrentBranch, snap.HeadHash ?? "", b.Name, b.Hash);
 
     private static int FirstNonCurrent(RepoSnapshot s)
     {

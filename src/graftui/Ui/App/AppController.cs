@@ -23,14 +23,13 @@ public sealed class AppController
     private static readonly Style Bad = new(Ink.Bad);
 
     private readonly string _repoDisplay;
-    private readonly bool _sandboxMode;
     private int _wantedBranchWidth;
     private volatile bool _outcomeShown;
 
     private TooSmallView _tooSmall = null!;
     private Window? _window;
 
-    public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay, bool sandboxMode)
+    public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay)
     {
         App = app;
         Git = git;
@@ -47,7 +46,6 @@ public sealed class AppController
         Snapshot = initial;
         _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
         _repoDisplay = repoDisplay;
-        _sandboxMode = sandboxMode;
         BranchesTab = new BranchesTab(this);
         ChangesTab = new ChangesTab(this);
         ChangesAnimator = new ChangesAnimator(this);
@@ -145,6 +143,7 @@ public sealed class AppController
             Y = 1,
             Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().Cols - CurrentLayout().BranchWidth),
             Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
+            DirectionRule = false,
         };
         Log = new LogView
         {
@@ -162,7 +161,7 @@ public sealed class AppController
             Visible = false,
         };
         BuildMessageBox();
-        Keys = new KeyBarView { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1, SandboxMode = _sandboxMode };
+        Keys = new KeyBarView { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1 };
         _tooSmall = new TooSmallView
         {
             X = 0,
@@ -176,10 +175,11 @@ public sealed class AppController
         BranchList.Branches = Snapshot.Branches;
         BranchList.Counts = Snapshot.Counts;
         BranchList.Selected = BranchesTab.Selected;
-        Keys.SandboxMode = _sandboxMode;
         _tooSmall.Cols = App.Screen.Width;
         _tooSmall.Rows = App.Screen.Height;
+        Art.ScreenCols = App.Screen.Width;
         BranchesTab.ShowInitialState();
+        SyncBranchKeys();
 
         window.Add(Status, BranchList, ChangesList, Art, Log, Keys, _tooSmall);
 
@@ -187,6 +187,7 @@ public sealed class AppController
         {
             _tooSmall.Cols = App.Screen.Width;
             _tooSmall.Rows = App.Screen.Height;
+            Art.ScreenCols = App.Screen.Width;
             window.SetNeedsLayout();
             _tooSmall.SetNeedsDraw();
             Art.SetNeedsDraw();
@@ -226,11 +227,29 @@ public sealed class AppController
             TabKeyAddsTab = false,
             WordWrap = false,
         };
-        SubjectField.SetScheme(Palette.InputScheme);
-        BodyField.SetScheme(Palette.InputScheme);
+        SubjectField.SetScheme(Palette.FieldScheme(false, bold: true));
+        BodyField.SetScheme(Palette.FieldScheme(false, bold: false));
         SubjectField.TextChanged += (_, _) => Art.SetNeedsDraw();
         BodyField.ContentsChanged += (_, _) => Art.SetNeedsDraw();
+        SubjectField.HasFocusChanged += (_, _) => RestyleFields();
+        BodyField.HasFocusChanged += (_, _) => RestyleFields();
         Art.Add(SubjectField, BodyField);
+    }
+
+    /// <summary>
+    /// The focused field takes the selection colour; the other one keeps the chip shade. The form's labels, its hint and the key
+    /// bar follow the focus too, so they are drawn again.
+    /// </summary>
+    private void RestyleFields()
+    {
+        SubjectField.SetScheme(Palette.FieldScheme(SubjectField.HasFocus, bold: true));
+        BodyField.SetScheme(Palette.FieldScheme(BodyField.HasFocus, bold: false));
+        SubjectField.SetNeedsDraw();
+        BodyField.SetNeedsDraw();
+        // The bar and the hint line depend on the focused field: Enter saves from the subject only.
+        Keys.BodyFocused = BodyField.HasFocus;
+        Keys.SetNeedsDraw();
+        Art.SetNeedsDraw();
     }
 
     /// <summary>The art's area inside the art pane, in the pane's own coordinates; null when no art fits.</summary>
@@ -252,6 +271,14 @@ public sealed class AppController
         if (ActiveTab == TabKind.Changes && ChangesTab.Mode == ChangesMode.Ask)
         {
             ChangesTab.HandleAskKey(e);
+            return;
+        }
+
+        // v switches the Commands pane between the simplified and the exact list, also while git is busy (it only changes the display).
+        if (e == Key.V)
+        {
+            e.Handled = true;
+            Log.ToggleExact();
             return;
         }
 
@@ -303,6 +330,8 @@ public sealed class AppController
         Keys.SetNeedsDraw();
         BranchList.SetNeedsDraw();
         ChangesList.SetNeedsDraw();
+        Art.DirectionRule = onChanges;
+        Art.SetNeedsDraw();
 
         if (onChanges)
         {
@@ -331,6 +360,7 @@ public sealed class AppController
         _wantedBranchWidth = BranchesView.WantedWidth(s.Branches, s.Counts);
         _window?.SetNeedsLayout();
         BranchesTab.KeepSelection(selName, s);
+        SyncBranchKeys();
 
         Status.Snapshot = s;
         Status.ErrorText = null;
@@ -342,6 +372,21 @@ public sealed class AppController
         BranchList.SetNeedsDraw();
     }
 
+    /// <summary>
+    /// The Branches key bar: m shows when the selected branch can be merged (it is not the current one, and it is ahead of HEAD or
+    /// its counts are not known yet), u when there is an undo step. Called whenever the snapshot or the selection changes.
+    /// </summary>
+    internal void SyncBranchKeys()
+    {
+        var s = Snapshot;
+        var sel = BranchesTab.Selected < s.Branches.Count ? s.Branches[BranchesTab.Selected] : null;
+        var state = new BranchesKeyState(s.Branches.Count, BranchesKeyState.MergeOffered(sel, s.Counts), s.HasUndo);
+        if (Keys is null || Keys.BranchesState == state)
+            return;
+        Keys.BranchesState = state;
+        Keys.SetNeedsDraw();
+    }
+
     internal void ShowGitError(Exception ex)
     {
         Status.ErrorText = ex.Message;
@@ -350,27 +395,25 @@ public sealed class AppController
     }
 
     /// <summary>
-    /// Logs each command and its exit code, and the output of the commands that <paramref name="showOutput"/> picks (by default
-    /// the `git merge` commands). Returns the log position of the first command that <paramref name="anchorOn"/> picks (by default
-    /// the first `git merge`), or -1.
+    /// Logs each command with its exit code, and the output of the commands that <paramref name="showOutput"/> picks (by default
+    /// the `git merge` commands). Each command is one entry: its exact line and, when the simplified pane shows it, its simplified line.
+    /// <paramref name="hints"/> tells the simplified line what a commit's message was. Returns the log position of the first command that
+    /// <paramref name="anchorOn"/> picks (by default the first `git merge`), or -1.
     /// </summary>
-    internal int LogCommands(IEnumerable<GitResult> results, Func<GitResult, bool>? showOutput = null, Func<GitResult, bool>? anchorOn = null)
+    internal int LogCommands(IEnumerable<GitResult> results, Func<GitResult, bool>? showOutput = null, Func<GitResult, bool>? anchorOn = null,
+        CommandHints? hints = null)
     {
         var merges = (GitResult r) => r.Command.StartsWith("git merge", StringComparison.Ordinal);
         showOutput ??= merges;
         anchorOn ??= merges;
+        var h = hints ?? CommandHints.None;
 
         var mergeIndex = -1;
         foreach (var r in results)
         {
             if (mergeIndex < 0 && anchorOn(r))
                 mergeIndex = Log.Position;
-            Log.Add(new LogLine(LogKind.Command, r.Command, r.ExitCode));
-            if (!showOutput(r))
-                continue;
-
-            foreach (var line in (r.StdOut + "\n" + r.StdErr).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                Log.Add(new LogLine(LogKind.Output, line));
+            Log.Add(CommandDisplay.Entry(r, h, showOutput(r)));
         }
         Art.SetNeedsDraw();
         return mergeIndex;

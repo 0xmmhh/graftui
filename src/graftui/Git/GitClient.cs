@@ -100,7 +100,7 @@ public sealed class GitClient(string repoPath)
         var stdErr = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
 
-        return new GitResult("git " + string.Join(' ', args), process.ExitCode, stdOut.Result, stdErr.Result);
+        return new GitResult(GitCommandLine.Render(args), process.ExitCode, stdOut.Result, stdErr.Result) { Args = args };
     }
 
     /// <summary>True if RepoPath is inside a git work tree.</summary>
@@ -238,6 +238,16 @@ public sealed class GitClient(string repoPath)
     {
         var result = Run("status", "--porcelain");
         return result.Success && string.IsNullOrWhiteSpace(result.StdOut);
+    }
+
+    /// <summary>
+    /// True when at least one undo step is saved (a ref under refs/graftui/undo/). A read for the key bar: it is not logged,
+    /// and any failure answers false.
+    /// </summary>
+    public bool HasUndoSteps()
+    {
+        var result = Run("for-each-ref", "--count=1", "--format=%(refname)", "refs/graftui/undo/");
+        return result.Success && result.StdOut.Trim().Length > 0;
     }
 }
 

@@ -19,6 +19,9 @@ public abstract class PaneView : View
     /// <summary>Title in several styles. When set, it replaces <see cref="View.Title"/> in the frame.</summary>
     public IReadOnlyList<Seg>? TitleSegs { get; set; }
 
+    /// <summary>A hint drawn right-aligned in the bottom border (for example "v all commands"). Left out when it does not fit beside the frame.</summary>
+    public IReadOnlyList<Seg>? FooterSegs { get; set; }
+
     protected void ClearAll() => Paint.ClearAll(this);
 
     protected void DrawFrame()
@@ -51,6 +54,13 @@ public abstract class PaneView : View
         }
         else if (!string.IsNullOrEmpty(Title))
             Paint.Text(this, 2, 0, $" {Title} ", w - 4, new Style(Ink.Fg));
+
+        if (FooterSegs is { } footer)
+        {
+            var cols = footer.Sum(s => TextFit.Columns(s.Text));
+            if (cols > 0 && cols <= w - 4)
+                Paint.Segs(this, w - 2 - cols, h - 1, footer, cols);
+        }
     }
 
     protected int DrawText(int x, int y, string s, int maxCols, Style st, bool sel = false) =>

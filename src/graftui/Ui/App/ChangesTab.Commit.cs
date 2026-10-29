@@ -200,8 +200,8 @@ internal sealed partial class ChangesTab
 
         art.Title = "Amend pushed commit?";
         art.Direction = cols => [new Seg("amend        ", Dim), new Seg(TextFit.Fit($"{shortHash} {subject}", Math.Max(8, cols - 13)), FgB)];
-        art.Below = Summary();
-        art.Commits = [];
+        art.Below = HeadBelow();
+        art.Panel = null;
         art.FallbackCaption = null;
         art.Scene = geo =>
         {
@@ -258,8 +258,8 @@ internal sealed partial class ChangesTab
         var branch = check.Branch.Length == 0 ? "HEAD" : check.Branch;
         art.Direction = cols => ChangesText.OpDirection(amend ? "amend" : "commit", MergeScenes.Plural(staged, "staged file"),
             [new Seg(branch, CurB), new Seg(" (current)", Dim)], cols);
-        art.Below = Summary();
-        art.Commits = [];
+        art.Below = HeadBelow();
+        art.Panel = null;
         art.FallbackCaption = null;
         art.Scene = geo => FormFrame(geo);
         art.SetNeedsDraw();
@@ -271,13 +271,11 @@ internal sealed partial class ChangesTab
         var subject = _app.SubjectField.Text ?? "";
         var body = _app.BodyField.Text ?? "";
         var longest = body.Split('\n').Select(TextFit.Columns).DefaultIfEmpty(0).Max();
-        var frame = AreasScenes.Form(geo, Before(), _formAmend, TextFit.Columns(subject), longest);
+        var frame = AreasScenes.Form(geo, Before(), _formAmend, TextFit.Columns(subject), longest, _app.BodyField.HasFocus);
 
         var caption = _formError is not null
             ? new Caption(_formError, Warn)
-            : new Caption(_formAmend
-                ? "Enter amends · Tab moves to the body · Ctrl+Enter saves from the body · Esc cancels"
-                : "Enter commits · Tab moves to the body · Ctrl+Enter saves from the body · Esc cancels", Dim);
+            : new Caption(CommitFormHint.For(_formAmend, _app.BodyField.HasFocus), Dim);
         return new SceneFrame(frame.Grid, caption);
     }
 
@@ -322,7 +320,7 @@ internal sealed partial class ChangesTab
     private void StartCommit(CommitRequest request)
     {
         var before = Before();
-        var below = Summary();
+        IReadOnlyList<IReadOnlyList<Seg>> below = HeadBelow();
         var commitOp = _app.CommitOp;
         var animator = _app.ChangesAnimator;
         var areaOp = request.Amend ? AreasOp.Amend : AreasOp.Commit;
@@ -353,7 +351,8 @@ internal sealed partial class ChangesTab
                 var result = CommitResult(o, before, request);
                 var failureLog = o.Kind == CommitKind.Failed ? $"{(request.Amend ? "Amend" : "Commit")} failed: {o.Message}" : null;
                 _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,
-                    () => AfterChange(o.Kind != CommitKind.Failed, _ => 0, anim, direction)));
+                    () => AfterChange(o.Kind != CommitKind.Failed, _ => 0, anim, direction),
+                    new CommandHints(request.Subject, request.Body)));
                 return CommitSummary(o, request);
             }
             catch (Exception ex)

@@ -179,8 +179,8 @@ internal sealed partial class ChangesTab
     /// <summary>The short hash of HEAD, or "no commits" on an unborn branch.</summary>
     private static string HeadText(string? hash) => string.IsNullOrEmpty(hash) ? "no commits" : Short(hash);
 
-    private IReadOnlyList<IReadOnlyList<Seg>> Summary() =>
-        Snapshot is null ? [] : ChangesText.Summary(Snapshot.Status, Snapshot.Head, Snapshot.Stash);
+    private IReadOnlyList<IReadOnlyList<Seg>> HeadBelow() =>
+        Snapshot is null ? [] : [ChangesText.HeadStashLine(Snapshot.Head, Snapshot.Stash)];
 
     private void ClearFlash()
     {
@@ -248,6 +248,9 @@ internal sealed partial class ChangesTab
             && Snapshot.Stash.Count == snap.Stash.Count;
         if (unchanged)
         {
+            // The same rows and head, but the undo state may have moved (a merge saved a step): keep the newer snapshot.
+            Snapshot = snap;
+            SyncKeyBar();
             RequestDiff();
             return;
         }
@@ -429,7 +432,7 @@ internal sealed partial class ChangesTab
         });
     }
 
-    /// <summary>Draws the browse screen: the selected file's diff, its direction line, the summary and the hint.</summary>
+    /// <summary>Draws the browse screen: the selected file's diff, its direction line, and the HEAD and stash line.</summary>
     private void ShowBrowse()
     {
         var art = _app.Art;
@@ -441,8 +444,8 @@ internal sealed partial class ChangesTab
         {
             art.Title = done.Result!.Title;
             art.Direction = _resultDirection ?? (_ => []);
-            art.Below = ChangesText.Summary(snap.Status, snap.Head, snap.Stash);
-            art.Commits = [];
+            art.Below = [ChangesText.HeadStashLine(snap.Head, snap.Stash)];
+            art.Panel = null;
             art.FallbackCaption = null;
             art.Scene = geo => done.Final(geo);
             art.SetNeedsDraw();
@@ -453,7 +456,7 @@ internal sealed partial class ChangesTab
         {
             art.Direction = _ => [];
             art.Below = null;
-            art.Commits = [];
+            art.Panel = null;
             art.Scene = null;
             art.FallbackCaption = new Caption("Loading…", Dim);
             art.SetNeedsDraw();
@@ -462,8 +465,8 @@ internal sealed partial class ChangesTab
 
         var head = snap.Head;
         art.Direction = cols => ChangesText.BrowseDirection(row, head, cols);
-        art.Below = ChangesText.Summary(snap.Status, head, snap.Stash);
-        art.Commits = [];
+        art.Below = [ChangesText.HeadStashLine(head, snap.Stash)];
+        art.Panel = null;
 
         if (row is not null && _diff?.File != row)
         {
@@ -473,10 +476,9 @@ internal sealed partial class ChangesTab
         else
         {
             var diff = row is null ? null : _diff;
-            var hint = new Caption(ChangesText.BrowseHint(row), Dim);
             art.FallbackCaption = null;
-            // The flash (a refusal or a notice) replaces the hint until the next key.
-            art.Scene = geo => new SceneFrame(AreasScenes.Diff(geo, diff).Grid, _flash ?? hint);
+            // The flash (a refusal or a notice) is the only caption; it goes at the next key.
+            art.Scene = geo => new SceneFrame(AreasScenes.Diff(geo, diff).Grid, _flash);
         }
         art.SetNeedsDraw();
     }
@@ -500,13 +502,21 @@ internal sealed partial class ChangesTab
         return -1;
     }
 
-    /// <summary>The key bar's Space label follows the selected row: unstage for a staged row, stage otherwise.</summary>
+    /// <summary>The Changes key bar: which keys act now, from the last status read and the selected row.</summary>
     private void SyncKeyBar()
     {
-        var label = SelectedRow?.Side == ChangeSide.Staged ? "unstage" : "stage";
-        if (_app.Keys.SpaceLabel == label)
+        var snap = Snapshot;
+        var state = snap is null ? ChangesKeyState.Empty : new ChangesKeyState(
+            RowCount: Rows.Count,
+            SelectedSide: SelectedRow?.Side,
+            HasUnstaged: snap.Status.Unstaged.Count > 0,
+            HasStaged: snap.Status.Staged.Count > 0,
+            HasHead: snap.Head.HeadHash is not null,
+            HasStash: snap.Stash.Count > 0,
+            HasUndo: snap.HasUndo);
+        if (_app.Keys.ChangesState == state)
             return;
-        _app.Keys.SpaceLabel = label;
+        _app.Keys.ChangesState = state;
         _app.Keys.SetNeedsDraw();
     }
 }

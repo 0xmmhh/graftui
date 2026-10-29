@@ -5,56 +5,85 @@ using Terminal.Gui.Drawing;
 namespace graftui.Ui.Views;
 
 /// <summary>
-/// The Commands pane. Shows the newest lines, unless an anchor is set: then the anchor line is at the top
+/// The Commands pane. Shows the newest lines, unless an anchor is set: then the anchor entry is at the top
 /// as far as the end of the log allows (v1's rule, computed at draw time so it survives a resize).
-/// Message lines wrap to the pane width, so a long refusal or failure is read in full; command and output lines are cut.
+/// Each git invocation is one <see cref="LogEntry"/>. The pane shows either the simplified lines or the exact lines
+/// (<see cref="ShowExact"/>, toggled with v); the entries and the anchor are the same in both.
+/// Message lines wrap to the pane width, so a long refusal or failure is read in full; command and output lines are cut,
+/// except a failed command, which wraps.
 /// </summary>
 public sealed class LogView : PaneView
 {
     private const int MaxLines = 1000;
 
-    private static readonly Style Dim = new(Ink.Dim), Fg = new(Ink.Fg);
+    private static readonly Style Dim = new(Ink.Dim), Fg = new(Ink.Fg), FgB = new(Ink.Fg, true);
     private static readonly Style Ok = new(Ink.Ok), Bad = new(Ink.Bad);
 
-    private readonly List<LogLine> _lines = [];
-    private int _anchor = -1;   // index into _lines
-    private int _dropped;       // lines trimmed from the front so far
+    private readonly List<LogEntry> _entries = [];
+    private int _anchor = -1;   // index into _entries
+    private int _dropped;       // entries trimmed from the front so far
+    private int _exactLines;    // lines held in the exact lists, for the limit
 
     public LogView()
     {
         Title = "Commands";
     }
 
-    public int Count => _lines.Count;
+    /// <summary>The number of entries kept.</summary>
+    public int Count => _entries.Count;
+
+    /// <summary>True: the exact lines are shown. False (the default): the simplified lines.</summary>
+    public bool ShowExact { get; private set; }
 
     /// <summary>
-    /// Position of the next line in the whole log, counting trimmed lines too. Positions never change when
-    /// old lines are dropped, so a position taken now still names the same line later.
+    /// Position of the next entry in the whole log, counting trimmed entries too. Positions never change when
+    /// old entries are dropped, so a position taken now still names the same entry later.
     /// </summary>
-    public int Position => _dropped + _lines.Count;
+    public int Position => _dropped + _entries.Count;
 
-    /// <summary>Appends a line. Drops the oldest lines beyond the limit. Clears any anchor.</summary>
-    public void Add(LogLine line)
+    /// <summary>Appends a message line, the same on both lists. Clears any anchor.</summary>
+    public void Add(LogLine line) => Add(new LogEntry([line], [line]));
+
+    /// <summary>Appends an entry. Drops the oldest entries beyond the line limit. Clears any anchor.</summary>
+    public void Add(LogEntry entry)
     {
-        _lines.Add(line);
-        if (_lines.Count > MaxLines)
+        _entries.Add(entry);
+        _exactLines += entry.Exact.Count;
+        while (_entries.Count > 1 && _exactLines > MaxLines)
         {
-            var excess = _lines.Count - MaxLines;
-            _lines.RemoveRange(0, excess);
-            _dropped += excess;
+            _exactLines -= _entries[0].Exact.Count;
+            _entries.RemoveAt(0);
+            _dropped++;
         }
         ClearAnchor();
+        UpdateFooter();
         SetNeedsDraw();
     }
 
-    /// <summary>Anchors the view at a <see cref="Position"/>. A position that has already been trimmed anchors at the oldest line kept.</summary>
+    /// <summary>Switches between the simplified and the exact list. Entries, positions and the anchor do not change.</summary>
+    public void ToggleExact()
+    {
+        ShowExact = !ShowExact;
+        UpdateFooter();
+        SetNeedsDraw();
+    }
+
+    /// <summary>Anchors the view at a <see cref="Position"/>. A position that has already been trimmed anchors at the oldest entry kept.</summary>
     public void SetAnchor(int position)
     {
-        _anchor = Math.Clamp(position - _dropped, 0, Math.Max(0, _lines.Count - 1));
+        _anchor = Math.Clamp(position - _dropped, 0, Math.Max(0, _entries.Count - 1));
         SetNeedsDraw();
     }
 
     public void ClearAnchor() => _anchor = -1;
+
+    /// <summary>The key hint on the bottom border: "v all commands" on the simplified list, "v simplified" on the exact one.</summary>
+    private void UpdateFooter()
+    {
+        FooterSegs = _entries.Count == 0
+            ? null
+            : [new Seg(" ", Fg), new Seg("v", FgB), new Seg(ShowExact ? " simplified" : " all commands", Dim), new Seg(" ", Fg)];
+    }
 
     protected override bool OnDrawingContent(DrawContext? context)
     {
@@ -67,8 +96,15 @@ public sealed class LogView : PaneView
         if (rows <= 0 || maxCols <= 0)
             return true;
 
-        var rowsOf = _lines.Select(l => Rows(l, maxCols)).ToList();
-        var top = TopLine(rowsOf.Select(r => r.Count).ToList(), rows, _anchor);
+        // The lines of the list on screen, each tagged with the index of its entry. The anchor is the first line of that entry or later.
+        var flat = new List<(LogLine Line, int Entry)>();
+        for (var i = 0; i < _entries.Count; i++)
+            foreach (var line in ShowExact ? _entries[i].Exact : _entries[i].Simple)
+                flat.Add((line, i));
+
+        var rowsOf = flat.Select(f => Rows(f.Line, maxCols)).ToList();
+        var anchorLine = AnchorLine(flat.Select(f => f.Entry).ToList(), _anchor);
+        var top = TopLine(rowsOf.Select(r => r.Count).ToList(), rows, anchorLine);
         var y = 0;
         for (var i = top; i < rowsOf.Count && y < rows; i++)
             foreach (var row in rowsOf[i])
@@ -78,6 +114,20 @@ public sealed class LogView : PaneView
                 DrawLine(2, 1 + y++, row, maxCols);
             }
         return true;
+    }
+
+    /// <summary>
+    /// The first line of the anchored entry or of a later one, given the entry index of each line; -1 when there is no anchor
+    /// or no line from it on (the newest lines are shown then).
+    /// </summary>
+    internal static int AnchorLine(IReadOnlyList<int> entryOfLine, int anchorEntry)
+    {
+        if (anchorEntry < 0)
+            return -1;
+        for (var i = 0; i < entryOfLine.Count; i++)
+            if (entryOfLine[i] >= anchorEntry)
+                return i;
+        return -1;
     }
 
     /// <summary>
@@ -99,10 +149,14 @@ public sealed class LogView : PaneView
 
     /// <summary>
     /// The rows a line takes at maxCols. A message wraps at word boundaries and each row keeps the line's leading spaces.
-    /// Command and output lines take one row, cut at the pane width.
+    /// A failed command wraps without cutting, as "$ command  [exit N]" in the failure colour.
+    /// Other command and output lines take one row, cut at the pane width.
     /// </summary>
     internal static IReadOnlyList<LogLine> Rows(LogLine line, int maxCols)
     {
+        if (line.Kind == LogKind.Command && line.Failed)
+            return FailedRows(line, maxCols);
+
         if (line.Kind != LogKind.Message)
             return [line];
 
@@ -118,10 +172,45 @@ public sealed class LogView : PaneView
         return words.Select(w => new LogLine(LogKind.Message, indent + w, 0, line.Style)).ToList();
     }
 
+    /// <summary>
+    /// A failed command: "$ command" wrapped at spaces, with a word longer than the pane broken over rows (never cut), then
+    /// "  [exit N]" after the last word when it fits, else on a row of its own. All in the failure colour.
+    /// </summary>
+    private static IReadOnlyList<LogLine> FailedRows(LogLine line, int maxCols)
+    {
+        var texts = TextFit.WrapExact("$ " + line.Text, maxCols);
+        var suffix = $"  [exit {line.ExitCode}]";
+        if (texts.Count > 0 && TextFit.Columns(texts[^1] + suffix) <= maxCols)
+            texts[^1] += suffix;
+        else
+            texts.Add(TextFit.Fit(suffix.TrimStart(), maxCols));
+        return texts.Select(t => new LogLine(LogKind.Message, t, 0, Bad)).ToList();
+    }
+
+    /// <summary>
+    /// The text of a successful simplified command at maxCols: cut with "…" when it is too long, so the "  ✔" after it always shows.
+    /// The row is "$ " + text + "  ✔", which takes <see cref="SimpleOkReserve"/> columns beside the text.
+    /// </summary>
+    internal static string SimpleOkText(string text, int maxCols) => TextFit.Fit(text, maxCols - SimpleOkReserve);
+
+    /// <summary>Columns beside the text of a successful simplified command: "$ " at the start and "  ✔" at the end.</summary>
+    internal const int SimpleOkReserve = 5;
+
     private void DrawLine(int x, int y, LogLine l, int maxCols)
     {
         switch (l.Kind)
         {
+            case LogKind.Command when l.Simple && l.ExitCode == 0:
+                DrawSegs(x, y,
+                [
+                    new Seg("$", Dim),
+                    new Seg(" ", Fg),
+                    new Seg(SimpleOkText(l.Text, maxCols), Fg),
+                    new Seg("  ", Fg),
+                    new Seg("✔", Ok),
+                ], maxCols);
+                break;
+
             case LogKind.Command:
                 DrawSegs(x, y,
                 [

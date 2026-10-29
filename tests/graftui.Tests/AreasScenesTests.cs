@@ -38,9 +38,10 @@ public class AreasScenesTests
         Assert.Equal(9, l.LineY);
         Assert.Equal(30, l.LineX);
         Assert.Equal(6, l.Step);
-        Assert.Equal(8, l.SubjectRow);
+        Assert.Equal(7, l.SubjectRow);
         Assert.Equal(9, l.BodyRow);
-        Assert.Equal(7, l.FormLabelRow);
+        Assert.Equal(6, l.FormLabelRow);
+        Assert.Equal(8, l.FormRuleRow);
         Assert.Equal(30 + 6 * 2, l.SlotX(2));
     }
 
@@ -52,7 +53,10 @@ public class AreasScenesTests
         Assert.Equal(3, l.ListRows);
         Assert.Equal(4, l.BoxBottom);
         Assert.Equal(7, l.LineY);
+        Assert.Equal(5, l.SubjectRow);
+        Assert.Equal(6, l.BodyRow);
         Assert.Equal(-1, l.FormLabelRow);
+        Assert.Equal(-1, l.FormRuleRow);
     }
 
     [Fact]
@@ -136,12 +140,12 @@ public class AreasScenesTests
     public void A_diff_draws_each_line_by_kind_from_column_one()
     {
         var diff = new FileDiff(Unstaged("app.txt"),
-            [new DiffLine(DiffLineKind.Hunk, "@@ -1 +1 @@"), new DiffLine(DiffLineKind.Removed, "-old"), new DiffLine(DiffLineKind.Added, "+new")]);
+            [new DiffLine(DiffLineKind.Hunk, "── line 1 ──"), new DiffLine(DiffLineKind.Removed, "-old"), new DiffLine(DiffLineKind.Added, "+new")]);
 
         var grid = AreasScenes.Diff(Wide, diff).Grid;
 
-        Assert.Equal('@', grid[1, 0].Ch);
-        Assert.Equal(new Style(Ink.Cur), grid[1, 0].Style);
+        Assert.Equal('─', grid[1, 0].Ch);
+        Assert.Equal(new Style(Ink.Dim), grid[1, 0].Style);
         Assert.Equal(new Style(Ink.Bad), grid[1, 1].Style);
         Assert.Equal(new Style(Ink.Ok), grid[1, 2].Style);
     }
@@ -149,20 +153,44 @@ public class AreasScenesTests
     [Fact]
     public void The_form_shows_its_label_the_subject_and_the_counter()
     {
-        var frame = AreasScenes.Form(Wide, Model(), amend: false, subjectCols: 0, longestBodyCols: 0);
+        var frame = AreasScenes.Form(Wide, Model(), amend: false, subjectCols: 0, longestBodyCols: 0, bodyFocused: false);
 
-        Assert.StartsWith("subject", Row(frame.Grid, 8));
-        Assert.Equal("0/50", Row(frame.Grid, 8).Substring(63, 4));
-        Assert.Contains("Commit message", Row(frame.Grid, 7));
+        Assert.StartsWith("subject", Row(frame.Grid, 7));
+        Assert.Equal("0/50", Row(frame.Grid, 7).Substring(63, 4));
+        Assert.Contains("Commit message", Row(frame.Grid, 6));
+    }
+
+    [Fact]
+    public void The_focused_field_label_is_teal_and_bold_and_the_other_is_dim()
+    {
+        var subject = AreasScenes.Form(Wide, Model(), amend: false, subjectCols: 0, longestBodyCols: 0, bodyFocused: false).Grid;
+        Assert.Equal(new Style(Ink.Cur, true), subject[0, 7].Style);
+        Assert.Equal(new Style(Ink.Dim), subject[0, 9].Style);
+
+        var body = AreasScenes.Form(Wide, Model(), amend: false, subjectCols: 0, longestBodyCols: 0, bodyFocused: true).Grid;
+        Assert.Equal(new Style(Ink.Dim), body[0, 7].Style);
+        Assert.Equal(new Style(Ink.Cur, true), body[0, 9].Style);
+    }
+
+    [Fact]
+    public void The_dotted_rule_sits_between_subject_and_body_only_in_the_tall_layout()
+    {
+        var tall = AreasScenes.Form(Wide, Model(), amend: false, subjectCols: 0, longestBodyCols: 0, bodyFocused: false).Grid;
+        var rule = Row(tall, 8);
+        Assert.Equal(new string('┄', AreasLayout.For(69, 11).FieldWidth), rule.Substring(AreasLayout.FieldX, AreasLayout.For(69, 11).FieldWidth));
+        Assert.Equal(new Style(Ink.Frame), tall[AreasLayout.FieldX, 8].Style);
+
+        var short_ = AreasScenes.Form(Narrow, Model(), amend: false, subjectCols: 0, longestBodyCols: 0, bodyFocused: false).Grid;
+        Assert.DoesNotContain('┄', Text(short_));
     }
 
     [Fact]
     public void The_amend_form_has_its_own_label()
     {
-        var frame = AreasScenes.Form(Wide, Model(), amend: true, subjectCols: 21, longestBodyCols: 80);
+        var frame = AreasScenes.Form(Wide, Model(), amend: true, subjectCols: 21, longestBodyCols: 80, bodyFocused: false);
 
-        Assert.Contains("Amend the last commit: new message", Row(frame.Grid, 7));
-        Assert.Equal("21/50", Row(frame.Grid, 8).Substring(63, 5));
+        Assert.Contains("Amend the last commit: new message", Row(frame.Grid, 6));
+        Assert.Equal("21/50", Row(frame.Grid, 7).Substring(63, 5));
         Assert.Equal("80/72", Row(frame.Grid, 9).Substring(63, 5));
     }
 
@@ -277,8 +305,8 @@ public class AreasScenesTests
         var frame = AreasScenes.StashForm(Wide, Model());
         var grid = frame.Grid;
 
-        Assert.StartsWith("Stash everything, untracked files too", Row(grid, 7));
-        Assert.StartsWith("message  ", Row(grid, 8));
+        Assert.StartsWith("Stash everything, untracked files too", Row(grid, 6));
+        Assert.StartsWith("message  ", Row(grid, 7));
         Assert.DoesNotContain("body", Text(grid));
         Assert.DoesNotContain("/50", Text(grid));
         Assert.DoesNotContain("/72", Text(grid));
