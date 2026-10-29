@@ -34,114 +34,101 @@ Keys: Tab Branches/Changes · ↑/↓ select · m merge · Space stage/unstage �
     /// </summary>
     public static CliParse Parse(IReadOnlyList<string> args)
     {
-        var help = false;
-        var version = false;
-        var sandbox = false;
-        var themeSeen = false;
-        string? theme = null;
-        string? path = null;
-        string? error = null;
-        var pathsOnly = false;
+        var p = new Parser();
+        var queue = new Queue<string>(args);
+        while (queue.TryDequeue(out var arg))
+            p.Read(arg, queue);
+        return p.Result();
+    }
 
-        void Fail(string message) => error ??= message;
+    /// <summary>The parse state. Every error is kept in the order found; the first one is reported.</summary>
+    private sealed class Parser
+    {
+        private readonly List<string> _errors = [];
+        private bool _help, _version, _sandbox, _themeSeen, _pathsOnly;
+        private string? _theme, _path;
 
-        void TakePath(string arg)
+        public void Read(string arg, Queue<string> rest)
         {
-            // "" is no folder: it must not reach Path.GetFullPath, which throws on it.
-            if (arg.Length == 0)
-                Fail("graftui: empty path");
-            else if (path is null)
-                path = arg;
-            else
-                Fail("graftui: too many arguments");
-        }
-
-        void SetTheme(string? name)
-        {
-            // A second --theme is an error whatever the first one held.
-            var repeated = themeSeen;
-            themeSeen = true;
-            if (repeated)
-            {
-                Fail("graftui: --theme given more than once");
-                return;
-            }
-
-            if (string.IsNullOrEmpty(name))
-            {
-                Fail(NeedsName);
-                return;
-            }
-
-            if (!Themes.TryGet(name, out var t))
-            {
-                Fail($"graftui: unknown theme '{name}'; choose one of: {ThemeList}");
-                return;
-            }
-
-            theme = t.Name;
-        }
-
-        for (var i = 0; i < args.Count; i++)
-        {
-            var arg = args[i];
-            if (pathsOnly)
+            if (_pathsOnly)
             {
                 TakePath(arg);
-                continue;
+                return;
             }
-
             if (arg.StartsWith("--theme=", StringComparison.Ordinal))
             {
                 SetTheme(arg["--theme=".Length..]);
-                continue;
+                return;
             }
 
             switch (arg)
             {
                 case "--":
-                    pathsOnly = true;
+                    _pathsOnly = true;
                     break;
-                case "--help":
-                case "-h":
-                    help = true;
+                case "--help" or "-h":
+                    _help = true;
                     break;
                 case "--version":
-                    version = true;
+                    _version = true;
                     break;
                 case "--sandbox":
-                    sandbox = true;
+                    _sandbox = true;
                     break;
                 case "--theme":
                     // The name is the next argument unless that is another option, in which case it is missing.
-                    if (i + 1 < args.Count && !args[i + 1].StartsWith('-'))
-                    {
-                        i++;
-                        SetTheme(args[i]);
-                    }
-                    else
-                    {
-                        SetTheme(null);
-                    }
+                    SetTheme(rest.TryPeek(out var next) && !next.StartsWith('-') ? rest.Dequeue() : null);
                     break;
                 default:
                     if (arg.StartsWith('-'))
-                        Fail($"graftui: unknown option '{arg}'");
+                        _errors.Add($"graftui: unknown option '{arg}'");
                     else
                         TakePath(arg);
                     break;
             }
         }
 
-        if (help || version)
-            return new CliParse(new CliOptions(help, version, sandbox, theme, path), null);
+        public CliParse Result()
+        {
+            if (_help || _version)
+                return new CliParse(new CliOptions(_help, _version, _sandbox, _theme, _path), null);
 
-        if (error is null && sandbox && path is not null)
-            error = "graftui: --sandbox opens ~/.graftui/sandbox; it can't be combined with a path";
+            if (_sandbox && _path is not null)
+                _errors.Add("graftui: --sandbox opens ~/.graftui/sandbox; it can't be combined with a path");
 
-        return error is null
-            ? new CliParse(new CliOptions(false, false, sandbox, theme, path), null)
-            : new CliParse(null, error);
+            return _errors.Count == 0
+                ? new CliParse(new CliOptions(false, false, _sandbox, _theme, _path), null)
+                : new CliParse(null, _errors[0]);
+        }
+
+        private void TakePath(string arg)
+        {
+            // "" is no folder: it must not reach Path.GetFullPath, which throws on it.
+            if (arg.Length == 0)
+                _errors.Add("graftui: empty path");
+            else if (_path is null)
+                _path = arg;
+            else
+                _errors.Add("graftui: too many arguments");
+        }
+
+        private void SetTheme(string? name)
+        {
+            // A second --theme is an error whatever the first one held.
+            if (_themeSeen)
+            {
+                _errors.Add("graftui: --theme given more than once");
+                return;
+            }
+            _themeSeen = true;
+
+            if (string.IsNullOrEmpty(name))
+                _errors.Add(NeedsName);
+            else if (Themes.TryGet(name, out var t))
+                _theme = t.Name;
+            else
+                _errors.Add($"graftui: unknown theme '{name}'; choose one of: {ThemeList}");
+        }
     }
 
     /// <summary>"graftui 0.1.0": the informational version without any "+build" suffix.</summary>
