@@ -7,6 +7,13 @@ namespace graftui.Ui.Scenes;
 public sealed record SceneFrame(ArtGrid Grid, Caption? Caption);
 
 /// <summary>
+/// What a branch animation changes in the plain preview. NoCurrentExtra drops " (current)" from the current label. NoCurName and
+/// NoSelName draw a label's marker but not its name, because the animation writes that name itself. GhostTail draws the selected
+/// branch's last k commits as grey ghosts (the commits a delete leaves on no other branch).
+/// </summary>
+public sealed record PreviewOptions(bool NoCurrentExtra = false, bool NoCurName = false, bool NoSelName = false, int GhostTail = 0);
+
+/// <summary>
 /// The scenes, ported from the design mock. Each function draws one frame from a layout, the effective
 /// time <c>te</c> (what the animation has reached), the raw elapsed time <c>t</c> (for spinners and blinks),
 /// and the outcome once git has returned one.
@@ -25,37 +32,65 @@ public static class MergeScenes
     private const string SpinFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
     internal const string WaitingText = "! git is still running (waiting for a password prompt or hook?)";
 
-    /// <summary>Both branches drawn at rest, no animation. Used for the preview and as the base of every scene.</summary>
-    public static SceneFrame Preview(ArtGeometry g, GraphLayout L)
+    /// <summary>
+    /// Both branches drawn at rest, no animation. Used for the preview and as the base of every scene. <paramref name="o"/> changes
+    /// only what the branch animations need (see <see cref="PreviewOptions"/>); without it the preview is the plain one.
+    /// </summary>
+    public static SceneFrame Preview(ArtGeometry g, GraphLayout L, PreviewOptions? o = null)
     {
+        o ??= new PreviewOptions();
         var grid = new ArtGrid(g.Width, g.Height);
         DrawShared(grid, g, L);
+        var s = LabelSpots(g, L);
         switch (L.Kind)
         {
             case GraphKind.Diverged:
             case GraphKind.Unrelated:
                 DrawRowA(grid, g, L.CurrentOwn, Cur, L.CurrentOwnMore);
-                DrawRowB(grid, g, L.SelectedOwn, Inc, L.SelectedOwnMore, connect: L.Kind != GraphKind.Unrelated);
-                CurLabel(grid, g, g.TipX(L.CurrentOwn.Count), g.A, L);
-                SelLabel(grid, g, g.TipX(L.SelectedOwn.Count), g.B, L);
+                DrawRowB(grid, g, L.SelectedOwn, Inc, L.SelectedOwnMore, connect: L.Kind != GraphKind.Unrelated, ghost: o.GhostTail);
+                CurLabel(grid, g, s.CurX, s.CurRow, L, o);
+                SelLabel(grid, g, s.SelX, s.SelRow, L, o);
                 break;
             case GraphKind.FastForward:
-                DrawRowA(grid, g, L.SelectedOwn, Inc, L.SelectedOwnMore);
-                CurLabel(grid, g, g.XB, g.A, L);
-                SelLabel(grid, g, g.TipX(L.SelectedOwn.Count), g.A, L);
+                DrawRowA(grid, g, L.SelectedOwn, Inc, L.SelectedOwnMore, ghost: o.GhostTail);
+                CurLabel(grid, g, s.CurX, s.CurRow, L, o);
+                SelLabel(grid, g, s.SelX, s.SelRow, L, o);
                 break;
             case GraphKind.UpToDate:
                 DrawRowA(grid, g, L.CurrentOwn, Cur, L.CurrentOwnMore);
-                CurLabel(grid, g, g.TipX(L.CurrentOwn.Count), g.A, L);
-                SelLabel(grid, g, g.XB, g.A, L);
+                CurLabel(grid, g, s.CurX, s.CurRow, L, o);
+                SelLabel(grid, g, s.SelX, s.SelRow, L, o);
                 break;
             default: // Same: both labels sit on the one commit when the selected branch is a different name
-                CurLabel(grid, g, g.XB, g.A, L);
-                SelLabel(grid, g, g.XB, g.A, L);
+                CurLabel(grid, g, s.CurX, s.CurRow, L, o);
+                SelLabel(grid, g, s.SelX, s.SelRow, L, o);
                 break;
         }
         return new SceneFrame(grid, null);
     }
+
+    /// <summary>
+    /// The tip x and branch row each label hangs from, exactly where <see cref="Preview"/> draws them. The name is on row-2 for the
+    /// current label and row+2 for the selected one. <c>SelShown</c> is false when both labels are the one current branch.
+    /// </summary>
+    public static (int CurX, int CurRow, int SelX, int SelRow, bool SelShown) LabelSpots(ArtGeometry g, GraphLayout L)
+    {
+        switch (L.Kind)
+        {
+            case GraphKind.Diverged:
+            case GraphKind.Unrelated:
+                return (g.TipX(L.CurrentOwn.Count), g.A, g.TipX(L.SelectedOwn.Count), g.B, true);
+            case GraphKind.FastForward:
+                return (g.XB, g.A, g.TipX(L.SelectedOwn.Count), g.A, true);
+            case GraphKind.UpToDate:
+                return (g.TipX(L.CurrentOwn.Count), g.A, g.XB, g.A, true);
+            default:
+                return (g.XB, g.A, g.XB, g.A, L.Selected != L.Current);
+        }
+    }
+
+    /// <summary>Where a label's name starts on its row: the rule <see cref="Preview"/> uses, so the name never leaves the grid.</summary>
+    public static int LabelTextX(ArtGeometry g, int x, int len) => Math.Max(0, Math.Min(x, g.Width - len));
 
     /// <summary>Dims the art and draws a box with the reason. Used for refusals (detached HEAD, dirty tree, ...).</summary>
     public static void RefusedOverlay(ArtGrid grid, string reason) => MessageOverlay(grid, "Refused", reason);
@@ -300,31 +335,37 @@ public static class MergeScenes
     }
 
     private static void DrawRowA(ArtGrid grid, ArtGeometry g, IReadOnlyList<CommitInfo> list, Style st, bool more,
-        Func<CommitInfo, Style>? colorFor = null)
+        Func<CommitInfo, Style>? colorFor = null, int ghost = 0)
     {
-        DrawRow(grid, g, g.A, list, st, more, colorFor);
+        DrawRow(grid, g, g.A, list, st, more, colorFor, ghost);
     }
 
     private static void DrawRowB(ArtGrid grid, ArtGeometry g, IReadOnlyList<CommitInfo> list, Style st, bool more,
-        bool connect = true, Func<CommitInfo, Style>? colorFor = null)
+        bool connect = true, Func<CommitInfo, Style>? colorFor = null, int ghost = 0)
     {
         if (connect)
         {
             grid.VLine(g.XB, g.A + 1, g.B - 1, st);
             grid.Put(g.XB, g.B, '╰', st);
         }
-        DrawRow(grid, g, g.B, list, st, more, colorFor);
+        DrawRow(grid, g, g.B, list, st, more, colorFor, ghost);
     }
 
+    // The last `ghost` commits of the row are drawn as grey ghosts (◌), and the segments leading to them are grey too.
     private static void DrawRow(ArtGrid grid, ArtGeometry g, int row, IReadOnlyList<CommitInfo> list, Style st, bool more,
-        Func<CommitInfo, Style>? colorFor)
+        Func<CommitInfo, Style>? colorFor, int ghost = 0)
     {
+        ghost = Math.Clamp(ghost, 0, list.Count);
         var px = g.XB;
         for (var i = 0; i < list.Count; i++)
         {
             var x = g.XB + g.Step * (i + 1);
-            grid.HLine(px + 1, x - 1, row, st, more && i == 0 ? '┄' : '─');
-            grid.Put(x, row, Dot(list[i]), colorFor?.Invoke(list[i]) ?? st);
+            var gone = i >= list.Count - ghost;
+            grid.HLine(px + 1, x - 1, row, gone ? Dim : st, more && i == 0 ? '┄' : '─');
+            if (gone)
+                grid.Put(x, row, '◌', Dim);
+            else
+                grid.Put(x, row, Dot(list[i]), colorFor?.Invoke(list[i]) ?? st);
             px = x;
         }
     }
@@ -339,10 +380,13 @@ public static class MergeScenes
     }
 
     // Label: a marker on the branch line and the name (with an optional dim extra) on the row beyond it.
-    private static void Label(ArtGrid grid, ArtGeometry g, int x, int row, bool up, string name, string? extra, Ink ink)
+    // showName false draws only the marker: the branch animations write the name themselves.
+    private static void Label(ArtGrid grid, ArtGeometry g, int x, int row, bool up, string name, string? extra, Ink ink, bool showName = true)
     {
         var inkStyle = new Style(ink);
         grid.Put(x, up ? row - 1 : row + 1, up ? '▾' : '▴', inkStyle);
+        if (!showName)
+            return;
 
         var ty = up ? row - 2 : row + 2;
         var w = g.Width;
@@ -354,28 +398,28 @@ public static class MergeScenes
         if (Runes(nameText) + Runes(extraText ?? "") > w)
             extraText = null;
         var len = Runes(nameText) + Runes(extraText ?? "");
-        var tx = Math.Max(0, Math.Min(x, w - len));
+        var tx = LabelTextX(g, x, len);
 
         grid.Text(tx, ty, nameText, new Style(ink, true));
         if (extraText is not null)
             grid.Text(tx + Runes(nameText), ty, extraText, Dim);
     }
 
-    private static int Runes(string s) => s.EnumerateRunes().Count();
+    internal static int Runes(string s) => s.EnumerateRunes().Count();
 
-    private static void CurLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L)
+    private static void CurLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L, PreviewOptions? o = null)
     {
         var name = L.Detached ? "HEAD" : L.Current;
-        var extra = L.Detached ? " (detached)" : " (current)";
-        Label(grid, g, x, row, up: true, name, extra, Ink.Cur);
+        var extra = o?.NoCurrentExtra == true ? null : L.Detached ? " (detached)" : " (current)";
+        Label(grid, g, x, row, up: true, name, extra, Ink.Cur, showName: o?.NoCurName != true);
     }
 
-    private static void SelLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L)
+    private static void SelLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L, PreviewOptions? o = null)
     {
         // The selected branch is the current one: its label is the current label already. Another branch at the same commit gets its own.
         if (L.Kind == GraphKind.Same && L.Selected == L.Current)
             return;
-        Label(grid, g, x, row, up: false, L.Selected, extra: null, Ink.Inc);
+        Label(grid, g, x, row, up: false, L.Selected, extra: null, Ink.Inc, showName: o?.NoSelName != true);
     }
 
     private static string Pad(string s, int cols) => s + new string(' ', Math.Max(0, cols - TextFit.Columns(s)));
