@@ -47,4 +47,7 @@ public static class BranchRefusals
         $"{other} has moved away from {name}'s commits, so removing {name} would lose them";
 
     public const string UndoMergeStateChanged = "files have changed since the merge, so undoing would overwrite them";
+
+    /// <summary>Stash-merge-pop over a clean tree: the plain merge does it. The screen asks the question only over a dirty tree.</summary>
+    public const string NothingToStashForMerge = "nothing to stash: press m again to merge";
 }

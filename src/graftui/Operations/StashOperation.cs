@@ -132,7 +132,7 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
     }
 
     /// <summary>What blocks a stash: a clean tree, conflicts, a nested repo or a submodule. Null when the tree may be stashed.</summary>
-    private static string? Refusal(WorkingStatus status)
+    internal static string? Refusal(WorkingStatus status)
     {
         if (status.HasConflicts)
             return ChangeRefusals.Conflicts;

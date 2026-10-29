@@ -41,15 +41,24 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
         if (Run("rev-parse", "-q", "--verify", "MERGE_HEAD").Success)
             return new MergeCheck(name, "a merge is already in progress", log);
 
+        // Dirty only when git read the status and it lists changes: a failed status is not a known dirty tree.
         var porcelain = Run("status", "--porcelain");
-        if (!porcelain.Success || !string.IsNullOrWhiteSpace(porcelain.StdOut))
+        if (!porcelain.Success)
             return new MergeCheck(name, "working tree has uncommitted changes", log);
+        if (!string.IsNullOrWhiteSpace(porcelain.StdOut))
+            return new MergeCheck(name, "working tree has uncommitted changes", log, Dirty: true);
 
         return new MergeCheck(name, null, log);
     }
 
-    /// <summary>Blocking merge for a worker thread. Never throws.</summary>
-    public MergeOutcome Run(MergeRequest request, MergeCheck check)
+    /// <summary>Blocking merge for a worker thread. Never throws. A verified merge saves its undo step.</summary>
+    public MergeOutcome Run(MergeRequest request, MergeCheck check) => Run(request, check, saveUndo: true);
+
+    /// <summary>
+    /// The merge. With <paramref name="saveUndo"/> false the outcome still carries the verified step, but it is not saved:
+    /// the caller (stash-merge-pop) saves one step for the whole operation instead.
+    /// </summary>
+    internal MergeOutcome Run(MergeRequest request, MergeCheck check, bool saveUndo)
     {
         var branch = request.Branch;
         var into = check.CurrentBranch;
@@ -59,7 +68,7 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
         {
             // Only a verified merge has an undo step, so only then is one saved. If saving fails, the merge still stands.
             var saved = undo;
-            if (undo is not null)
+            if (undo is not null && saveUndo)
             {
                 var problem = new UndoLog(git).Push(undo, log);
                 if (problem is not null)
