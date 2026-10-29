@@ -1,3 +1,4 @@
+using graftui.Git;
 using graftui.Model;
 using graftui.Operations;
 using graftui.Ui.Scenes;
@@ -6,8 +7,9 @@ using graftui.Ui.Text;
 namespace graftui.Ui.App;
 
 /// <summary>
-/// The branch changes that start from the list: switch (s, not undoable) and delete (D: asked first; a merged branch gets one
-/// question, an unmerged one two, on different keys). Each runs through <see cref="StartBranchChange"/>.
+/// The branch changes that start from the list: switch (s, not undoable), new (n), rename (R), delete (D: asked first; a merged branch
+/// gets one question, an unmerged one two, on different keys) and stash, merge, pop (m over uncommitted changes, asked first).
+/// Each runs through <see cref="StartBranchChange"/>.
 /// </summary>
 internal sealed partial class BranchesTab
 {
@@ -185,5 +187,189 @@ internal sealed partial class BranchesTab
             : $"✔ Deleted {name} (was {tip}), u brings it back";
         return new BranchFinish(new BranchResult(true, "Deleted", new Caption(caption, OkB), layout), o.Commands, [],
             $"graftui: {o.Message}", after, next?.Name);
+    }
+
+    // ---------- new and rename (the name box has checked the name) ----------
+
+    /// <summary>Creates the typed branch at the current tip and switches to it. The name box has already checked it.</summary>
+    private void StartCreate(string name)
+    {
+        var snap = _app.Snapshot;
+        var from = snap.CurrentBranch;
+        var tip = _nameTip;
+        var layout = _nameLayout;
+        Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.NewBranch(name, BranchGit.Short(tip), cols);
+        StartBranchChange(_app.CreateBranchOp, new CreateBranchRequest(name), "Create",
+            c => c.Refusal, c => c.Commands,
+            () => layout,
+            (loaded, _) =>
+            {
+                var before = Or(loaded, snap, from, tip);
+                return new BranchStart(new BranchAnimation(BranchOp.Create, before, name, null, 0, $"Creating {name}…"), direction, Panel(before));
+            },
+            (o, after) => CreateFinish(o, name, after),
+            direction);
+    }
+
+    private BranchFinish CreateFinish(BranchChangeOutcome o, string name, RepoSnapshot? after)
+    {
+        if (o.Kind == BranchChangeKind.Failed)
+            return FailedFinish("Create", o.Message, o.Commands, after, null);
+
+        var tip = BranchGit.Short(o.Tip);
+        var layout = after is null ? null : LayoutFor(after, name);
+        var caption = o.Undo is null ? $"✔ {o.Message}" : $"✔ Created {name} at {tip} and switched to it (u undoes it)";
+        return new BranchFinish(new BranchResult(true, "Branch created", new Caption(caption, OkB), layout), o.Commands, [],
+            $"graftui: {o.Message}", after, name);
+    }
+
+    /// <summary>Renames <paramref name="old"/> to <paramref name="nu"/>, the current branch included. The name box has checked the name.</summary>
+    private void StartRename(string old, string nu)
+    {
+        var snap = _app.Snapshot;
+        var tip = _nameTip;
+        var layout = _nameLayout;
+        Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.Rename(old, nu, cols);
+        StartBranchChange(_app.RenameBranchOp, new RenameBranchRequest(old, nu), "Rename",
+            c => c.Refusal, c => c.Commands,
+            () => layout,
+            (loaded, _) =>
+            {
+                var before = Or(loaded, snap, old, tip);
+                return new BranchStart(new BranchAnimation(BranchOp.Rename, before, old, nu, 0, $"Renaming {old}…"), direction, Panel(before));
+            },
+            (o, after) => RenameFinish(o, old, nu, after),
+            direction);
+    }
+
+    private BranchFinish RenameFinish(BranchChangeOutcome o, string old, string nu, RepoSnapshot? after)
+    {
+        if (o.Kind == BranchChangeKind.Failed)
+            return FailedFinish("Rename", o.Message, o.Commands, after, old);
+
+        var layout = after is null ? null : LayoutFor(after, nu);
+        var caption = o.Undo is null ? $"✔ {o.Message}" : $"✔ Renamed {old} to {nu} (u undoes it)";
+        return new BranchFinish(new BranchResult(true, "Renamed", new Caption(caption, OkB), layout), o.Commands, [],
+            $"graftui: {o.Message}", after, nu);
+    }
+
+    // ---------- stash, merge, pop (m over uncommitted changes) ----------
+
+    /// <summary>
+    /// m was refused because of uncommitted changes. Runs on the merge's worker: the stash-merge check is made there, and its refusal is
+    /// shown, or the question is asked on the UI thread.
+    /// </summary>
+    private void OfferStashMerge(string branch, MergeCheck merge, GraphLayout? loaded)
+    {
+        var check = _app.StashMergeOp.Check(new StashMergeRequest(branch));
+        _app.Ui(() =>
+        {
+            if (check.CanRun)
+                AskStashMerge(check, branch, loaded);
+            else
+                ShowBranchRefused(check.Commands, check.Refusal!, loaded, cols => DirectionLine.Merge(branch, merge.CurrentBranch, false, cols));
+        });
+    }
+
+    /// <summary>The question: stash the changes, merge the branch, pop them back. Its commands are logged here; the run logs its own.</summary>
+    private void AskStashMerge(StashMergeCheck check, string branch, GraphLayout? layout)
+    {
+        EndWork();
+        _app.LogCommands(check.Commands);
+        var into = check.Into;
+        var changed = check.Changed;
+        BeginQuestion(new BranchQuestion(
+            Title: "Uncommitted changes",
+            Text: $"You have {MergeScenes.Plural(changed, "uncommitted change")}. Stash them, merge {branch} into {into}, then pop them back?",
+            YesKey: 'y', YesLabel: " stash, merge, pop", NoLabel: " cancel", CancelText: "Merge cancelled: nothing changed",
+            Direction: cols => DirectionLine.StashMerge(branch, into, cols), Layout: layout,
+            OnYes: () => StartStashMerge(branch, into, layout, changed)));
+    }
+
+    /// <summary>
+    /// Runs stash, merge, pop. The run's own check is not logged again (the question logged it). The animation stashes, plays the merge,
+    /// then pops the changes back.
+    /// </summary>
+    private void StartStashMerge(string branch, string into, GraphLayout? layout, int changed)
+    {
+        var snap = _app.Snapshot;
+        var tip = snap.Branches.FirstOrDefault(b => b.Name == branch)?.Hash ?? "";
+        Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.StashMerge(branch, into, cols);
+        StartBranchChange(_app.StashMergeOp, new StashMergeRequest(branch), "Stash, merge, pop",
+            c => c.Refusal, _ => Array.Empty<GitResult>(),
+            () => layout,
+            (loaded, _) =>
+            {
+                var before = Or(loaded, snap, branch, tip);
+                return new BranchStart(new StashMergeAnimation(before, changed), direction, Panel(before));
+            },
+            (o, after) => StashMergeFinish(o, branch, into, changed, after),
+            direction);
+    }
+
+    /// <summary>
+    /// The result of stash, merge, pop. A merge that stands keeps the layout after it; a conflict keeps the layout before (the repo is
+    /// as it was), and the merge's own conflict scene plays out.
+    /// </summary>
+    private BranchFinish StashMergeFinish(StashMergeOutcome o, string branch, string into, int changed, RepoSnapshot? after)
+    {
+        var files = MergeScenes.Plural(changed, "changed file");
+        var back = changed == 1 ? "is back" : "are back";
+        var layout = after is null ? null : LayoutFor(after, branch);
+        switch (o.Kind)
+        {
+            case StashMergeKind.Merged when o.Merge?.Kind == MergeKind.UpToDate:
+                return new BranchFinish(new BranchResult(true, "Merged", new Caption("Already up to date: your changes are back", Muted), null,
+                        Merge: o.Merge),
+                    o.Commands, [], $"graftui: stashed, found {branch} already in {into}, and popped {files} back", after, branch);
+
+            case StashMergeKind.Merged:
+            {
+                var merge = o.Merge;
+                var fast = merge?.Kind == MergeKind.FastForward;
+                var at = BranchGit.Short(merge?.NewHead ?? "");
+                var text = fast
+                    ? $"✔ Fast-forward: {into} is now at {at}, your {files} {back}"
+                    : $"✔ Merge commit {at} created on {into}, your {files} {back}";
+                return new BranchFinish(new BranchResult(true, fast ? "Fast-forwarded" : "Merged", new Caption(text, OkB), layout, Merge: merge),
+                    o.Commands, [], $"graftui: stashed, merged {branch} into {into} and popped {files} back", after, branch);
+            }
+
+            case StashMergeKind.MergeConflict:
+            {
+                var conflicts = o.ConflictFiles;
+                var text = conflicts.Count > 0
+                    ? $"✕ CONFLICT in {conflicts[0]}: merge aborted, your changes are back as they were"
+                    : "✕ CONFLICT: merge aborted, your changes are back as they were";
+                IReadOnlyList<(string Text, Style Style)> log = conflicts.Count > 0
+                    ? [($"Conflicting files: {string.Join(", ", conflicts)}", BadB)]
+                    : [];
+                return new BranchFinish(new BranchResult(true, "Aborted", new Caption(text, BadB), null, Merge: o.Merge), o.Commands, log,
+                    $"graftui: merge of {branch} conflicted{(conflicts.Count > 0 ? $" in {conflicts[0]}" : "")}; aborted, your changes are back",
+                    after, branch);
+            }
+
+            case StashMergeKind.PopConflict:
+            {
+                var conflicts = o.ConflictFiles;
+                var caption = conflicts.Count > 0
+                    ? $"✕ Merged, but the pop conflicted in {conflicts[0]}: changes kept in the stash"
+                    : "✕ Merged, but the pop failed: changes kept in the stash";
+                var overlay = conflicts.Count > 0
+                    ? $"Merged {branch} into {into}. Your changes conflict with it, so they stay in the stash: {string.Join(", ", conflicts)}"
+                      + "  Z tries again · u undoes the merge"
+                    : $"Merged {branch} into {into}. Your changes could not be popped back, so they stay in the stash."
+                      + "  Z tries again · u undoes the merge";
+                IReadOnlyList<(string Text, Style Style)> log = [(caption, BadB), (overlay, BadB)];
+                return new BranchFinish(
+                    new BranchResult(true, "Pop conflict", new Caption(caption, BadB), layout, "Pop conflict", overlay, o.Merge),
+                    o.Commands, log,
+                    $"graftui: merged {branch} into {into}; the pop {(conflicts.Count > 0 ? $"conflicted in {conflicts[0]}" : "failed")}, your changes are in stash@{{0}}",
+                    after, branch);
+            }
+
+            default:
+                return FailedFinish("Stash, merge, pop", o.Message, o.Commands, after, branch);
+        }
     }
 }

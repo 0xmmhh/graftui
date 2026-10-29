@@ -125,6 +125,21 @@ public sealed class AppController
     internal TextField SubjectField { get; private set; } = null!;
     internal BodyTextView BodyField { get; private set; } = null!;
 
+    /// <summary>Where the subject field sits: the commit and stash form's area, or the one-line name box's rows (new branch, rename).</summary>
+    internal enum FieldSpot { Areas, BranchName }
+
+    private FieldSpot _fieldPlacement;
+
+    internal FieldSpot FieldPlacement
+    {
+        get => _fieldPlacement;
+        set
+        {
+            _fieldPlacement = value;
+            Art?.SetNeedsLayout();
+        }
+    }
+
     internal BranchesTab BranchesTab { get; }
     internal ChangesTab ChangesTab { get; }
     internal ChangesAnimator ChangesAnimator { get; }
@@ -228,9 +243,12 @@ public sealed class AppController
         {
             Visible = false,
             CanFocus = false,
-            X = Pos.Func(_ => FieldX()),
-            Y = Pos.Func(_ => FieldArea() is { } a ? a.Y + AreasLayout.For(a.W, a.H).SubjectRow : 0),
-            Width = Dim.Func(_ => FieldArea() is { } a && !CurrentLayout().TooSmall ? a.W - AreasLayout.FieldX - 7 : 0),
+            X = Pos.Func(_ => FieldPlacement == FieldSpot.BranchName ? NameBoxOrZero().X : FieldX()),
+            Y = Pos.Func(_ => FieldPlacement == FieldSpot.BranchName ? NameBoxOrZero().Y
+                : FieldArea() is { } a ? a.Y + AreasLayout.For(a.W, a.H).SubjectRow : 0),
+            Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0
+                : FieldPlacement == FieldSpot.BranchName ? NameBoxOrZero().W
+                : FieldArea() is { } a ? a.W - AreasLayout.FieldX - 7 : 0),
             Height = 1,
         };
         BodyField = new BodyTextView
@@ -275,6 +293,10 @@ public sealed class AppController
 
     private int FieldX() => FieldArea() is { } a ? a.X + AreasLayout.FieldX : 0;
 
+    /// <summary>The name box's field position and width in the art pane; all zero when no row is free for it.</summary>
+    private (int X, int Y, int W) NameBoxOrZero() =>
+        ArtPaneView.NameField(Art.Viewport.Width, Art.Viewport.Height) is { } n ? (n.X, n.Y, n.W) : (0, 0, 0);
+
     // ---------- keys ----------
 
     private void OnKeyDown(object? sender, Key e)
@@ -288,6 +310,11 @@ public sealed class AppController
         if (ActiveTab == TabKind.Changes && ChangesTab.Mode == ChangesMode.Ask)
         {
             ChangesTab.HandleAskKey(e);
+            return;
+        }
+        if (ActiveTab == TabKind.Branches && BranchesTab.Mode == BranchesMode.Input)
+        {
+            BranchesTab.HandleInputKey(e);
             return;
         }
         if (ActiveTab == TabKind.Branches && BranchesTab.Mode == BranchesMode.Ask)
@@ -337,6 +364,16 @@ public sealed class AppController
         {
             e.Handled = true;
             BranchesTab.StartSwitch();
+        }
+        else if (e == Key.N)
+        {
+            e.Handled = true;
+            BranchesTab.BeginCreate();
+        }
+        else if (e == Key.R.WithShift)
+        {
+            e.Handled = true;
+            BranchesTab.BeginRename();
         }
         else if (e == Key.D.WithShift)
         {
@@ -405,14 +442,14 @@ public sealed class AppController
     }
 
     /// <summary>
-    /// The Branches key bar: the keys that act for the selected branch (m, s, D), and u when there is an undo step. Called whenever
-    /// the snapshot or the selection changes. n and R stay off the bar until their routes exist (A3 step 9).
+    /// The Branches key bar: the keys that act for the selected branch (m, s, n, R, D), and u when there is an undo step. Called whenever
+    /// the snapshot or the selection changes.
     /// </summary>
     internal void SyncBranchKeys()
     {
         var s = Snapshot;
         var sel = BranchesTab.Selected < s.Branches.Count ? s.Branches[BranchesTab.Selected] : null;
-        var state = BranchesKeyState.For(s, sel) with { CanCreate = false, CanRename = false };
+        var state = BranchesKeyState.For(s, sel);
         if (Keys is null || Keys.BranchesState == state)
             return;
         Keys.BranchesState = state;

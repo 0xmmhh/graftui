@@ -111,7 +111,14 @@ internal sealed partial class BranchesTab
                 // The layout is read first, so that Check is the last git work before the merge.
                 var loaded = cached ?? _app.TryLoadLayout(snap, b);
                 var o = RunGated(_app.MergeOp, new MergeRequest(b.Name), () => _app.Gate.IsQuitting,
-                    check => _app.Ui(() => _app.Animator.ShowRefused(check, b.Name, loaded)),
+                    check =>
+                    {
+                        // Uncommitted changes are not a dead end: the stash-merge-pop question is offered instead of the refusal.
+                        if (check.Dirty)
+                            OfferStashMerge(b.Name, check, loaded);
+                        else
+                            _app.Ui(() => _app.Animator.ShowRefused(check, b.Name, loaded));
+                    },
                     check =>
                     {
                         var layoutNow = loaded

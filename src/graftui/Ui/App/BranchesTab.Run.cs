@@ -159,7 +159,8 @@ internal sealed partial class BranchesTab
         new(RefusedResult(reason), commands, RefusalText.LogLines(reason).Select(l => (Text: l, Style: WarnB)).ToList(),
             $"graftui: refused: {reason}", after, select);
 
-    private static BranchFinish FailedFinish(string verb, string message, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string select)
+    /// <summary>A change that failed: the failure is the result. A null <paramref name="select"/> keeps the selection where it is.</summary>
+    private static BranchFinish FailedFinish(string verb, string message, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string? select)
     {
         var text = $"{verb} failed: {message}";
         return new BranchFinish(new BranchResult(false, "Failed", new Caption($"✕ {text}", BadB), null), commands, [(text, BadB)],
