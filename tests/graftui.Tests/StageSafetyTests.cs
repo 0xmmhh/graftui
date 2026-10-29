@@ -94,7 +94,7 @@ public class StageSafetyTests
         var outcome = Act(repo, StageAction.Unstage, Find(repo, ChangeSide.Staged, "new name.txt"));
 
         Assert.True(outcome.Success, outcome.Message);
-        Assert.Contains(outcome.Commands, c => c.Command == "git restore --staged -- new name.txt old.txt");
+        Assert.Contains(outcome.Commands, c => c.Command == "git restore --staged -- \"new name.txt\" old.txt");
         var rows = Read(repo).Unstaged;
         Assert.Contains(new FileChange("old.txt", null, ChangeSide.Unstaged, ChangeKind.Deleted), rows);
         Assert.Contains(new FileChange("new name.txt", null, ChangeSide.Unstaged, ChangeKind.Untracked), rows);
@@ -276,7 +276,7 @@ public class StageSafetyTests
 
         var single = Act(repo, StageAction.Unstage, Find(repo, ChangeSide.Staged, "-new file.txt"));
         Assert.True(single.Success, single.Message);
-        Assert.Contains(single.Commands, c => c.Command == "git restore --staged -- -new file.txt");
+        Assert.Contains(single.Commands, c => c.Command == "git restore --staged -- \"-new file.txt\"");
         Assert.Contains(new FileChange("-new file.txt", null, ChangeSide.Unstaged, ChangeKind.Untracked), Read(repo).Unstaged);
 
         Assert.True(Act(repo, StageAction.UnstageAll, null).Success);

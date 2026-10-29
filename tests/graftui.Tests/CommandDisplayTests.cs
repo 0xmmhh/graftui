@@ -370,19 +370,19 @@ public class CommandDisplayTests
     [Fact]
     public void Quoting_wraps_spaces_and_escapes_quotes_dollars_backticks_and_backslashes()
     {
-        Assert.Equal("\"a b\"", CommandDisplay.Quote("a b"));
-        Assert.Equal("\"a\\\"b\"", CommandDisplay.Quote("a\"b"));
-        Assert.Equal("\"\\$HOME\"", CommandDisplay.Quote("$HOME"));
-        Assert.Equal("\"\\`x\\`\"", CommandDisplay.Quote("`x`"));
-        Assert.Equal("\"back\\\\slash\"", CommandDisplay.Quote("back\\slash"));
+        Assert.Equal("\"a b\"", GitCommandLine.Quote("a b"));
+        Assert.Equal("\"a\\\"b\"", GitCommandLine.Quote("a\"b"));
+        Assert.Equal("\"\\$HOME\"", GitCommandLine.Quote("$HOME"));
+        Assert.Equal("\"\\`x\\`\"", GitCommandLine.Quote("`x`"));
+        Assert.Equal("\"back\\\\slash\"", GitCommandLine.Quote("back\\slash"));
     }
 
     [Fact]
     public void Quoting_leaves_plain_words_bare_and_quotes_empty_or_forced_arguments()
     {
-        Assert.Equal("plain-1.2/x:y@z{}^~=,+_", CommandDisplay.Quote("plain-1.2/x:y@z{}^~=,+_"));
-        Assert.Equal("\"\"", CommandDisplay.Quote(""));
-        Assert.Equal("\"x\"", CommandDisplay.Quote("x", always: true));
+        Assert.Equal("plain-1.2/x:y@z{}^~=,+_", GitCommandLine.Quote("plain-1.2/x:y@z{}^~=,+_"));
+        Assert.Equal("\"\"", GitCommandLine.Quote(""));
+        Assert.Equal("\"x\"", GitCommandLine.Quote("x", always: true));
     }
 
     [Fact]

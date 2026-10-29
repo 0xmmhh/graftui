@@ -150,25 +150,6 @@ public static class CommandDisplay
         return tidied;
     }
 
-    /// <summary>Quotes an argument for display. Plain words stay bare; empty, spaced or special arguments go in double quotes.</summary>
-    internal static string Quote(string arg, bool always = false)
-    {
-        if (!always && arg.Length > 0 && arg.All(IsPlain))
-            return arg;
-
-        var sb = new StringBuilder(arg.Length + 2).Append('"');
-        foreach (var c in arg)
-        {
-            if (c is '\\' or '"' or '$' or '`')
-                sb.Append('\\');
-            sb.Append(c);
-        }
-
-        return sb.Append('"').ToString();
-    }
-
-    private static bool IsPlain(char c) => char.IsAsciiLetterOrDigit(c) || "_./:@{}^~=,+-".Contains(c);
-
     private static string Text(GitResult r, CommandHints h)
     {
         if (r.Args.Count == 0)
@@ -177,7 +158,7 @@ public static class CommandDisplay
         if (r.Args[0] == "commit")
             return CommitText(r.Args, h);
 
-        return "git " + string.Join(' ', Tidy(r.Args).Select(t => Quote(t)));
+        return GitCommandLine.Render(Tidy(r.Args));
     }
 
     /// <summary>`git commit [--amend] -m "subject" [-m "first body line[…]"]`. The message file is not shown.</summary>
@@ -188,10 +169,10 @@ public static class CommandDisplay
             sb.Append(" --amend");
 
         if (h.Subject is not null)
-            sb.Append(" -m ").Append(Quote(h.Subject, always: true));
+            sb.Append(" -m ").Append(GitCommandLine.Quote(h.Subject, always: true));
 
         if (FirstBodyLine(h.Body) is { } body)
-            sb.Append(" -m ").Append(Quote(body.More ? body.Line + "…" : body.Line, always: true));
+            sb.Append(" -m ").Append(GitCommandLine.Quote(body.More ? body.Line + "…" : body.Line, always: true));
 
         return sb.ToString();
     }

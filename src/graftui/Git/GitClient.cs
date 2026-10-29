@@ -100,7 +100,7 @@ public sealed class GitClient(string repoPath)
         var stdErr = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
 
-        return new GitResult("git " + string.Join(' ', args), process.ExitCode, stdOut.Result, stdErr.Result) { Args = args };
+        return new GitResult(GitCommandLine.Render(args), process.ExitCode, stdOut.Result, stdErr.Result) { Args = args };
     }
 
     /// <summary>True if RepoPath is inside a git work tree.</summary>
