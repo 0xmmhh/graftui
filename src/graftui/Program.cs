@@ -7,24 +7,24 @@ using Terminal.Gui.App;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
+// The three early exits print and return at once, so awaiting their writes never moves the UI below onto another thread.
 var parsed = CliArgs.Parse(args);
-if (parsed.Error is not null)
+if (parsed.Options is not { } options)
 {
-    Console.Error.WriteLine(parsed.Error);
-    Console.Error.WriteLine("Try 'graftui --help'.");
+    await Console.Error.WriteLineAsync(parsed.Error);
+    await Console.Error.WriteLineAsync("Try 'graftui --help'.");
     return 2;
 }
 
-var options = parsed.Options!;
 if (options.Help)
 {
-    Console.Out.Write(CliArgs.HelpText);
+    await Console.Out.WriteAsync(CliArgs.HelpText);
     return 0;
 }
 
 if (options.Version)
 {
-    Console.Out.WriteLine(CliArgs.VersionLine());
+    await Console.Out.WriteLineAsync(CliArgs.VersionLine());
     return 0;
 }
 
