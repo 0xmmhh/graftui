@@ -90,12 +90,15 @@ internal sealed partial class BranchesTab
         }, CancellationToken.None);
     }
 
-    /// <summary>The layout of the named branch in a snapshot, read on the worker; null when the branch is not there.</summary>
+    /// <summary>
+    /// The layout of the named branch in a snapshot, read on the worker. When the name is gone (undoing a create removes the branch
+    /// that was selected), the current branch's layout is used instead; null only when there is no branch to show.
+    /// </summary>
     private GraphLayout? LayoutFor(RepoSnapshot? snap, string? name)
     {
         if (snap is null || name is null)
             return null;
-        var branch = snap.Branches.FirstOrDefault(b => b.Name == name);
+        var branch = snap.Branches.FirstOrDefault(b => b.Name == name) ?? snap.Branches.FirstOrDefault(b => b.IsCurrent);
         return branch is null ? null : _app.TryLoadLayout(snap, branch);
     }
 

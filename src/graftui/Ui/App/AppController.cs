@@ -43,12 +43,18 @@ public sealed class AppController
         StashOp = new StashOperation(rootGit);
         PopOp = new PopOperation(rootGit);
         UndoOp = new UndoOperation(rootGit);
+        SwitchOp = new SwitchOperation(rootGit);
+        CreateBranchOp = new CreateBranchOperation(rootGit);
+        RenameBranchOp = new RenameBranchOperation(rootGit);
+        DeleteBranchOp = new DeleteBranchOperation(rootGit);
+        StashMergeOp = new StashMergeOperation(rootGit);
         Snapshot = initial;
         _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
         _repoDisplay = repoDisplay;
         BranchesTab = new BranchesTab(this);
         ChangesTab = new ChangesTab(this);
         ChangesAnimator = new ChangesAnimator(this);
+        BranchAnimator = new BranchAnimator(this);
         Animator = new Animator(this);
     }
 
@@ -90,6 +96,11 @@ public sealed class AppController
     internal StashOperation StashOp { get; }
     internal PopOperation PopOp { get; }
     internal UndoOperation UndoOp { get; }
+    internal SwitchOperation SwitchOp { get; }
+    internal CreateBranchOperation CreateBranchOp { get; }
+    internal RenameBranchOperation RenameBranchOp { get; }
+    internal DeleteBranchOperation DeleteBranchOp { get; }
+    internal StashMergeOperation StashMergeOp { get; }
     internal QuitGate Gate { get; } = new();
 
     /// <summary>The top-level repo. The Changes tab's paths are relative to it, so its reads and writes run here.</summary>
@@ -117,9 +128,15 @@ public sealed class AppController
     internal BranchesTab BranchesTab { get; }
     internal ChangesTab ChangesTab { get; }
     internal ChangesAnimator ChangesAnimator { get; }
+    internal BranchAnimator BranchAnimator { get; }
     internal Animator Animator { get; }
 
     internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _wantedBranchWidth);
+
+    /// <summary>True when the whole art, and so the message box's fields, fits inside the art pane at this size.</summary>
+    internal bool ArtFits() =>
+        ArtPaneView.ArtArea(Art.Viewport.Width, Art.Viewport.Height) is { } area
+        && area.Y + area.H <= Art.Viewport.Height;
 
     internal void MarkOutcomeShown() => _outcomeShown = true;
 
@@ -273,6 +290,11 @@ public sealed class AppController
             ChangesTab.HandleAskKey(e);
             return;
         }
+        if (ActiveTab == TabKind.Branches && BranchesTab.Mode == BranchesMode.Ask)
+        {
+            BranchesTab.HandleAskKey(e);
+            return;
+        }
 
         // v switches the Commands pane between the simplified and the exact list, also while git is busy (it only changes the display).
         if (e == Key.V)
@@ -310,6 +332,16 @@ public sealed class AppController
         {
             e.Handled = true;
             BranchesTab.StartMerge();
+        }
+        else if (e == Key.S)
+        {
+            e.Handled = true;
+            BranchesTab.StartSwitch();
+        }
+        else if (e == Key.D.WithShift)
+        {
+            e.Handled = true;
+            BranchesTab.AskDelete();
         }
         else if (e == Key.U)
         {
@@ -373,14 +405,14 @@ public sealed class AppController
     }
 
     /// <summary>
-    /// The Branches key bar: m shows when the selected branch can be merged (it is not the current one, and it is ahead of HEAD or
-    /// its counts are not known yet), u when there is an undo step. Called whenever the snapshot or the selection changes.
+    /// The Branches key bar: the keys that act for the selected branch (m, s, D), and u when there is an undo step. Called whenever
+    /// the snapshot or the selection changes. n and R stay off the bar until their routes exist (A3 step 9).
     /// </summary>
     internal void SyncBranchKeys()
     {
         var s = Snapshot;
         var sel = BranchesTab.Selected < s.Branches.Count ? s.Branches[BranchesTab.Selected] : null;
-        var state = new BranchesKeyState(s.Branches.Count, BranchesKeyState.MergeOffered(sel, s.Counts), s.HasUndo);
+        var state = BranchesKeyState.For(s, sel) with { CanCreate = false, CanRename = false };
         if (Keys is null || Keys.BranchesState == state)
             return;
         Keys.BranchesState = state;
