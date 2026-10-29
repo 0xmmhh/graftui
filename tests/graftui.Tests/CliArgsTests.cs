@@ -99,6 +99,17 @@ public class CliArgsTests
     }
 
     [Fact]
+    public void An_empty_path_is_refused_and_never_reaches_the_path_code()
+    {
+        Assert.Equal("graftui: empty path", P("").Error);
+        Assert.Equal("graftui: empty path", P("--", "").Error);
+        Assert.Equal("graftui: empty path", P("", "/tmp").Error);
+        Assert.Equal("graftui: empty path", P("--sandbox", "").Error);
+        Assert.Null(P("", "--help").Error);
+        Assert.True(P("", "--help").Options!.Help);
+    }
+
+    [Fact]
     public void Two_paths_are_too_many_arguments()
     {
         Assert.Equal("graftui: too many arguments", P("a", "b").Error);

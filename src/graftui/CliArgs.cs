@@ -47,7 +47,10 @@ Keys: Tab Branches/Changes · ↑/↓ select · m merge · Space stage/unstage �
 
         void TakePath(string arg)
         {
-            if (path is null)
+            // "" is no folder: it must not reach Path.GetFullPath, which throws on it.
+            if (arg.Length == 0)
+                Fail("graftui: empty path");
+            else if (path is null)
                 path = arg;
             else
                 Fail("graftui: too many arguments");
