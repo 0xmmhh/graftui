@@ -6,7 +6,8 @@ namespace graftui.Operations;
 
 /// <summary>
 /// Switches to another branch (s). Not undoable: a switch moves HEAD and any change that does not collide comes along.
-/// Check refuses the current branch, a conflicted index, a merge in progress and, when HEAD is detached, commits that no branch holds.
+/// Check refuses the current branch, a conflicted index, a merge in progress, when HEAD is detached and commits that no branch
+/// holds, and a changed path that the target changes too (git would refuse that switch, so it is named before anything starts).
 /// Run runs `git switch --no-guess`, verifies HEAD from the refs, and when git refuses, names the changed paths that would
 /// have been overwritten (classified from the paths, never from git's text). Run never throws.
 /// </summary>
@@ -77,6 +78,11 @@ public sealed class SwitchOperation(GitClient git) : IGitOperation<SwitchRequest
                 return Refused(BranchRefusals.DetachedOrphans(orphans), target, log);
         }
 
+        // 5. A changed path that the target also changes is what git refuses to overwrite: named now, before the switch starts.
+        var overwritten = Overwritten(git, log, Paths(status), target);
+        if (overwritten.Count > 0)
+            return Refused(BranchRefusals.WouldOverwrite(overwritten), target, log);
+
         return new SwitchCheck(null, from, target, tip, headHash, status.ChangedPaths, log);
     }
 
@@ -110,17 +116,27 @@ public sealed class SwitchOperation(GitClient git) : IGitOperation<SwitchRequest
         var st = Call(git, log, StatusArgs);
         if (!st.Success)
             return Done(SwitchKind.Failed, check, $"git switch was refused and the status could not be read: {GitClient.Describe(st)}", [], log);
-        var changed = Paths(StatusParser.Parse(st.StdOut)).Distinct().ToHashSet(StringComparer.Ordinal);
-
-        var diff = Call(git, log, "diff", "--name-only", "-z", "--no-renames", "HEAD", HeadsPrefix + target);
-        var differs = diff.Success
-            ? diff.StdOut.Split('\0', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal)
-            : new HashSet<string>(StringComparer.Ordinal);
-
-        var blocking = changed.Where(differs.Contains).Order(StringComparer.Ordinal).ToList();
+        var blocking = Overwritten(git, log, Paths(StatusParser.Parse(st.StdOut)), target);
         if (blocking.Count > 0)
             return Done(SwitchKind.Refused, check, BranchRefusals.WouldOverwrite(blocking), blocking, log);
         return Done(SwitchKind.Refused, check, FirstLine(sw), [], log);
+    }
+
+    /// <summary>
+    /// The changed paths that a switch to <paramref name="target"/> would overwrite: those the target also differs from HEAD in.
+    /// Empty when the paths are none or the diff cannot be read. Check and Run both use it, so they agree.
+    /// </summary>
+    private static List<string> Overwritten(GitClient git, List<GitResult> log, IEnumerable<string> changed, string target)
+    {
+        var paths = changed.ToHashSet(StringComparer.Ordinal);
+        if (paths.Count == 0)
+            return [];
+
+        var diff = Call(git, log, "diff", "--name-only", "-z", "--no-renames", "HEAD", HeadsPrefix + target);
+        if (!diff.Success)
+            return [];
+        var differs = diff.StdOut.Split('\0', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
+        return paths.Where(differs.Contains).Order(StringComparer.Ordinal).ToList();
     }
 
     private static SwitchCheck Refused(string reason, string target, List<GitResult> log) =>

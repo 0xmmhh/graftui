@@ -50,35 +50,54 @@ public class BranchSwitchSafetyTests
     }
 
     [Fact]
-    public void A_modified_file_that_differs_between_the_branches_refuses_and_changes_nothing()
+    public void A_modified_file_that_differs_between_the_branches_is_refused_in_Check_before_any_switch()
     {
         using var repo = TempRepo.Diverged(conflict: true);
         repo.Write("app.txt", "local\n");
         var head = repo.Head;
         var before = repo.Status();
 
-        var outcome = Switch(repo, "feature");
+        var check = CheckOnly(repo, "feature");
 
-        Assert.Equal(SwitchKind.Refused, outcome.Kind);
-        Assert.Equal(["app.txt"], outcome.Blocking);
-        Assert.Equal(BranchRefusals.WouldOverwrite(["app.txt"]), outcome.Message);
+        Assert.False(check.CanRun);
+        Assert.Equal(BranchRefusals.WouldOverwrite(["app.txt"]), check.Refusal);
+        Assert.DoesNotContain(check.Commands, c => c.Args.Count > 0 && c.Args[0] == "switch");
         Assert.Equal("main", repo.Run("symbolic-ref", "--short", "HEAD"));
         Assert.Equal(head, repo.Head);
         Assert.Equal(before, repo.Status());
     }
 
     [Fact]
-    public void An_untracked_file_the_target_tracks_refuses_and_names_that_file()
+    public void An_untracked_file_the_target_tracks_is_refused_in_Check_and_named()
     {
         using var repo = TempRepo.Diverged(conflict: false);
         // feature adds b.txt; on main it is an untracked file in the way.
         repo.Write("b.txt", "mine\n");
         var before = repo.Status();
 
-        var outcome = Switch(repo, "feature");
+        var check = CheckOnly(repo, "feature");
+
+        Assert.False(check.CanRun);
+        Assert.Equal(BranchRefusals.WouldOverwrite(["b.txt"]), check.Refusal);
+        Assert.Equal("main", repo.Run("symbolic-ref", "--short", "HEAD"));
+        Assert.Equal(before, repo.Status());
+    }
+
+    [Fact]
+    public void A_change_that_appears_after_Check_is_named_by_Run_when_git_refuses()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        var op = new SwitchOperation(repo.Git);
+        var check = op.Check(new SwitchRequest("feature"));
+        Assert.True(check.CanRun);
+
+        repo.Write("app.txt", "local\n");
+        var before = repo.Status();
+        var outcome = op.Run(new SwitchRequest("feature"), check);
 
         Assert.Equal(SwitchKind.Refused, outcome.Kind);
-        Assert.Equal(["b.txt"], outcome.Blocking);
+        Assert.Equal(["app.txt"], outcome.Blocking);
+        Assert.Equal(BranchRefusals.WouldOverwrite(["app.txt"]), outcome.Message);
         Assert.Equal("main", repo.Run("symbolic-ref", "--short", "HEAD"));
         Assert.Equal(before, repo.Status());
     }

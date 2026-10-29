@@ -86,6 +86,16 @@ public class DirectionLineTests
     }
 
     [Fact]
+    public void New_branch_names_the_branch_once_and_the_name_segment_is_the_only_copy()
+    {
+        var segs = DirectionLine.NewBranch("topic", "abc1234", 80);
+
+        Assert.Equal(4, segs.Count);
+        Assert.Equal("topic", segs[1].Text);
+        Assert.Equal(1, Text(segs).Split("topic").Length - 1);
+    }
+
+    [Fact]
     public void New_branch_with_no_name_yet_leaves_the_name_empty()
     {
         Assert.Equal("new branch     at abc1234", Text(DirectionLine.NewBranch("", "abc1234", 44)));
