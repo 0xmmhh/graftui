@@ -16,6 +16,8 @@ namespace graftui.Operations;
 public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMergeRequest, StashMergeCheck, StashMergeOutcome>
 {
     public const string RescueRef = "refs/graftui/rescue/stash-merge";
+    /// <summary>The end of the undo step's What ("merge of X over your changes"), so the undo can name the merge.</summary>
+    public const string WhatSuffix = " over your changes";
     private const string StashRef = "refs/stash";
 
     public StashMergeCheck Check(StashMergeRequest request)
@@ -228,7 +230,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
                 return Done(StashMergeKind.Merged, merge, [],
                     Keep($"merged {branch} into {into}; your changes are back, but the undo step could not be made"), log);
 
-            var undo = new UndoRecord(UndoKind.StashMerge, $"merge of {branch} over your changes", [new RefChange(HeadsPrefix + into, head, newHead)],
+            var undo = new UndoRecord(UndoKind.StashMerge, $"merge of {branch}{WhatSuffix}", [new RefChange(HeadsPrefix + into, head, newHead)],
                 Branch: into, Head: newHead, StashCommit: top, StashBelow: below, StateBefore: copy, StateAfter: afterCommit);
             var problem = new UndoLog(git).Push(undo, log);
             if (problem is not null)

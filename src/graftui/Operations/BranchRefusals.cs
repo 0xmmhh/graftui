@@ -48,6 +48,9 @@ public static class BranchRefusals
 
     public const string UndoMergeStateChanged = "files have changed since the merge, so undoing would overwrite them";
 
+    public static string UndoCommitGone(string name, string hash) =>
+        $"the commit {BranchGit.Short(hash)} is no longer in the repo, so {name} cannot be restored to it";
+
     /// <summary>Stash-merge-pop over a clean tree: the plain merge does it. The screen asks the question only over a dirty tree.</summary>
     public const string NothingToStashForMerge = "nothing to stash: press m again to merge";
 }
