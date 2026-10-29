@@ -10,7 +10,7 @@ public static class CommitFormHint
     {
         var verb = amend ? "amends" : "commits";
         return bodyFocused
-            ? $"Enter adds a line · Ctrl+J {verb} · Tab moves to the subject · Esc cancels"
-            : $"Enter {verb} · Tab moves to the body · Ctrl+Enter saves from the body · Esc cancels";
+            ? $"Enter adds a line · Ctrl+J {verb} · Tab: subject · Esc cancels"
+            : $"Enter {verb} · Tab: body · Esc cancels";
     }
 }

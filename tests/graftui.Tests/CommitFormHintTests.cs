@@ -7,15 +7,15 @@ public class CommitFormHintTests
     [Fact]
     public void In_the_subject_enter_saves_and_the_hint_says_so()
     {
-        Assert.Equal("Enter commits · Tab moves to the body · Ctrl+Enter saves from the body · Esc cancels", CommitFormHint.For(amend: false, bodyFocused: false));
-        Assert.Equal("Enter amends · Tab moves to the body · Ctrl+Enter saves from the body · Esc cancels", CommitFormHint.For(amend: true, bodyFocused: false));
+        Assert.Equal("Enter commits · Tab: body · Esc cancels", CommitFormHint.For(amend: false, bodyFocused: false));
+        Assert.Equal("Enter amends · Tab: body · Esc cancels", CommitFormHint.For(amend: true, bodyFocused: false));
     }
 
     [Fact]
     public void In_the_body_enter_adds_a_line_and_ctrl_j_saves()
     {
-        Assert.Equal("Enter adds a line · Ctrl+J commits · Tab moves to the subject · Esc cancels", CommitFormHint.For(amend: false, bodyFocused: true));
-        Assert.Equal("Enter adds a line · Ctrl+J amends · Tab moves to the subject · Esc cancels", CommitFormHint.For(amend: true, bodyFocused: true));
+        Assert.Equal("Enter adds a line · Ctrl+J commits · Tab: subject · Esc cancels", CommitFormHint.For(amend: false, bodyFocused: true));
+        Assert.Equal("Enter adds a line · Ctrl+J amends · Tab: subject · Esc cancels", CommitFormHint.For(amend: true, bodyFocused: true));
     }
 
     [Theory]
@@ -23,13 +23,12 @@ public class CommitFormHintTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public void Every_hint_wraps_into_two_lines_without_a_cut_at_the_narrow_pane_width(bool amend, bool bodyFocused)
+    public void Every_hint_fits_two_lines_without_a_cut_at_the_narrowest_caption(bool amend, bool bodyFocused)
     {
-        // The Changes pane at 64 columns is about this wide; the caption wraps to two lines, and nothing is cut with an ellipsis.
-        var (first, second) = TextFit.Wrap2(CommitFormHint.For(amend, bodyFocused), 50);
+        // The caption at 64x22 is 36 columns wide (measured on screen); the hint fits in its two lines, nothing cut with an ellipsis.
+        var (first, second) = TextFit.Wrap2(CommitFormHint.For(amend, bodyFocused), 36);
 
-        Assert.NotNull(second);
         Assert.DoesNotContain(TextFit.Ellipsis, first);
-        Assert.DoesNotContain(TextFit.Ellipsis, second);
+        Assert.DoesNotContain(TextFit.Ellipsis, second ?? "");
     }
 }
