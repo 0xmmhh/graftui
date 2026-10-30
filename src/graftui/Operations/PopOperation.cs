@@ -7,8 +7,9 @@ namespace graftui.Operations;
 /// <summary>
 /// Pop for the Changes tab (Z). An ordinary stash entry gets a plain `git stash pop` (no --index), so staged changes come back
 /// unstaged, as git does. graftui's own stash-merge entry (see <see cref="StashMergeOperation.MessageStart"/>) is popped with
-/// `--index`, so its staged changes stay staged; when git refuses that up front (the staged part cannot apply, tree untouched),
-/// the plain pop is used and the outcome says that the staged changes came back unstaged.
+/// `--index`, so its staged changes stay staged. When git refuses that up front (the staged part cannot apply, tree untouched),
+/// the plain pop is used only if it loses nothing: every file's staged version must equal its working-tree version. Otherwise
+/// the pop is refused, nothing changes and the entry is kept. A plain pop that runs says that the staged changes came back unstaged.
 /// Check reads the repo and refuses when there is no stash, no commit, a merge in progress, conflicts, a nested repo or a
 /// submodule. It also refuses when the stash top is not the one the user saw.
 /// Run saves the whole state first (WorkState), keeps that copy in refs/graftui/rescue/pop while git moves the files, then pops.
@@ -148,6 +149,14 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         if (!IndexRefused(indexed) || state.Take(log) != before)
             return Conflicted(state, check, before, copy, indexed, log);
 
+        // The plain pop would apply the working-tree part only. It is run when that loses nothing of the staged part.
+        var differing = StagedDifferences(top, log);
+        if (differing is null)
+            return Unchanged(check, copy,
+                "could not compare the staged and working versions of the stash; nothing was popped, the stash entry is kept", log);
+        if (differing.Count > 0)
+            return Unchanged(check, copy, ChangeRefusals.StagedWouldBeLost(differing), log);
+
         var fallback = Call(log, "stash", "pop");
         if (!fallback.Success)
             return Conflicted(state, check, before, copy, fallback, log);
@@ -161,6 +170,29 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
     /// <summary>git's refusal of `pop --index` when the staged part cannot apply. The tree is untouched when git says so.</summary>
     private static bool IndexRefused(GitResult r) =>
         (r.StdErr + "\n" + r.StdOut).Contains("Try without --index", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The files whose staged version (the stash's index tree, S^2) differs from its working-tree version (S's tree). Empty when a plain
+    /// pop loses no staged content. The untracked files (S^3) are not compared. Null when git could not say.
+    /// </summary>
+    private IReadOnlyList<string>? StagedDifferences(string top, List<GitResult> log)
+    {
+        var staged = Call(log, "rev-parse", "-q", "--verify", top + "^2^{tree}");
+        var tree = Call(log, "rev-parse", "-q", "--verify", top + "^{tree}");
+        if (!staged.Success || !tree.Success)
+            return null;
+        var diff = Call(log, "diff-tree", "-r", "-z", "--no-renames", "--name-only", staged.StdOut.Trim(), tree.StdOut.Trim());
+        return diff.Success
+            ? diff.StdOut.Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            : null;
+    }
+
+    /// <summary>git refused before it changed anything, and the pop is not run: the copy is dropped and the entry is kept.</summary>
+    private PopOutcome Unchanged(PopCheck check, string copy, string message, List<GitResult> log)
+    {
+        Call(log, "update-ref", "-d", RescueRef, copy);
+        return Done(PopKind.Refused, check.TopMessage, [], null, message, log);
+    }
 
     /// <summary>git popped the entry. Verify it, then save the undo step; the rescue ref is dropped only once the step is saved.</summary>
     private PopOutcome Popped(WorkState state, PopCheck check, string copy, List<GitResult> log)
