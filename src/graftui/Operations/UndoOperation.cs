@@ -597,7 +597,10 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
                 return ($"HEAD is not on {other} after the switch; check git status", "");
         }
 
-        var del = Call(log, "branch", "-d", branch);
+        // The guard has shown that the branch's commits are on the base branch. `branch -d` would check them against HEAD instead,
+        // which may be a third branch that lacks them. update-ref -d with the old value deletes only if the branch is still at the
+        // commit the guard saw.
+        var del = Call(log, "update-ref", "-d", BranchRef(branch), s.Head!);
         if (!del.Success)
             return ($"git refused to delete {branch} ({FirstLine(del)})"
                 + (wasOn ? $"; HEAD was switched to {other} and {branch} is kept" : "; nothing was deleted"), "");

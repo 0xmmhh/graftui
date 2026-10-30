@@ -43,7 +43,7 @@ public sealed class CreateBranchOperation(GitClient git) : IGitOperation<CreateB
 
     private CreateBranchCheck CheckCore(string name, List<GitResult> log)
     {
-        // 1. The name: valid, and not taken (or taken by a case-only twin on a case-insensitive disk).
+        // 1. The name: valid, and not taken. A case clash (feature/ff against Feature/FF on macOS) counts as taken, because rev-parse finds it.
         var problem = BranchNames.Problem(git, name, null, log);
         if (problem is not null)
             return new CreateBranchCheck(problem, true, name, "", "", log);

@@ -29,6 +29,29 @@ public class UndoBranchesAndStashMergeSafetyTests
     }
 
     [Fact]
+    public void Undoing_a_branch_creation_works_when_head_is_on_a_third_branch_that_lacks_its_commits()
+    {
+        // topic was made on main, which holds its commit. HEAD is then on dev, which does not, so `branch -d topic` (checked
+        // against HEAD) would refuse. The undo must delete topic anyway, because main holds the commit.
+        using var repo = Base();
+        CreateBranch(repo, "topic");
+        var topic = repo.Run("rev-parse", "topic");
+        repo.Run("branch", "dev", "HEAD~1");
+        repo.Run("switch", "-q", "dev");
+        var before = StateOf(repo);
+
+        var outcome = Undo(repo);
+
+        Assert.Equal(UndoOutcomeKind.Undone, outcome.Kind);
+        Assert.Equal("↶ Removed topic", outcome.Caption);
+        Assert.Equal("dev", repo.Run("symbolic-ref", "--short", "HEAD"));
+        Assert.Equal("", repo.Run("branch", "--list", "topic"));
+        Assert.Equal(topic, repo.Run("rev-parse", "main"));
+        Assert.Equal(before, StateOf(repo));
+        Assert.Null(new UndoLog(repo.Git).Top([]));
+    }
+
+    [Fact]
     public void Undoing_a_branch_creation_is_refused_once_the_new_branch_has_commits()
     {
         using var repo = Base();
