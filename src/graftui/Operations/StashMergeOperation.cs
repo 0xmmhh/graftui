@@ -18,6 +18,8 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
     public const string RescueRef = "refs/graftui/rescue/stash-merge";
     /// <summary>The end of the undo step's What ("merge of X over your changes"), so the undo can name the merge.</summary>
     public const string WhatSuffix = " over your changes";
+    /// <summary>The start of the stash entry's message ("graftui: before merging B into I"); Pop recognises the entry by it.</summary>
+    public const string MessageStart = "graftui: before merging ";
     private const string StashRef = "refs/stash";
 
     public StashMergeCheck Check(StashMergeRequest request)
@@ -136,7 +138,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         var below = RevParse(log, StashRef);
         if (below is null)
             return Untouched("could not read the stash; nothing was stashed");
-        var push = Call(log, "stash", "push", "-u", "-m", $"graftui: before merging {branch} into {into}");
+        var push = Call(log, "stash", "push", "-u", "-m", $"{MessageStart}{branch} into {into}");
         var top = RevParse(log, StashRef);
         if (top is null)
             return Done(StashMergeKind.Failed, null, [],
@@ -183,8 +185,9 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
             return BackOutcome(merged, merge, log);
         }
 
-        // The pop did not put the state back exactly. The copy's state is restored, and the entry (whose changes are then in
-        // the tree again) is dropped, so the stash list is as it was. The entry must still be the one the stash made.
+        // The pop did not put the state back exactly. The copy's state is restored when the state differs. An entry that is still
+        // there is dropped, so the stash list is as it was; it must be the one the stash made. A pop that took the entry has
+        // nothing left to drop, and the state must then be the one from before.
         var untracked = StashUntracked(top, log);
         if (untracked is null)
             return Done(StashMergeKind.Failed, merge, [], Keep("could not list the stash's untracked files; your changes are in stash@{0}"), log);
@@ -194,7 +197,15 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
             if (problem is not null)
                 return Done(StashMergeKind.Failed, merge, [], Keep($"{problem}; your changes are in stash@{{0}}"), log);
         }
-        if (RevParse(log, StashRef) != top)
+        var stashNow = RevParse(log, StashRef);
+        if (stashNow == below)
+        {
+            if (state.Take(log) != before)
+                return Done(StashMergeKind.Failed, merge, [], Keep("the pop took the stash entry, and the state is not as it was before the merge; check git status"), log);
+            Call(log, "update-ref", "-d", RescueRef, copy);
+            return BackOutcome(merged, merge, log);
+        }
+        if (stashNow != top)
             return Done(StashMergeKind.Failed, merge, [], Keep("the stash entry moved, so it was left alone; your changes are in the stash"), log);
         var drop = Call(log, "stash", "drop", "-q", "stash@{0}");
         if (!drop.Success)
