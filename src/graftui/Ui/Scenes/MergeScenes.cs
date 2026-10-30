@@ -95,15 +95,28 @@ public static class MergeScenes
     /// <summary>Dims the art and draws a box with the reason. Used for refusals (detached HEAD, dirty tree, ...).</summary>
     public static void RefusedOverlay(ArtGrid grid, string reason) => MessageOverlay(grid, "Refused", reason);
 
-    /// <summary>Dims the art and draws a box with a title and a message. Refusals use "Refused"; failed changes use "Failed".</summary>
-    public static void MessageOverlay(ArtGrid grid, string title, string text)
+    /// <summary>
+    /// Dims the art and draws a box with a title and a message. Refusals use "Refused"; failed changes use "Failed". The text
+    /// wraps at the narrow width first; when the art has too few rows for that, it wraps at the full width, and then <paramref name="shortText"/>
+    /// (the same meaning in fewer words) is tried. Only when none of these fits is the text cut. The rows the box covers are cleared
+    /// across the whole art, so nothing from underneath shows beside it.
+    /// </summary>
+    public static void MessageOverlay(ArtGrid grid, string title, string text, string? shortText = null)
     {
         grid.DimAll();
         var w0 = grid.Width;
         var h0 = grid.Height;
+        var room = Math.Max(0, h0 - 3);
 
-        var maxLine = Math.Max(10, w0 - 10);
-        var lines = TextFit.WrapWords(text, maxLine);
+        var narrow = Math.Max(10, w0 - 10);
+        var wide = Math.Max(1, w0 - 4);
+        var candidates = new List<(string Text, int Width)> { (text, narrow), (text, wide) };
+        if (shortText is not null)
+            candidates.AddRange([(shortText, narrow), (shortText, wide)]);
+        var (chosen, chosenWidth) = candidates.FirstOrDefault(c => TextFit.WrapWords(c.Text, c.Width).Count <= room);
+        if (chosen is null)
+            (chosen, chosenWidth) = shortText is null ? (text, wide) : (shortText, wide);
+        var lines = TextFit.WrapWords(chosen, chosenWidth);
         var inner = Math.Max(7, lines.Select(TextFit.Columns).DefaultIfEmpty(0).Max());
         var w = inner + 4;
         if (w > w0)
@@ -112,13 +125,13 @@ public static class MergeScenes
             w = w0;
             lines = lines.Select(l => TextFit.Fit(l, inner)).ToList();
         }
-        if (lines.Count > h0 - 3)
-            lines = lines.Take(Math.Max(0, h0 - 3)).ToList();
+        if (lines.Count > room)
+            lines = lines.Take(room).ToList();
 
         var h = lines.Count + 3;
         var x0 = (w0 - w) / 2;
         var y0 = Math.Max(0, (h0 - h) / 2);
-        grid.Clear(Math.Max(0, x0 - 2), Math.Min(w0 - 1, x0 + w + 1), y0, y0 + h - 1);
+        grid.Clear(0, w0 - 1, y0, y0 + h - 1);
 
         grid.Text(x0, y0, "┌" + new string('─', w - 2) + "┐", Warn);
         grid.Text(x0, y0 + 1, "│ " + Pad(title, inner) + " │", WarnB);

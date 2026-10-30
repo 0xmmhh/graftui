@@ -14,10 +14,11 @@ internal sealed partial class BranchesTab
 {
     /// <summary>
     /// A question: its title, its text (in the overlay), the key that answers yes and the labels after the yes and n keys, the caption
-    /// for a cancel, the direction line, the layout under the overlay, and what a yes does.
+    /// for a cancel, the direction line, the layout under the overlay, what a yes does, and (optionally) the same question in fewer
+    /// words, for an art too short for the full text.
     /// </summary>
     private sealed record BranchQuestion(string Title, string Text, char YesKey, string YesLabel, string NoLabel, string CancelText,
-        Func<int, IReadOnlyList<Seg>> Direction, GraphLayout? Layout, Action OnYes);
+        Func<int, IReadOnlyList<Seg>> Direction, GraphLayout? Layout, Action OnYes, string? ShortText = null);
 
     private BranchQuestion? _question;
 
@@ -48,7 +49,7 @@ internal sealed partial class BranchesTab
         art.Scene = geo =>
         {
             var grid = q.Layout is null ? new ArtGrid(geo.Width, geo.Height) : MergeScenes.Preview(geo, q.Layout).Grid;
-            MergeScenes.MessageOverlay(grid, q.Title, q.Text);
+            MergeScenes.MessageOverlay(grid, q.Title, q.Text, q.ShortText);
             return new SceneFrame(grid, new Caption($"{q.YesKey}{q.YesLabel} · n{q.NoLabel}", Warn));
         };
         art.SetNeedsDraw();
