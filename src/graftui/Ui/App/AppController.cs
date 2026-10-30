@@ -77,8 +77,22 @@ public sealed class AppController
 
     internal void MarkChangeOutcomeShown() => _changeOutcomeShown = true;
 
+    private volatile int _changeExitCode;
+
+    /// <summary>
+    /// The exit code the latest change asks for: 1 when a stash-merge-pop conflicted or failed (as a failed merge exits 1), else 0.
+    /// Program reads it after the change's worker has finished.
+    /// </summary>
+    public int ChangeExitCode => _changeExitCode;
+
+    internal void SetChangeExitCode(int code) => _changeExitCode = code;
+
     /// <summary>Called when a new change starts, so an outcome drawn for an earlier change does not count for this one.</summary>
-    internal void BeginChangeOutcome() => _changeOutcomeShown = false;
+    internal void BeginChangeOutcome()
+    {
+        _changeOutcomeShown = false;
+        _changeExitCode = 0;
+    }
 
     /// <summary>True once the outcome has been drawn in the UI (so the exit path need not print it again).</summary>
     public bool OutcomeShown => _outcomeShown;
@@ -295,7 +309,15 @@ public sealed class AppController
 
     /// <summary>The name box's field position and width in the art pane; all zero when no row is free for it.</summary>
     private (int X, int Y, int W) NameBoxOrZero() =>
-        ArtPaneView.NameField(Art.Viewport.Width, Art.Viewport.Height) is { } n ? (n.X, n.Y, n.W) : (0, 0, 0);
+        ArtPaneView.NameField(Art.Viewport.Width, Art.Viewport.Height, BranchesTab.NameCaptionTwoLines(Art.Viewport.Width, Art.Viewport.Height))
+            is { } n ? (n.X, n.Y, n.W) : (0, 0, 0);
+
+    /// <summary>The name box moves when its caption wraps or unwraps, so its field is placed again.</summary>
+    internal void RelayoutNameBox()
+    {
+        Art?.SetNeedsLayout();
+        _window?.SetNeedsLayout();
+    }
 
     // ---------- keys ----------
 

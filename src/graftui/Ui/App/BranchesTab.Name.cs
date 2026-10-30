@@ -120,7 +120,7 @@ internal sealed partial class BranchesTab
 
         _app.FieldPlacement = AppController.FieldSpot.BranchName;
         _app.Art.CanFocus = true;
-        _app.Art.CaptionOneLine = true;
+        _app.Art.CaptionKeepsBelowRows = true;
 
         var subject = _app.SubjectField;
         subject.CanFocus = true;
@@ -224,6 +224,7 @@ internal sealed partial class BranchesTab
             _app.LogCommands(commands);
             _app.LogMessage("Refused: " + refusal, WarnB);
             _nameNote = new Caption(refusal, Warn);
+            _app.RelayoutNameBox();
             _app.Art.SetNeedsDraw();
             return;
         }
@@ -247,7 +248,7 @@ internal sealed partial class BranchesTab
         Mode = BranchesMode.Browse;
         _nameNote = null;
         _app.FieldPlacement = AppController.FieldSpot.Areas;
-        _app.Art.CaptionOneLine = false;
+        _app.Art.CaptionKeepsBelowRows = false;
         _app.Art.CanFocus = false;
 
         var subject = _app.SubjectField;
@@ -289,7 +290,13 @@ internal sealed partial class BranchesTab
 
     /// <summary>The name box's place in the art pane, or null when no commit row is free for it (the window is too small).</summary>
     private (int X, int Y, int W, bool LabelRow)? NameBox() =>
-        ArtPaneView.NameField(_app.Art.Viewport.Width, _app.Art.Viewport.Height);
+        ArtPaneView.NameField(_app.Art.Viewport.Width, _app.Art.Viewport.Height, NameCaptionTwoLines(_app.Art.Viewport.Width, _app.Art.Viewport.Height));
+
+    /// <summary>
+    /// Whether the name box's caption (the refusal, or the hint) takes two lines in a pane of this size. The box moves down a row then.
+    /// </summary>
+    internal bool NameCaptionTwoLines(int paneW, int paneH) =>
+        ArtPaneView.TwoLineCaption(_nameNote?.Text ?? (_nameRename ? RenameHint : NewHint), paneW, paneH, keepsBelowRows: true);
 
     /// <summary>The direction line while the name is checked or refused: the typed name in the change's own line.</summary>
     private static Func<int, IReadOnlyList<Seg>> NameDirection(bool rename, string old, string name, string tip) =>

@@ -33,9 +33,10 @@ public sealed class ArtPaneView : PaneView
     public Caption? FallbackCaption { get; set; }
 
     /// <summary>
-    /// When true the caption is never wrapped: it is cut to one line. Set while the name box is open, so the box's row never moves.
+    /// Set while the name box is open. A caption that needs two lines takes them only when the rows under it keep a label row and
+    /// the field row (see <see cref="TwoLineCaption"/>); otherwise it is cut to one line. When it wraps, the box moves down a row.
     /// </summary>
-    public bool CaptionOneLine { get; set; }
+    public bool CaptionKeepsBelowRows { get; set; }
 
     /// <summary>The rule under the direction line. Off on Branches, where the direction line stands alone; the row stays blank.</summary>
     public bool DirectionRule { get; set; } = true;
@@ -60,14 +61,25 @@ public sealed class ArtPaneView : PaneView
     /// the field's X, its row, its width, and whether a label row sits above it. Null when no commit row is free under the caption.
     /// Labels and the field share the rows under the caption that the commit list would use.
     /// </summary>
-    public static (int X, int Y, int W, bool LabelRow)? NameField(int paneW, int paneH)
+    public static (int X, int Y, int W, bool LabelRow)? NameField(int paneW, int paneH, bool captionTwoLines = false)
     {
-        var l = CaptionLayout(paneH, false);
+        var l = CaptionLayout(paneH, captionTwoLines);
         if (l.BelowRows == 0 || ArtArea(paneW, paneH) is null)
             return null;
         var label = l.BelowRows >= 2;
         // The rows under the caption are drawn at x=4; "name     " is 9 columns wide, so the field starts at 13.
         return (4 + 9, l.BelowTop + (label ? 1 : 0), Math.Max(1, paneW - 15), label);
+    }
+
+    /// <summary>
+    /// Whether a caption of this text is drawn on two lines in a pane of this size. With <paramref name="keepsBelowRows"/> (the name box
+    /// is open) it is only when the rows under the two-line caption still hold a label and the field.
+    /// </summary>
+    public static bool TwoLineCaption(string text, int paneW, int paneH, bool keepsBelowRows)
+    {
+        if (TextFit.Wrap2(text, paneW - 4).Second is null)
+            return false;
+        return !keepsBelowRows || CaptionLayout(paneH, true).BelowRows >= 2;
     }
 
     /// <summary>
@@ -122,7 +134,7 @@ public sealed class ArtPaneView : PaneView
             ? new Caption("art needs a wider pane", Dim)
             : frame?.Caption ?? FallbackCaption;
         (string First, string? Second) split = caption is null ? ("", null)
-            : CaptionOneLine ? (TextFit.Fit(caption.Text, cw), null)
+            : CaptionKeepsBelowRows && !TwoLineCaption(caption.Text, pw, ph, keepsBelowRows: true) ? (TextFit.Fit(caption.Text, cw), null)
             : TextFit.Wrap2(caption.Text, cw);
         var (first, second) = split;
         var layout = CaptionLayout(ph, second is not null);
