@@ -18,10 +18,11 @@ internal sealed partial class BranchesTab
 
     /// <summary>
     /// What a change shows when git has answered: the result, the commands it ran, the lines it adds to the log, the exit line,
-    /// the snapshot read after it (null when that read failed) and the branch to select afterwards.
+    /// the snapshot read after it (null when that read failed), the branch to select afterwards, and the process exit code the change
+    /// asks for (1 when it conflicted or failed after a merge; 0 otherwise).
     /// </summary>
-    private sealed record BranchFinish(BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log,
-        string ExitLine, RepoSnapshot? After, string? Select);
+    internal sealed record BranchFinish(BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log,
+        string ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0);
 
     /// <summary>Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now.</summary>
     private void StartWork()
@@ -71,6 +72,7 @@ internal sealed partial class BranchesTab
                     return null;
 
                 var f = finish(o, _app.TryLoadSnapshot());
+                _app.SetChangeExitCode(f.ExitCode);
                 _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.Log, () => EndBranchChange(f)));
                 return f.ExitLine;
             }

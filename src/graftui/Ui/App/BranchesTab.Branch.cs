@@ -125,13 +125,15 @@ internal sealed partial class BranchesTab
             return;
         }
 
+        var commits = MergeScenes.Plural(check.Ahead, "commit");
         BeginQuestion(new BranchQuestion(
             Title: "Delete",
-            Text: $"{name} has {MergeScenes.Plural(check.Ahead, "commit")} that {into} doesn't have. Deleting it needs git branch -D; "
+            Text: $"{name} has {commits} that {into} doesn't have. Deleting it needs git branch -D; "
                 + "graftui records where it pointed, so u can bring it back.",
             YesKey: 'y', YesLabel: " continue", NoLabel: " keep", CancelText: DeleteCancelled,
             Direction: direction, Layout: loaded,
-            OnYes: () => AskDeleteForGood(check, loaded)));
+            OnYes: () => AskDeleteForGood(check, loaded),
+            ShortText: $"{name}: {commits} {into} doesn't have. Needs git branch -D; u brings it back."));
     }
 
     /// <summary>The second question for an unmerged branch. It is answered with 1, so a held y cannot answer both.</summary>
@@ -303,7 +305,7 @@ internal sealed partial class BranchesTab
                 var before = Or(loaded, snap, branch, tip);
                 return new BranchStart(new StashMergeAnimation(before, changed), direction, Panel(before));
             },
-            (o, after) => StashMergeFinish(o, branch, into, changed, after),
+            (o, after) => StashMergeFinish(o, branch, into, changed, LayoutFor(after, branch), after),
             direction);
     }
 
@@ -311,17 +313,23 @@ internal sealed partial class BranchesTab
     /// The result of stash, merge, pop. A merge that stands keeps the layout after it; a conflict keeps the layout before (the repo is
     /// as it was), and the merge's own conflict scene plays out.
     /// </summary>
-    private BranchFinish StashMergeFinish(StashMergeOutcome o, string branch, string into, int changed, RepoSnapshot? after)
+    internal static BranchFinish StashMergeFinish(StashMergeOutcome o, string branch, string into, int changed, GraphLayout? layout,
+        RepoSnapshot? after)
     {
         var files = MergeScenes.Plural(changed, "changed file");
         var back = changed == 1 ? "is back" : "are back";
-        var layout = after is null ? null : LayoutFor(after, branch);
         switch (o.Kind)
         {
             case StashMergeKind.Merged when o.Merge?.Kind == MergeKind.UpToDate:
                 return new BranchFinish(new BranchResult(true, "Merged", new Caption("Already up to date: your changes are back", Muted), null,
                         Merge: o.Merge),
                     o.Commands, [], $"graftui: stashed, found {branch} already in {into}, and popped {files} back", after, branch);
+
+            case StashMergeKind.Merged when o.Undo is null:
+                // The merge stands and the changes are back, but its undo step could not be saved: the message says so and where the
+                // state from before is kept.
+                return new BranchFinish(new BranchResult(true, "Merged", new Caption(o.Message, Warn), layout, Merge: o.Merge),
+                    o.Commands, [(o.Message, WarnB)], $"graftui: {o.Message}", after, branch);
 
             case StashMergeKind.Merged:
             {
@@ -346,30 +354,36 @@ internal sealed partial class BranchesTab
                     : [];
                 return new BranchFinish(new BranchResult(true, "Aborted", new Caption(text, BadB), null, Merge: o.Merge), o.Commands, log,
                     $"graftui: merge of {branch} conflicted{(conflicts.Count > 0 ? $" in {conflicts[0]}" : "")}; aborted, your changes are back",
-                    after, branch);
+                    after, branch, ExitCode: 1);
             }
 
             case StashMergeKind.PopConflict:
             {
+                // Without an undo step the overlay and the log do not offer u: the message says what was saved instead.
                 var conflicts = o.ConflictFiles;
-                var caption = conflicts.Count > 0
-                    ? $"✕ Merged, but the pop conflicted in {conflicts[0]}: changes kept in the stash"
-                    : "✕ Merged, but the pop failed: changes kept in the stash";
+                var undoable = o.Undo is not null;
+                var caption = o.Undo is null
+                    ? o.Message
+                    : conflicts.Count > 0
+                        ? $"✕ Merged, but the pop conflicted in {conflicts[0]}: changes kept in the stash"
+                        : "✕ Merged, but the pop failed: changes kept in the stash";
+                var tail = undoable ? "  Z tries again · u undoes the merge" : "  Z tries again";
                 var overlay = conflicts.Count > 0
-                    ? $"Merged {branch} into {into}. Your changes conflict with it, so they stay in the stash: {string.Join(", ", conflicts)}"
-                      + "  Z tries again · u undoes the merge"
-                    : $"Merged {branch} into {into}. Your changes could not be popped back, so they stay in the stash."
-                      + "  Z tries again · u undoes the merge";
-                IReadOnlyList<(string Text, Style Style)> log = [(caption, BadB), (overlay, BadB)];
+                    ? $"Merged {branch} into {into}. Your changes conflict with it, so they stay in the stash: {string.Join(", ", conflicts)}" + tail
+                    : $"Merged {branch} into {into}. Your changes could not be popped back, so they stay in the stash." + tail;
+                IReadOnlyList<(string Text, Style Style)> log = undoable
+                    ? [(caption, BadB), (overlay, BadB)]
+                    : [(o.Message, WarnB)];
+                var exit = undoable
+                    ? $"graftui: merged {branch} into {into}; the pop {(conflicts.Count > 0 ? $"conflicted in {conflicts[0]}" : "failed")}, your changes are in stash@{{0}}"
+                    : $"graftui: {o.Message}";
                 return new BranchFinish(
-                    new BranchResult(true, "Pop conflict", new Caption(caption, BadB), layout, "Pop conflict", overlay, o.Merge),
-                    o.Commands, log,
-                    $"graftui: merged {branch} into {into}; the pop {(conflicts.Count > 0 ? $"conflicted in {conflicts[0]}" : "failed")}, your changes are in stash@{{0}}",
-                    after, branch);
+                    new BranchResult(true, "Pop conflict", new Caption(caption, undoable ? BadB : Warn), layout, "Pop conflict", overlay, o.Merge),
+                    o.Commands, log, exit, after, branch, ExitCode: 1);
             }
 
             default:
-                return FailedFinish("Stash, merge, pop", o.Message, o.Commands, after, branch);
+                return FailedFinish("Stash, merge, pop", o.Message, o.Commands, after, branch) with { ExitCode = 1 };
         }
     }
 }

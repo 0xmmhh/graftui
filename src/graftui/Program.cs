@@ -103,7 +103,7 @@ finally
 
 // Always runs, after the terminal is restored, so a running merge is waited for and reported.
 var exitCode = FinishMerge();
-WaitForChanges();
+var changeCode = WaitForChanges();
 
 if (uiError is not null)
 {
@@ -111,7 +111,7 @@ if (uiError is not null)
     return 1;
 }
 
-return exitCode;
+return exitCode != 0 ? exitCode : changeCode;
 
 int FinishMerge()
 {
@@ -144,12 +144,13 @@ int FinishMerge()
     return o.Kind is MergeKind.Conflict or MergeKind.Failed ? 1 : 0;
 }
 
-// A stage, unstage, commit or amend that is still running is finished before exit. Its exit code is not reported.
-void WaitForChanges()
+// A stage, unstage, commit, amend or branch change that is still running is finished before exit. Only a stash-merge-pop that
+// conflicted or failed sets an exit code (1, as a failed merge does); the others exit 0.
+int WaitForChanges()
 {
     var task = gui?.ChangesTask;
     if (task is null)
-        return;
+        return 0;
 
     if (!task.IsCompleted)
     {
@@ -162,6 +163,7 @@ void WaitForChanges()
     // The change draws its outcome only while the screen is up. If graftui quit first, the user has not seen it: say it here.
     if (task.IsCompletedSuccessfully && task.Result is { } line && !gui!.ChangeOutcomeShown)
         Console.WriteLine(line);
+    return gui!.ChangeExitCode;
 }
 
 string ShortenHome(string path)
