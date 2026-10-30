@@ -251,9 +251,9 @@ internal sealed partial class ChangesTab
             {
                 var after = AreasAfter(before);
                 var arrived = ArrivedRows(before, after);
-                var caption = arrived.Count > 0
+                var caption = (arrived.Count > 0
                     ? $"✔ Restored {MergeScenes.Plural(arrived.Count, "file")} from the stash"
-                    : "✔ Popped the stash";
+                    : "✔ Popped the stash") + (o.StagedCameBackUnstaged ? "; staged changes came back unstaged" : "");
                 return new ChangeFinish(new AreasResult(true, after, new Caption(caption, OkB), "Popped", null, arrived),
                     o.Commands, null, true, $"graftui: popped \"{o.TopMessage}\"");
             }

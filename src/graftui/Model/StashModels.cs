@@ -71,7 +71,8 @@ public sealed record PopOutcome(
     WorkingStatus? After,
     string Message,
     IReadOnlyList<GitResult> Commands,
-    UndoRecord? Undo = null);
+    UndoRecord? Undo = null,
+    bool StagedCameBackUnstaged = false);
 
 /// <summary>Undo the newest step. ExpectedStepRef is the step the user saw; null skips that check.</summary>
 public sealed record UndoRequest(string? ExpectedStepRef);
