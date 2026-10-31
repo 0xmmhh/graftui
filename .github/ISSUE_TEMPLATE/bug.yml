@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in graftui doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If graftui did something unexpected to a repository, say so first: those reports are handled first.
+  - type: input
+    id: version
+    attributes:
+      label: graftui version
+      description: Output of `graftui --version`.
+      placeholder: graftui 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal and size
+      description: The terminal app and the window size in columns × rows, if you know it.
+      placeholder: iTerm2, 120×40
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The keys you pressed, in order. Using `graftui --sandbox` helps if the bug shows there too.
+      placeholder: |
+        1. graftui --sandbox
+        2. Select feature/conflict, press m
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: A screenshot or the text on screen helps.
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands pane
+      description: Press `v` to show the exact list of git commands that ran, then paste it here. Remove anything private (paths, branch names) if needed.
+      render: text
