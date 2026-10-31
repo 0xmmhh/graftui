@@ -3,8 +3,11 @@ using graftui.Ui.Views;
 
 namespace graftui;
 
-/// <summary>The parsed command line. Help and Version are acted on by Program in that order; neither needs a repo.</summary>
-internal sealed record CliOptions(bool Help, bool Version, bool Sandbox, string? Theme, string? RepoPath);
+/// <summary>
+/// The parsed command line. Help and Version are acted on by Program in that order; neither needs a repo.
+/// MakeEdits is the hidden developer flag (see CONTRIBUTING.md); it is left out of HelpText on purpose.
+/// </summary>
+internal sealed record CliOptions(bool Help, bool Version, bool Sandbox, bool MakeEdits, string? Theme, string? RepoPath);
 
 /// <summary>Either the options, or the one stderr line for a bad command line (Program adds "Try 'graftui --help'.").</summary>
 internal sealed record CliParse(CliOptions? Options, string? Error);
@@ -45,7 +48,7 @@ Keys: Tab Branches/Changes · ↑/↓ select · m merge · s switch · n new · 
     private sealed class Parser
     {
         private readonly List<string> _errors = [];
-        private bool _help, _version, _sandbox, _themeSeen, _pathsOnly;
+        private bool _help, _version, _sandbox, _makeEdits, _themeSeen, _pathsOnly;
         private string? _theme, _path;
 
         public void Read(string arg, Queue<string> rest)
@@ -75,6 +78,10 @@ Keys: Tab Branches/Changes · ↑/↓ select · m merge · s switch · n new · 
                 case "--sandbox":
                     _sandbox = true;
                     break;
+                // Hidden on purpose: a developer flag, documented in CONTRIBUTING.md and not in --help.
+                case "--make-edits":
+                    _makeEdits = true;
+                    break;
                 case "--theme":
                     // The name is the next argument unless that is another option, in which case it is missing.
                     SetTheme(rest.TryPeek(out var next) && !next.StartsWith('-') ? rest.Dequeue() : null);
@@ -91,13 +98,17 @@ Keys: Tab Branches/Changes · ↑/↓ select · m merge · s switch · n new · 
         public CliParse Result()
         {
             if (_help || _version)
-                return new CliParse(new CliOptions(_help, _version, _sandbox, _theme, _path), null);
+                return new CliParse(new CliOptions(_help, _version, _sandbox, _makeEdits, _theme, _path), null);
 
             if (_sandbox && _path is not null)
                 _errors.Add("graftui: --sandbox opens ~/.graftui/sandbox; it can't be combined with a path");
 
+            // Both rebuild or change the practice repo, so they are run one at a time.
+            if (_sandbox && _makeEdits)
+                _errors.Add("graftui: --make-edits can't be combined with --sandbox; run them one after the other");
+
             return _errors.Count == 0
-                ? new CliParse(new CliOptions(false, false, _sandbox, _theme, _path), null)
+                ? new CliParse(new CliOptions(false, false, _sandbox, _makeEdits, _theme, _path), null)
                 : new CliParse(null, _errors[0]);
         }
 

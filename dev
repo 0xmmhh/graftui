@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Developer shortcuts for graftui. Run ./dev to list them. macOS and Linux; on Windows use the dotnet commands in CONTRIBUTING.md.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+[ -n "${HOME:-}" ] || { echo "dev: HOME is not set" >&2; exit 1; }
+
+PROJECT=src/graftui/graftui.csproj
+APP_DIR="$HOME/.local/share/graftui"
+BIN_DIR="$HOME/.local/bin"
+SANDBOX="$HOME/.graftui/sandbox"
+WRAPPER_MARK="# installed by graftui ./dev install"
+# Written into the app folder, so a later install knows ./dev made it and may replace it.
+APP_MARK=".installed-by-dev"
+
+usage() {
+  cat <<'EOF'
+Usage: ./dev <command>
+
+  install   publish a Release build and put a graftui command in ~/.local/bin
+  sandbox   rebuild the practice repo at ~/.graftui/sandbox and open it
+  open      reopen the practice repo without rebuilding it
+  edits     make unstaged changes in the practice repo (graftui --make-edits)
+  test      run the tests
+EOF
+}
+
+need_dotnet() {
+  command -v dotnet >/dev/null 2>&1 || { echo "dev: dotnet not found; install the .NET 10 SDK" >&2; exit 1; }
+}
+
+install() {
+  need_dotnet
+
+  # Refuse before publishing when ~/.local/bin/graftui is a file ./dev did not write.
+  if [ -e "$BIN_DIR/graftui" ] || [ -L "$BIN_DIR/graftui" ]; then
+    if ! grep -qF "$WRAPPER_MARK" "$BIN_DIR/graftui" 2>/dev/null; then
+      echo "dev: $BIN_DIR/graftui exists and was not installed by ./dev; move it away first" >&2
+      exit 1
+    fi
+  fi
+
+  # The app folder is replaced below, so refuse before publishing when ./dev did not make it.
+  if [ -e "$APP_DIR" ] || [ -L "$APP_DIR" ]; then
+    if [ ! -f "$APP_DIR/$APP_MARK" ]; then
+      echo "dev: $APP_DIR exists and was not installed by ./dev; move it away first" >&2
+      exit 1
+    fi
+  fi
+
+  # Publish into a new folder first, so a failed publish leaves the previous install in place.
+  rm -rf "$APP_DIR.new"
+  dotnet publish "$PROJECT" -c Release -o "$APP_DIR.new" --nologo
+  printf 'created by graftui ./dev install\n' > "$APP_DIR.new/$APP_MARK"
+  rm -rf "$APP_DIR"
+  mv "$APP_DIR.new" "$APP_DIR"
+
+  # %q quotes the path for sh, so a HOME with quotes, $ or backticks can't change what the launcher runs.
+  local launch
+  launch=$(printf '%q' "$APP_DIR/graftui")
+  mkdir -p "$BIN_DIR"
+  printf '#!/bin/sh\n%s\nexec %s "$@"\n' "$WRAPPER_MARK" "$launch" > "$BIN_DIR/graftui"
+  chmod +x "$BIN_DIR/graftui"
+
+  echo "dev: installed $("$BIN_DIR/graftui" --version)"
+  case ":$PATH:" in
+    *":$BIN_DIR:"*)
+      echo "dev: run it with: graftui"
+      ;;
+    *)
+      echo "dev: ~/.local/bin is not on your PATH. Add this line to ~/.zshrc or ~/.bashrc, then open a new terminal:"
+      echo '  export PATH="$HOME/.local/bin:$PATH"'
+      ;;
+  esac
+}
+
+cmd="${1:-}"
+if [ $# -gt 0 ]; then
+  shift
+fi
+
+case "$cmd" in
+  install)
+    install
+    ;;
+  sandbox)
+    need_dotnet
+    exec dotnet run --project "$PROJECT" -- --sandbox "$@"
+    ;;
+  open)
+    need_dotnet
+    exec dotnet run --project "$PROJECT" -- "$SANDBOX" "$@"
+    ;;
+  edits)
+    need_dotnet
+    exec dotnet run --project "$PROJECT" -- --make-edits
+    ;;
+  test)
+    need_dotnet
+    exec dotnet test graftui.slnx "$@"
+    ;;
+  ""|help|-h|--help)
+    usage
+    ;;
+  *)
+    echo "dev: unknown command '$cmd'" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

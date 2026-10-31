@@ -14,7 +14,7 @@ public class CliArgsTests
     [Fact]
     public void No_arguments_means_a_plain_run_with_nothing_set()
     {
-        Assert.Equal(new CliOptions(false, false, false, null, null), Ok());
+        Assert.Equal(new CliOptions(false, false, false, false, null, null), Ok());
     }
 
     [Theory]
@@ -36,6 +36,35 @@ public class CliArgsTests
     {
         Assert.True(Ok("--sandbox").Sandbox);
         Assert.True(Ok("--sandbox", "--sandbox").Sandbox);
+    }
+
+    [Fact]
+    public void Make_edits_is_a_flag_that_sets_MakeEdits()
+    {
+        Assert.True(Ok("--make-edits").MakeEdits);
+        Assert.False(Ok("--sandbox").MakeEdits);
+    }
+
+    [Fact]
+    public void Make_edits_keeps_a_given_path()
+    {
+        var o = Ok("--make-edits", "/tmp/practice");
+        Assert.True(o.MakeEdits);
+        Assert.Equal("/tmp/practice", o.RepoPath);
+    }
+
+    [Fact]
+    public void Make_edits_with_sandbox_is_refused()
+    {
+        const string expected = "graftui: --make-edits can't be combined with --sandbox; run them one after the other";
+        Assert.Equal(expected, P("--make-edits", "--sandbox").Error);
+        Assert.Equal(expected, P("--sandbox", "--make-edits").Error);
+    }
+
+    [Fact]
+    public void Make_edits_is_not_in_the_help_text()
+    {
+        Assert.DoesNotContain("make-edits", CliArgs.HelpText);
     }
 
     [Fact]
