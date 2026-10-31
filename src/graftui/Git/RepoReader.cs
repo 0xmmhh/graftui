@@ -10,6 +10,7 @@ public sealed class RepoReader(GitClient git)
 {
     private const int ListCount = 3;
     private const int ListFetch = ListCount + 1; // one extra row tells whether the list was cut short
+    private const int NewListMax = 50; // the commit list shows up to this many of the commits the counts count
     private const int HeadCount = 4;
     private const int HeadFetch = HeadCount + 1; // one extra commit tells whether history was cut short
     private const long MaxPreviewBytes = 1_000_000;
@@ -70,6 +71,11 @@ public sealed class RepoReader(GitClient git)
 
         var kind = KindOf(curTip, sel.Hash, baseHash);
 
+        ct.ThrowIfCancellationRequested();
+        var selNew = git.GetCommitsNotIn(sel.Hash, curTip, NewListMax);
+        ct.ThrowIfCancellationRequested();
+        var curNew = git.GetCommitsNotIn(curTip, sel.Hash, NewListMax);
+
         return new GraphLayout(
             snap.CurrentBranch, detached, sel.Name,
             curTip, sel.Hash, baseHash,
@@ -77,7 +83,11 @@ public sealed class RepoReader(GitClient git)
             selOwn, selOwnMore,
             shared, sharedMore,
             curTipCommit, selTipCommit,
-            ahead, behind, kind);
+            ahead, behind, kind)
+        {
+            SelectedNew = selNew,
+            CurrentNew = curNew,
+        };
     }
 
     /// <summary>Changes-tab read: the status rows, the current branch with its last four commits, and the stash list. Never logged.</summary>

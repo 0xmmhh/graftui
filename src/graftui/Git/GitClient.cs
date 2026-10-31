@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using graftui.Model;
 
 namespace graftui.Git;
@@ -10,8 +11,9 @@ namespace graftui.Git;
 /// </summary>
 public sealed class GitClient(string repoPath)
 {
-    // One commit per line: full hash, short hash, parents, subject. Fields are separated by 0x1f (unit separator).
-    private const string CommitFormat = "--format=%H%x1f%h%x1f%P%x1f%s";
+    // One commit per line: full hash, short hash, parents, committer date (Unix seconds), subject. Fields are separated by 0x1f
+    // (unit separator). The subject is last, so a subject cannot shift the other fields.
+    private const string CommitFormat = "--format=%H%x1f%h%x1f%P%x1f%ct%x1f%s";
 
     public string RepoPath { get; } = Path.GetFullPath(repoPath);
 
@@ -199,6 +201,23 @@ public sealed class GitClient(string repoPath)
             .ToList();
     }
 
+    /// <summary>
+    /// Up to <paramref name="max"/> commits reachable from <paramref name="tip"/> but not from <paramref name="notTip"/>, newest first:
+    /// the commits that rev-list counts. Unlike <see cref="GetFirstParentChain"/>, commits of merged side branches are included.
+    /// </summary>
+    public IReadOnlyList<CommitInfo> GetCommitsNotIn(string tip, string notTip, int max)
+    {
+        var result = Run("log", "--no-show-signature", "-n", max.ToString(CultureInfo.InvariantCulture), CommitFormat, tip, "--not", notTip, "--");
+        if (!result.Success)
+            throw new InvalidOperationException(Describe(result));
+
+        return result.StdOut
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(ParseCommit)
+            .OfType<CommitInfo>()
+            .ToList();
+    }
+
     /// <summary>One commit by hash, or null if git cannot read it.</summary>
     public CommitInfo? GetCommit(string hash)
     {
@@ -208,11 +227,19 @@ public sealed class GitClient(string repoPath)
 
     private static CommitInfo? ParseCommit(string line)
     {
-        var fields = line.Split('\x1f', 4);
-        if (fields.Length != 4)
+        var fields = line.Split('\x1f', 5);
+        if (fields.Length != 5)
             return null;
         var parents = fields[2].Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
-        return new CommitInfo(fields[0], fields[1], parents, fields[3]);
+        return new CommitInfo(fields[0], fields[1], parents, fields[4], ParseDate(fields[3]));
+    }
+
+    // The committer date from %ct (Unix seconds). Null when the field is not a number.
+    private static DateTimeOffset? ParseDate(string unixSeconds)
+    {
+        if (!long.TryParse(unixSeconds, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds))
+            return null;
+        return DateTimeOffset.FromUnixTimeSeconds(seconds);
     }
 
     internal static string StripHeads(string refName) =>
