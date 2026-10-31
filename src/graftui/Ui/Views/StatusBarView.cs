@@ -51,7 +51,7 @@ public sealed class StatusBarView : View
     }
 
     /// <summary>The current branch's name in the top bar: its lane colour, bold. A detached HEAD has no lane, so it is the foreground.</summary>
-    internal static Style BranchStyle(RepoSnapshot s) => new(BranchInks.Of(BranchLanes.LaneOf(s.Branches, s.CurrentBranch)), true);
+    internal static Style BranchStyle(RepoSnapshot s) => new(BranchInks.Named(s.Branches, s.CurrentBranch), true);
 
     private List<Seg> RightSegs()
     {

@@ -5,6 +5,11 @@ namespace graftui.Ui.Text;
 /// <summary>The ink of a branch lane. A lane outside 0..BranchLanes.Count-1 (None, or a name not in the list) is the plain foreground.</summary>
 public static class BranchInks
 {
+    /// <summary>
+    /// The ink of a branch by name: its lane colour when the list has the name, else the foreground (HEAD, "", or a name that is not listed).
+    /// </summary>
+    public static Ink Named(IReadOnlyList<Branch> branches, string name) => Of(BranchLanes.LaneOf(branches, name));
+
     /// <summary>The ink for a lane: Lane0..Lane5 for lanes 0..5, else Fg.</summary>
     public static Ink Of(int lane)
     {

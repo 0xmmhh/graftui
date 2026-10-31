@@ -2,7 +2,8 @@ namespace graftui.Ui.Text;
 
 /// <summary>
 /// Semantic colour roles. The actual colours live in the Views layer (Palette), so this stays testable. Lane0..Lane5 are the
-/// branch colours (see <see cref="Model.BranchLanes"/>): a branch's ink is Lane0 + its lane.
+/// branch colours (see <see cref="Model.BranchLanes"/>): a branch's ink is Lane0 + its lane. Lane0..Lane5 must stay last and in
+/// order: Palette maps them to the lane colours as a range.
 /// </summary>
 public enum Ink : byte { Fg, Dim, Cur, Inc, Mrg, Ok, Bad, Warn, Hash, Frame, Lane0, Lane1, Lane2, Lane3, Lane4, Lane5 }
 

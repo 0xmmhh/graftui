@@ -85,25 +85,25 @@ public static class CommitLists
     {
         var now = L.Selected;
         var was = L.Detached ? "HEAD" : L.Current;
-        var nowInk = BranchInks.Selected(L);
-        var wasInk = BranchInks.Current(L);
+        var nowB = SelB(L);
+        var wasB = CurB(L);
         if (L.Kind is GraphKind.Same or GraphKind.UpToDate)
-            return new CommitPanel(new CommitGroup(NowHeader(now, nowInk, "  tip"), [R(L.SelectedTipCommit, SelB(L))], 1), null, []);
+            return new CommitPanel(new CommitGroup(NowHeader(now, nowB, "  tip"), [R(L.SelectedTipCommit, nowB)], 1), null, []);
 
-        var left = new CommitGroup(NowHeader(now, nowInk, $"  {L.Ahead} new"), NewRows(L.SelectedNew, L.SelectedOwn, SelB(L)), L.Ahead);
+        var left = new CommitGroup(NowHeader(now, nowB, $"  {L.Ahead} new"), NewRows(L.SelectedNew, L.SelectedOwn, nowB), L.Ahead);
         var right = L.Behind == 0
-            ? new CommitGroup(WasHeader(was, wasInk, "  tip"), [R(L.CurrentTipCommit, CurB(L))], 1)
-            : new CommitGroup(WasHeader(was, wasInk, $"  {L.Behind} new"), NewRows(L.CurrentNew, L.CurrentOwn, CurB(L)), L.Behind);
+            ? new CommitGroup(WasHeader(was, wasB, "  tip"), [R(L.CurrentTipCommit, wasB)], 1)
+            : new CommitGroup(WasHeader(was, wasB, $"  {L.Behind} new"), NewRows(L.CurrentNew, L.CurrentOwn, wasB), L.Behind);
         return new CommitPanel(left, right, []);
     }
 
-    // The header of the branch that is now current, in its own lane colour, with "(current)" after its name.
-    private static IReadOnlyList<Seg> NowHeader(string name, Ink ink, string tail) =>
-        [new Seg(name, new Style(ink, true)), new Seg(" (current)", Dim), new Seg(tail, Dim)];
+    // The header of the branch that is now current, in its own lane colour (bold), with "(current)" after its name.
+    private static IReadOnlyList<Seg> NowHeader(string name, Style bold, string tail) =>
+        [new Seg(name, bold), new Seg(" (current)", Dim), new Seg(tail, Dim)];
 
-    // The header of the branch that was current, in its own lane colour.
-    private static IReadOnlyList<Seg> WasHeader(string name, Ink ink, string tail) =>
-        [new Seg(name, new Style(ink, true)), new Seg(tail, Dim)];
+    // The header of the branch that was current, in its own lane colour (bold).
+    private static IReadOnlyList<Seg> WasHeader(string name, Style bold, string tail) =>
+        [new Seg(name, bold), new Seg(tail, Dim)];
 
     // The current branch's header: its name with "(current)" (or "HEAD (detached)"), then the tail (a count or "tip").
     private static IReadOnlyList<Seg> CurHeader(GraphLayout L, string tail) =>

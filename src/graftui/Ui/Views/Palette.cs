@@ -78,7 +78,7 @@ public static class Palette
     private static Color ForeColor(Ink ink)
     {
         // A branch lane is one of the six lane colours; the role inks below are unchanged.
-        if (ink >= Ink.Lane0)
+        if (ink >= Ink.Lane0 && ink <= Ink.Lane5)
             return _lanes[(int)ink - (int)Ink.Lane0];
 
         return ink switch

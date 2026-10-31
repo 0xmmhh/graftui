@@ -22,7 +22,7 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
     private const long DeleteHold = 300, DeleteTotal = 1000;
 
     // Delete: the grey ghosts of the commits no other branch holds appear at 450 ms; the name is bold until 300, plain until 600, Dim until 900.
-    private const long GhostAt = 450, NameBright = 300, NameInc = 600, NameDim = 900;
+    private const long GhostAt = 450, NameBright = 300, NamePlain = 600, NameDim = 900;
 
     private static readonly Style Fg = new(Ink.Fg), Warn = new(Ink.Warn);
     private static readonly Style Dim = new(Ink.Dim), Faint = new(Ink.Frame);
@@ -187,7 +187,7 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
     {
         if (te < NameBright)
             return new Style(ink, true);
-        if (te < NameInc)
+        if (te < NamePlain)
             return new Style(ink);
         if (te < NameDim)
             return Dim;

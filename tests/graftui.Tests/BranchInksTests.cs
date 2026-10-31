@@ -29,6 +29,28 @@ public class BranchInksTests
         Assert.Equal(Ink.Lane3, BranchInks.Selected(layout));
     }
 
+    private static Branch B(string name, bool current = false) => new(name, "h", "h", current);
+
+    [Fact]
+    public void A_listed_branch_is_drawn_in_its_lane_colour()
+    {
+        var branches = new[] { B("feature/conflict"), B("main", current: true) };
+
+        Assert.Equal(Ink.Lane3, BranchInks.Named(branches, "feature/conflict"));
+        Assert.Equal(Ink.Lane0, BranchInks.Named(branches, "main"));
+    }
+
+    [Fact]
+    public void A_name_that_is_not_listed_or_HEAD_or_empty_is_the_foreground()
+    {
+        var branches = new[] { B("main", current: true) };
+
+        Assert.Equal(Ink.Fg, BranchInks.Named(branches, "HEAD"));
+        Assert.Equal(Ink.Fg, BranchInks.Named(branches, ""));
+        Assert.Equal(Ink.Fg, BranchInks.Named(branches, "topic"));
+        Assert.Equal(Ink.Fg, BranchInks.Named([], "main"));
+    }
+
     [Fact]
     public void An_unstamped_layout_draws_both_branches_in_the_foreground()
     {

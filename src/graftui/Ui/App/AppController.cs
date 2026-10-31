@@ -600,7 +600,7 @@ public sealed class AppController
     }
 
     /// <summary>The ink of a branch in the snapshot's list: its lane colour, or the foreground for HEAD or a name that is not listed.</summary>
-    internal Ink InkOf(string name) => BranchInks.Of(BranchLanes.LaneOf(Snapshot.Branches, name));
+    internal Ink InkOf(string name) => BranchInks.Named(Snapshot.Branches, name);
 
     internal GraphLayout? TryLoadLayout(RepoSnapshot snap, Branch b)
     {

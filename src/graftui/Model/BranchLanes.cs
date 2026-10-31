@@ -113,6 +113,7 @@ public static class BranchLanes
                 return lane;
         }
 
+        // Only reached when the pool has fewer than 2 lanes, where every lane may equal the previous one.
         return preferred;
     }
 

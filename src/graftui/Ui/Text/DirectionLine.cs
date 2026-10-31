@@ -22,6 +22,7 @@ public static class DirectionLine
     {
         var cur = L.Detached ? "HEAD" : L.Current;
         var extra = L.Detached ? " (detached)" : "";
+        var selB = new Style(BranchInks.Selected(L), true);
         var curB = new Style(BranchInks.Current(L), true);
         // The current branch itself, compared with itself, is just its name.
         if (L.Kind == GraphKind.Same && L.Selected == L.Current)
@@ -37,7 +38,7 @@ public static class DirectionLine
         }
 
         var (sel, curName) = TextFit.FitPair(L.Selected, cur, budget);
-        List<Seg> segs = [new Seg(sel, new Style(BranchInks.Selected(L), true)), new Seg(middle, Dim), new Seg(curName, curB)];
+        List<Seg> segs = [new Seg(sel, selB), new Seg(middle, Dim), new Seg(curName, curB)];
         if (extra.Length > 0)
             segs.Add(new Seg(extra, Dim));
         return segs;
