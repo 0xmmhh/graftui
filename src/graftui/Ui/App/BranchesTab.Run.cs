@@ -14,19 +14,21 @@ namespace graftui.Ui.App;
 internal sealed partial class BranchesTab
 {
     /// <summary>What a change shows when it starts: its animation, its direction line and the panel under the art.</summary>
-    private sealed record BranchStart(IBranchAnimation Anim, Func<int, IReadOnlyList<Seg>> Direction, CommitPanel? Panel);
+    private sealed record BranchStart(IBranchAnimation Anim, Func<int, IReadOnlyList<Seg>> Direction, CommitPanel? Panel, bool HoldsKeys = false);
 
     /// <summary>
     /// What a change shows when git has answered: the result, the commands it ran, the lines it adds to the log, the exit line,
     /// the snapshot read after it (null when that read failed), the branch to select afterwards, and the process exit code the change
-    /// asks for (1 when it conflicted or failed after a merge; 0 otherwise).
+    /// asks for (1 when it conflicted or failed after a merge; 0 otherwise). <c>HoldWidth</c> keeps the art's width where it is when
+    /// the snapshot is applied (a switch: its last frame must not reflow).
     /// </summary>
     internal sealed record BranchFinish(BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log,
-        string ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0);
+        string ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0, bool HoldWidth = false);
 
     /// <summary>Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now.</summary>
     private void StartWork()
     {
+        _app.ReleaseBranchWidth();
         _app.Busy = true;
         _previewCts?.Cancel();
         _app.Keys.Busy = true;
@@ -66,7 +68,7 @@ internal sealed partial class BranchesTab
                     {
                         var start = begin(loaded, check);
                         _app.LogCommands(checkCommands(check));
-                        animator.Begin(start.Anim, start.Direction, start.Panel);
+                        animator.Begin(start.Anim, start.Direction, start.Panel, start.HoldsKeys);
                     }));
                 if (o is null)
                     return null;
@@ -87,6 +89,8 @@ internal sealed partial class BranchesTab
     /// <summary>Runs on the UI thread when a change's final frame is drawn: the new snapshot, the selection, and the counts.</summary>
     private void EndBranchChange(BranchFinish f)
     {
+        if (f.HoldWidth)
+            _app.HoldBranchWidth();
         if (f.After is not null)
             _app.ApplySnapshot(f.After);
         if (f.Select is { } name)

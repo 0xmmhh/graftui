@@ -36,35 +36,199 @@ public class BranchAnimationTests
 
     // ----- switch -----
 
-    [Fact]
-    public void Switch_at_the_start_has_the_current_token_on_the_current_name_row()
+    // The diverged pair: main (current) on the top row, feature below it. Its labels sit at the tip of the one commit each.
+    private static BranchAnimation Switch() =>
+        new(BranchOp.Switch, Layouts.Diverged(), "feature", null, 0, "Switching to feature…");
+
+    private static BranchResult SwitchedOk(string text = "✔ Switched to feature") =>
+        new(true, "Switched", new Caption(text, new Style(Ink.Ok, true)), null);
+
+    private static bool SameCells(ArtGrid a, ArtGrid b)
     {
-        var anim = new BranchAnimation(BranchOp.Switch, Layouts.Diverged(), "feature", null, 0, "Switching to feature…");
+        for (var y = 0; y < a.Height; y++)
+            for (var x = 0; x < a.Width; x++)
+                if (a[x, y] != b[x, y])
+                    return false;
+        return true;
+    }
 
-        var frame = anim.Render(Geo, 0);
+    // A label's cells: its marker, its name row and the " (current)" after it. Everything else on the grid is the graph.
+    private static bool IsLabelCell(ArtGeometry g, int x, int y) =>
+        (y == g.A - 2 || y == g.A - 1 || y == g.B + 1 || y == g.B + 2) && x >= g.TipX(1) && x < g.TipX(1) + 20;
 
-        Assert.Equal(Geo.A - 2, RowOf(frame.Grid, '◆'));
+    [Fact]
+    public void Switch_timeline_at_0_250_500_750_and_1200_ms_moves_current_between_the_labels()
+    {
+        var anim = Switch();
+        anim.SetResult(SwitchedOk(), 0);
+        var x = Geo.TipX(1);
+        var oldName = Geo.A - 2;
+        var oldMarker = Geo.A - 1;
+        var newName = Geo.B + 2;
+        var newMarker = Geo.B + 1;
+
+        // 0 ms: the old label is current as in the preview; the new one is plain.
+        var t0 = anim.Render(Geo, 0).Grid;
+        Assert.Equal(new Cell('m', new Style(Ink.Cur, true)), t0[x, oldName]);
+        Assert.Equal(new Cell('▾', new Style(Ink.Cur)), t0[x, oldMarker]);
+        Assert.Equal(new Cell('(', new Style(Ink.Dim)), t0[x + 5, oldName]);
+        Assert.Equal(new Cell('f', new Style(Ink.Inc, true)), t0[x, newName]);
+        Assert.Equal(new Cell('▴', new Style(Ink.Inc)), t0[x, newMarker]);
+        Assert.Equal(' ', t0[x + 8, newName].Ch);
+
+        // 250 ms: " (current)" is fading off the old label, which is moving from the current style to the normal one.
+        var t250 = anim.Render(Geo, 250).Grid;
+        Assert.Equal(new Cell('m', new Style(Ink.Fg, true)), t250[x, oldName]);
+        Assert.Equal(new Cell('▾', new Style(Ink.Fg)), t250[x, oldMarker]);
+        Assert.Equal(new Cell('(', new Style(Ink.Frame)), t250[x + 5, oldName]);
+        Assert.Equal(new Cell('f', new Style(Ink.Inc, true)), t250[x, newName]);
+        Assert.Equal(' ', t250[x + 8, newName].Ch);
+
+        // 500 ms: the old label is normal and " (current)" is gone; the new label has not started.
+        var t500 = anim.Render(Geo, 500).Grid;
+        Assert.Equal(new Cell('m', new Style(Ink.Inc, true)), t500[x, oldName]);
+        Assert.Equal(new Cell('▾', new Style(Ink.Inc)), t500[x, oldMarker]);
+        Assert.Equal(' ', t500[x + 5, oldName].Ch);
+        Assert.Equal(new Cell('f', new Style(Ink.Inc, true)), t500[x, newName]);
+        Assert.Equal(' ', t500[x + 8, newName].Ch);
+
+        // 750 ms: " (current)" is fading onto the new label, which is moving to the current style.
+        var t750 = anim.Render(Geo, 750).Grid;
+        Assert.Equal(new Cell('f', new Style(Ink.Fg, true)), t750[x, newName]);
+        Assert.Equal(new Cell('▴', new Style(Ink.Fg)), t750[x, newMarker]);
+        Assert.Equal(new Cell('(', new Style(Ink.Frame)), t750[x + 8, newName]);
+        Assert.Equal(' ', t750[x + 5, oldName].Ch);
+
+        // 1200 ms: the new label is current with " (current)" in the preview's dim; the old one is normal.
+        var t1200 = anim.Render(Geo, 1200).Grid;
+        Assert.Equal(new Cell('f', new Style(Ink.Cur, true)), t1200[x, newName]);
+        Assert.Equal(new Cell('▴', new Style(Ink.Cur)), t1200[x, newMarker]);
+        Assert.Equal(new Cell('(', new Style(Ink.Dim)), t1200[x + 8, newName]);
+        Assert.Equal(new Cell('m', new Style(Ink.Inc, true)), t1200[x, oldName]);
+        Assert.Equal(' ', t1200[x + 5, oldName].Ch);
     }
 
     [Fact]
-    public void Switch_ends_with_the_token_gone_and_current_under_the_new_name()
+    public void Switch_frame_at_0_ms_is_the_browse_preview_cell_for_cell()
     {
-        var anim = new BranchAnimation(BranchOp.Switch, Layouts.Diverged(), "feature", null, 0, "Switching to feature…");
-        anim.SetResult(Success(Alone("feature", Layouts.Sel), "Switched", "✔ Switched to feature"), 100);
+        var before = Layouts.Diverged();
+        var anim = Switch();
+        anim.SetResult(SwitchedOk(), 0);
 
-        var frame = anim.Render(Geo, 2_000);
+        Assert.True(SameCells(MergeScenes.Preview(Geo, before).Grid, anim.Render(Geo, 0).Grid));
+    }
 
-        Assert.True(anim.IsDone(2_000));
-        Assert.Equal(-1, RowOf(frame.Grid, '◆'));
-        Assert.Equal("feature (current)", Row(frame.Grid, Geo.A - 2).Trim());
-        Assert.Equal("✔ Switched to feature", frame.Caption?.Text);
-        Assert.Equal("Switched", anim.Title(2_000));
+    [Fact]
+    public void Switch_graph_cells_are_identical_in_every_frame_and_no_frame_has_a_diamond()
+    {
+        var before = Layouts.Diverged();
+        var anim = Switch();
+        anim.SetResult(SwitchedOk(), 0);
+        var rest = MergeScenes.Preview(Geo, before).Grid;
+
+        foreach (var t in new long[] { 0, 100, 250, 333, 499, 500, 600, 750, 900, 999, 1000, 1100, 1199, 1200, 2000 })
+        {
+            var grid = anim.Render(Geo, t).Grid;
+            Assert.DoesNotContain('◆', Text(grid));
+            for (var y = 0; y < Geo.Height; y++)
+                for (var x = 0; x < Geo.Width; x++)
+                    if (!IsLabelCell(Geo, x, y))
+                        Assert.True(grid[x, y] == rest[x, y], $"graph cell ({x},{y}) changed at {t} ms");
+        }
+    }
+
+    [Fact]
+    public void Switch_final_frame_is_what_the_screen_keeps_and_it_still_shows_the_pre_switch_graph()
+    {
+        var before = Layouts.Diverged();
+        var anim = Switch();
+        anim.SetResult(SwitchedOk(), 0);
+
+        var last = anim.Render(Geo, 1200);
+        var later = anim.Render(Geo, 3_000);
+
+        Assert.True(anim.IsDone(1200));
+        Assert.True(SameCells(last.Grid, later.Grid));
+        Assert.Equal(last.Caption, later.Caption);
+        Assert.Equal("Switched", anim.Title(3_000));
+        Assert.Equal("feature (current)", Row(last.Grid, Geo.B + 2).Trim());
+        Assert.Equal("main", Row(last.Grid, Geo.A - 2).Trim());
+        Assert.Equal("✔ Switched to feature", last.Caption?.Text);
+    }
+
+    [Fact]
+    public void Switch_title_changes_with_the_caption_at_1000_ms()
+    {
+        var anim = Switch();
+        anim.SetResult(SwitchedOk(), 0);
+
+        Assert.Equal("Switching", anim.Title(999));
+        Assert.Equal("Switched", anim.Title(1000));
+        Assert.Equal("Switched", anim.Title(1200));
+    }
+
+    [Fact]
+    public void Switch_caption_appears_at_1000_ms_and_not_before()
+    {
+        var anim = Switch();
+        anim.SetResult(SwitchedOk(), 0);
+
+        Assert.Equal("⠋ Switching to feature…", anim.Render(Geo, 0).Caption?.Text);
+        Assert.EndsWith("Switching to feature…", anim.Render(Geo, 100).Caption?.Text);
+        Assert.NotEqual("✔ Switched to feature", anim.Render(Geo, 999).Caption?.Text);
+        Assert.Equal("✔ Switched to feature", anim.Render(Geo, 1000).Caption?.Text);
+    }
+
+    [Fact]
+    public void Switch_timeline_starts_when_git_answers_so_the_marker_waits_for_it()
+    {
+        var anim = Switch();
+        Assert.True(SameCells(MergeScenes.Preview(Geo, Layouts.Diverged()).Grid, anim.Render(Geo, 5_000).Grid));
+
+        anim.SetResult(SwitchedOk(), 2_000);
+
+        var x = Geo.TipX(1);
+        Assert.Equal('▾', anim.Render(Geo, 2_000).Grid[x, Geo.A - 1].Ch);
+        Assert.Equal(new Cell('f', new Style(Ink.Fg, true)), anim.Render(Geo, 2_750).Grid[x, Geo.B + 2]);
+        Assert.False(anim.IsDone(2_999));
+        Assert.True(anim.IsDone(3_200));
+    }
+
+    [Fact]
+    public void Switch_that_fails_never_moves_the_marker()
+    {
+        var before = Layouts.Diverged();
+        var anim = Switch();
+        var failed = new BranchResult(false, "Failed", new Caption("✕ Switch failed: boom", new Style(Ink.Bad, true)), null);
+
+        anim.SetResult(failed, 100);
+        var frame = anim.Render(Geo, 100);
+
+        Assert.True(anim.IsDone(100));
+        Assert.True(SameCells(MergeScenes.Preview(Geo, before).Grid, frame.Grid));
+        Assert.Equal("✕ Switch failed: boom", frame.Caption?.Text);
+        Assert.Equal("Failed", anim.Title(100));
+    }
+
+    [Fact]
+    public void Switch_refused_by_git_keeps_the_marker_where_it_was()
+    {
+        var before = Layouts.Diverged();
+        var anim = Switch();
+        anim.SetResult(new BranchResult(false, "Refused", new Caption("Refused: local changes would be overwritten", new Style(Ink.Warn, true)),
+            null), 400);
+
+        var frame = anim.Render(Geo, 400);
+
+        Assert.True(anim.IsDone(400));
+        Assert.True(SameCells(MergeScenes.Preview(Geo, before).Grid, frame.Grid));
+        Assert.Equal("Refused: local changes would be overwritten", frame.Caption?.Text);
     }
 
     [Fact]
     public void Switch_is_not_done_before_git_answers()
     {
-        var anim = new BranchAnimation(BranchOp.Switch, Layouts.Diverged(), "feature", null, 0, "Switching to feature…");
+        var anim = Switch();
 
         Assert.False(anim.IsDone(50_000));
         Assert.Equal("Switching", anim.Title(50_000));
@@ -189,7 +353,7 @@ public class BranchAnimationTests
     [Fact]
     public void Running_caption_turns_into_the_waiting_line_after_five_seconds()
     {
-        var anim = new BranchAnimation(BranchOp.Switch, Layouts.Diverged(), "feature", null, 0, "Switching to feature…");
+        var anim = Switch();
 
         Assert.Equal(MergeScenes.WaitingText, anim.Render(Geo, 5_000).Caption?.Text);
     }

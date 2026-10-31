@@ -34,30 +34,35 @@ internal sealed partial class BranchesTab
         var from = snap.CurrentBranch.Length == 0 ? "HEAD" : snap.CurrentBranch;
         var cached = CachedLayout(snap, b);
         Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.Switch(from, name, cols);
+        // The layout is read on the worker before the check, so the finish (later, on the same worker) uses the same one.
+        GraphLayout? read = null;
         StartBranchChange(_app.SwitchOp, new SwitchRequest(name), "Switch",
             c => c.Refusal, c => c.Commands,
-            () => cached ?? _app.TryLoadLayout(snap, b),
+            () => read = cached ?? _app.TryLoadLayout(snap, b),
             (loaded, _) =>
             {
                 var before = Or(loaded, snap, name, b.Hash);
-                return new BranchStart(new BranchAnimation(BranchOp.Switch, before, name, null, 0, $"Switching to {name}…"), direction, Panel(before));
+                return new BranchStart(new BranchAnimation(BranchOp.Switch, before, name, null, 0, $"Switching to {name}…"), direction, Panel(before),
+                    HoldsKeys: true);
             },
-            (o, after) => SwitchFinish(o, name, after),
+            (o, after) => SwitchFinish(o, name, after, Or(read, snap, name, b.Hash)),
             direction);
     }
 
-    private BranchFinish SwitchFinish(SwitchOutcome o, string name, RepoSnapshot? after)
+    private BranchFinish SwitchFinish(SwitchOutcome o, string name, RepoSnapshot? after, GraphLayout before)
     {
         if (o.Kind == SwitchKind.Refused)
             return RefusedFinish(o.Message, o.Commands, after, name);
         if (o.Kind == SwitchKind.Failed)
             return FailedFinish("Switch", o.Message, o.Commands, after, name);
 
-        var layout = after is null ? null : LayoutFor(after, name);
+        // No layout after the switch: the animation keeps the pre-switch graph on screen, with the labels updated, until the selection moves.
+        // The commit panel moves its "(current)" header the same way.
         var came = o.CameAlong > 0 ? $"your {MergeScenes.Plural(o.CameAlong, "changed file")} came along" : null;
         var caption = came is null ? $"✔ Switched to {name}" : $"✔ Switched to {name} · {came}";
         var exit = $"graftui: switched to {name}" + (came is null ? "" : $"; {came}");
-        return new BranchFinish(new BranchResult(true, "Switched", new Caption(caption, OkB), layout), o.Commands, [], exit, after, name);
+        var result = new BranchResult(true, "Switched", new Caption(caption, OkB), null, Panel: CommitLists.Switched(before));
+        return new BranchFinish(result, o.Commands, [], exit, after, name, HoldWidth: true);
     }
 
     /// <summary>

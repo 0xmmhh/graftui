@@ -24,6 +24,11 @@ public sealed class AppController
 
     private readonly string _repoDisplay;
     private int _wantedBranchWidth;
+
+    // While a switch's last frame is on screen the art keeps its width: the list's wanted width (from the new counts) waits here.
+    private bool _widthHeld;
+    private int? _heldWantedWidth;
+
     private volatile bool _outcomeShown;
 
     private TooSmallView _tooSmall = null!;
@@ -323,6 +328,13 @@ public sealed class AppController
 
     private void OnKeyDown(object? sender, Key e)
     {
+        // A switch's animation holds Esc: Esc would quit graftui before the change's last frame. Other keys are refused by Busy.
+        if (e == Key.Esc && BranchAnimator.HoldsKeys)
+        {
+            e.Handled = true;
+            return;
+        }
+
         // The message box and the amend confirmations take every key first, so Esc cancels them rather than quitting.
         if (ActiveTab == TabKind.Changes && ChangesTab.Mode == ChangesMode.Input)
         {
@@ -413,6 +425,7 @@ public sealed class AppController
     private void ToggleTab()
     {
         Result = null;
+        ReleaseBranchWidth();
         ActiveTab = ActiveTab == TabKind.Branches ? TabKind.Changes : TabKind.Branches;
         var onChanges = ActiveTab == TabKind.Changes;
         BranchList.Visible = !onChanges;
@@ -448,7 +461,7 @@ public sealed class AppController
         Snapshot = s;
         SnapshotSeq++;
         BranchesTab.ClearCache();
-        _wantedBranchWidth = BranchesView.WantedWidth(s.Branches, s.Counts);
+        SetWantedWidth(BranchesView.WantedWidth(s.Branches, s.Counts));
         _window?.SetNeedsLayout();
         BranchesTab.KeepSelection(selName, s);
         SyncBranchKeys();
@@ -461,6 +474,35 @@ public sealed class AppController
         BranchList.Counts = s.Counts;
         BranchList.Selected = BranchesTab.Selected;
         BranchList.SetNeedsDraw();
+    }
+
+    private void SetWantedWidth(int wanted)
+    {
+        if (_widthHeld)
+        {
+            _heldWantedWidth = wanted;
+            return;
+        }
+        _wantedBranchWidth = wanted;
+        _window?.SetNeedsLayout();
+    }
+
+    /// <summary>
+    /// Keeps the branch list's width where it is when the next snapshot arrives, so the art does not reflow under a switch's last frame.
+    /// <see cref="ReleaseBranchWidth"/> applies the width the list wants, on the next selection or change.
+    /// </summary>
+    internal void HoldBranchWidth() => _widthHeld = true;
+
+    internal void ReleaseBranchWidth()
+    {
+        if (!_widthHeld)
+            return;
+        _widthHeld = false;
+        if (_heldWantedWidth is { } wanted)
+        {
+            _heldWantedWidth = null;
+            SetWantedWidth(wanted);
+        }
     }
 
     /// <summary>

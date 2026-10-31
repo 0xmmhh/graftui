@@ -19,12 +19,16 @@ internal sealed class BranchAnimator(AppController app)
     /// <summary>True from <see cref="Begin"/> until the animation has finished.</summary>
     internal bool Running => _anim is not null;
 
+    /// <summary>True while an animation that holds Esc runs (a switch): Esc must not quit graftui before its last frame.</summary>
+    internal bool HoldsKeys { get; private set; }
+
     /// <summary>Starts the scene on the art pane. The result may arrive later through <see cref="SetPending"/>.</summary>
-    internal void Begin(IBranchAnimation anim, Func<int, IReadOnlyList<Seg>> direction, CommitPanel? panel)
+    internal void Begin(IBranchAnimation anim, Func<int, IReadOnlyList<Seg>> direction, CommitPanel? panel, bool holdsKeys = false)
     {
         var clock = Stopwatch.StartNew();
         _anim = anim;
         _clock = clock;
+        HoldsKeys = holdsKeys;
         _pending = null; // a result from an earlier change must never be applied to this one
 
         app.Art.Title = anim.Title(0);
@@ -52,7 +56,12 @@ internal sealed class BranchAnimator(AppController app)
 
         var e = _clock.ElapsedMilliseconds;
         if (_pending is { } p && _anim.Result is null)
+        {
             _anim.SetResult(p.Result, e);
+            // The panel moves with the labels when the result is in; a failure or a refusal sets none, so the panel stays as it was.
+            if (p.Result.Panel is { } panel)
+                app.Art.Panel = panel;
+        }
 
         app.Art.Title = _anim.Title(e);
         app.Art.SetNeedsDraw();
@@ -86,6 +95,7 @@ internal sealed class BranchAnimator(AppController app)
         _anim = null;
         _clock = null;
         _pending = null;
+        HoldsKeys = false;
 
         app.Busy = false;
         app.Keys.Busy = false;

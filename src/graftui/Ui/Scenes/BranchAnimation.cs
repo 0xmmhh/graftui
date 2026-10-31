@@ -9,11 +9,14 @@ public enum BranchOp { Switch, Create, Rename, Delete }
 /// <summary>
 /// Drives one branch change's animation (the mock's switchTo, createBranch, doRename and doDelete). Like <see cref="StashAnimation"/>,
 /// the scene is held at its hold point until git answers, then plays on from there; a failure jumps straight to its final frame.
-/// Before the result, the spinner caption uses the real elapsed time.
+/// Before the result, the spinner caption uses the real elapsed time. A switch is the exception: its graph never moves, only the
+/// "(current)" marker fades from the old label to the new one (see <see cref="SwitchScene"/>).
 /// </summary>
 public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name, string? newName, int lost, string runningText) : IBranchAnimation
 {
-    private const long SwitchHold = 650, SwitchTotal = 800;
+    // Switch: the timeline starts when git answers (hold 0), so a failed switch never moves the marker. "(current)" fades off the old
+    // label over SwitchFade ms and onto the new one over the next SwitchFade ms; the result's caption appears at SwitchCaptionAt.
+    private const long SwitchHold = 0, SwitchTotal = 1200, SwitchFade = 500, SwitchCaptionAt = 1000;
     private const long CreateHold = 700, CreateTotal = 900;
     private const long RenameHold = 700, RenameTotal = 900;
     private const long DeleteHold = 300, DeleteTotal = 1000;
@@ -21,13 +24,11 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
     // Delete: the grey ghosts of the commits no other branch holds appear at 450 ms; the name is bright until 300, Inc until 600, Dim until 900.
     private const long GhostAt = 450, NameBright = 300, NameInc = 600, NameDim = 900;
 
-    private static readonly Style Fg = new(Ink.Fg), Warn = new(Ink.Warn);
-    private static readonly Style Dim = new(Ink.Dim);
+    private static readonly Style Fg = new(Ink.Fg), Warn = new(Ink.Warn), FgB = new(Ink.Fg, true);
+    private static readonly Style Dim = new(Ink.Dim), Faint = new(Ink.Frame);
+    private static readonly Style Cur = new(Ink.Cur), CurB = new(Ink.Cur, true);
     private static readonly Style Inc = new(Ink.Inc), IncB = new(Ink.Inc, true);
     private static readonly Style OkB = new(Ink.Ok, true);
-    private static readonly Style CurB = new(Ink.Cur, true);
-
-    private const string CurrentToken = "◆ current";
 
     private long _offset;
 
@@ -65,6 +66,9 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
     {
         if (IsDone(elapsedMs))
             return Result!.Title;
+        // A switch's title changes with its caption, so nothing changes when the animation ends.
+        if (op == BranchOp.Switch && Result is { } r && TimeOf(elapsedMs) >= SwitchCaptionAt)
+            return r.Title;
         return op switch
         {
             BranchOp.Switch => "Switching",
@@ -80,8 +84,11 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
         if (IsDone(elapsedMs))
             return Done(g);
 
-        var grid = Scene(g, TimeOf(elapsedMs), elapsedMs);
-        return new SceneFrame(grid, Running(elapsedMs));
+        var te = TimeOf(elapsedMs);
+        var grid = Scene(g, te, elapsedMs);
+        // A switch's caption appears at SwitchCaptionAt; until then the running caption stays.
+        var caption = op == BranchOp.Switch && Result is { } r && te >= SwitchCaptionAt ? r.Caption : Running(elapsedMs);
+        return new SceneFrame(grid, caption);
     }
 
     // Time the scene has reached: clamped to the hold point until the result arrives, then offset from the clock.
@@ -111,23 +118,50 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
         _ => DeleteScene(g, te),
     };
 
-    // The current label's marker travels from the current name to the selected one; the preview has no "(current)" yet.
+    // The "(current)" marker moves from the old label to the new one as two fades. The graph and the label places are the preview's:
+    // only the two labels' marker, name and " (current)" are written over it, so nothing else on the grid changes in any frame.
+    // Fades are stepped through the palette's own styles (no colour mixing): three steps per fade, the last one the resting style.
     private ArtGrid SwitchScene(ArtGeometry g, long te)
     {
-        var grid = MergeScenes.Preview(g, before, new PreviewOptions(NoCurrentExtra: true)).Grid;
+        var grid = MergeScenes.Preview(g, before, new PreviewOptions(NoCurrentExtra: true, NoCurName: true, NoSelName: true)).Grid;
         var s = MergeScenes.LabelSpots(g, before);
-        var cur = CurrentText(before);
-        var curLen = MergeScenes.Runes(cur);
-        var selLen = MergeScenes.Runes(name);
 
-        var fromX = MergeScenes.LabelTextX(g, s.CurX, curLen) + curLen + 1;
-        var toX = MergeScenes.LabelTextX(g, s.SelX, selLen) + selLen + 1;
-        var p = MergeScenes.Ease(Math.Clamp(te / (double)SwitchHold, 0, 1));
-        var x = Math.Clamp(Round(fromX + (toX - fromX) * p), 0, g.Width - CurrentToken.Length);
-        var y = Round((s.CurRow - 2) + ((s.SelRow + 2) - (s.CurRow - 2)) * p);
-        grid.Text(x, y, CurrentToken, CurB);
+        var oldT = Math.Clamp(te, 0, SwitchFade);
+        var newT = Math.Clamp(te - SwitchFade, 0, SwitchFade);
+
+        // The old label: " (current)" fades out, and the name and marker go from the current style to the normal one.
+        var oldExtra = before.Detached ? " (detached)" : " (current)";
+        LabelAt(grid, g, s.CurX, s.CurRow, up: true, CurrentText(before), oldExtra,
+            Step(oldT, Cur, Fg, Inc), Step(oldT, CurB, FgB, IncB), Step<Style?>(oldT, Dim, Faint, null));
+
+        // The new label: the name and marker go from the normal style to the current one, and " (current)" fades in.
+        LabelAt(grid, g, s.SelX, s.SelRow, up: false, name, " (current)",
+            Step(newT, Inc, Fg, Cur), Step(newT, IncB, FgB, CurB), Step<Style?>(newT, null, Faint, Dim));
         return grid;
     }
+
+    // One label as the preview places it: the marker on the branch line, the name on its row, and the extra after the name. The name
+    // counts the extra in its place when the extra fits, which is the preview's rule for the current label, so the name never moves.
+    private static void LabelAt(ArtGrid grid, ArtGeometry g, int x, int row, bool up, string text, string extra,
+        Style markerStyle, Style nameStyle, Style? extraStyle)
+    {
+        grid.Put(x, up ? row - 1 : row + 1, up ? '▾' : '▴', markerStyle);
+
+        var shown = MergeScenes.Runes(text) > g.Width ? TextFit.Fit(text, g.Width) : text;
+        var nameLen = MergeScenes.Runes(shown);
+        var extraLen = MergeScenes.Runes(extra);
+        var fits = nameLen + extraLen <= g.Width;
+        var tx = MergeScenes.LabelTextX(g, x, nameLen + (fits ? extraLen : 0));
+        var ty = up ? row - 2 : row + 2;
+
+        grid.Text(tx, ty, shown, nameStyle);
+        if (fits && extraStyle is { } st)
+            grid.Text(tx + nameLen, ty, extra, st);
+    }
+
+    // The value at the fade's time: the first style until a third of the fade, the second until two thirds, then the third.
+    private static T Step<T>(long t, T first, T second, T last) =>
+        t < SwitchFade / 3 ? first : t < SwitchFade * 2 / 3 ? second : last;
 
     // The new branch sprouts from the current one: a marker blinks under the current label while the name is typed out.
     private ArtGrid CreateScene(ArtGeometry g, long te, long elapsedMs)

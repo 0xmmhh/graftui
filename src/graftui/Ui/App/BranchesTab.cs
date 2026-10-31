@@ -79,6 +79,7 @@ internal sealed partial class BranchesTab
         if (_app.Busy || _app.Snapshot.Branches.Count == 0)
             return;
 
+        _app.ReleaseBranchWidth();
         var n = _app.Snapshot.Branches.Count;
         _selected = ((_selected + delta) % n + n) % n;
         _app.Result = null;
@@ -96,6 +97,7 @@ internal sealed partial class BranchesTab
 
         var snap = _app.Snapshot;
         var b = snap.Branches[_selected];
+        _app.ReleaseBranchWidth();
         _app.Busy = true;
         _previewCts?.Cancel();
         _app.Keys.Busy = true;

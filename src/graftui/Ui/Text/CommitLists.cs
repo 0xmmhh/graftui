@@ -69,6 +69,30 @@ public static class CommitLists
         }
     }
 
+    /// <summary>
+    /// The panel after a switch: the same columns as before, and only the "(current)" header moves to the branch that is now current,
+    /// as the graph's label does. <paramref name="L"/> is the layout the switch was drawn from (its Selected is the new current).
+    /// </summary>
+    public static CommitPanel Switched(GraphLayout L)
+    {
+        var now = L.Selected;
+        var was = L.Detached ? "HEAD" : L.Current;
+        if (L.Kind is GraphKind.Same or GraphKind.UpToDate)
+            return new CommitPanel(new CommitGroup(NowHeader(now, "  tip"), [R(L.SelectedTipCommit, CurB)], 1), null, []);
+
+        var left = new CommitGroup(NowHeader(now, $"  {L.Ahead} new"), OwnRows(L.SelectedOwn, CurB), L.Ahead);
+        var right = L.Behind == 0
+            ? new CommitGroup(WasHeader(was, "  tip"), [R(L.CurrentTipCommit, IncB)], 1)
+            : new CommitGroup(WasHeader(was, $"  {L.Behind} new"), OwnRows(L.CurrentOwn, IncB), L.Behind);
+        return new CommitPanel(left, right, []);
+    }
+
+    private static IReadOnlyList<Seg> NowHeader(string name, string tail) =>
+        [new Seg(name, CurB), new Seg(" (current)", Dim), new Seg(tail, Dim)];
+
+    private static IReadOnlyList<Seg> WasHeader(string name, string tail) =>
+        [new Seg(name, IncB), new Seg(tail, Dim)];
+
     // The current branch's header: its name with "(current)" (or "HEAD (detached)"), then the tail (a count or "tip").
     private static IReadOnlyList<Seg> CurHeader(GraphLayout L, string tail) =>
     [
