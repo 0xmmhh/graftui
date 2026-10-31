@@ -24,10 +24,17 @@ internal static class SandboxEdits
     // Plain UTF-8 without a byte-order mark, as Sandbox writes its files.
     private static readonly Encoding NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
-    /// <summary>Runs the flag. Prints what it did, or why it refused, and returns the exit code. Program returns at once.</summary>
-    public static int RunFromCommandLine(string? path, TextWriter output, TextWriter error)
+    /// <summary>Runs the flag on the real practice repo. Prints what it did, or why it refused, and returns the exit code.</summary>
+    public static int RunFromCommandLine(string? path, TextWriter output, TextWriter error) =>
+        Run(path, Sandbox.DefaultPath, output, error);
+
+    /// <summary>
+    /// The flag's logic, with the sandbox folder passed in so tests can use a temp repo. <paramref name="path"/> is the folder
+    /// to change (default: the sandbox itself).
+    /// </summary>
+    internal static int Run(string? path, string sandboxRoot, TextWriter output, TextWriter error)
     {
-        var root = Sandbox.DefaultPath;
+        var root = sandboxRoot;
         var target = path ?? root;
 
         // Inside the try: CheckTarget runs git, and a missing git binary must end in the same one-line error as the rest.

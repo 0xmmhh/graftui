@@ -187,4 +187,148 @@ public class SandboxEditsSafetyTests
 
         Assert.Equal("--make-edits: no such folder: " + missing, refusal);
     }
+
+    [Fact]
+    public void CheckTarget_refuses_a_folder_that_is_not_in_any_repo()
+    {
+        using var repo = FakeSandbox();
+        var dir = TempRepo.NewSandboxDir();
+        try
+        {
+            Directory.CreateDirectory(dir);
+
+            var refusal = SandboxEdits.CheckTarget(dir, repo.Dir);
+
+            Assert.Equal("--make-edits only works on the practice repo at ~/.graftui/sandbox, not " + dir, refusal);
+        }
+        finally
+        {
+            TempRepo.DeleteSandboxRoot(dir);
+        }
+    }
+
+    /// <summary>The lines as the flag prints them: each one ends with the platform's newline, as WriteLine does.</summary>
+    private static string Lines(params string[] lines) => string.Join(Environment.NewLine, lines) + Environment.NewLine;
+
+    [Fact]
+    public void Run_with_no_path_changes_the_sandbox_and_prints_the_summary()
+    {
+        using var repo = FakeSandbox();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var code = SandboxEdits.Run(null, repo.Dir, output, error);
+
+        Assert.Equal(0, code);
+        Assert.Equal(Lines(
+            "graftui: made 3 unstaged changes in ~/.graftui/sandbox (on main)",
+            "  modified   README.md",
+            "  deleted    app.txt",
+            "  untracked  notes.txt",
+            "Open it with: graftui ~/.graftui/sandbox"), output.ToString());
+        Assert.Equal("", error.ToString());
+        Assert.Equal(" M README.md\n D app.txt\n?? notes.txt", repo.Status());
+    }
+
+    [Fact]
+    public void Run_on_another_repo_refuses_and_changes_nothing()
+    {
+        using var repo = FakeSandbox();
+        using var other = FakeSandbox();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var code = SandboxEdits.Run(other.Dir, repo.Dir, output, error);
+
+        Assert.Equal(1, code);
+        Assert.StartsWith("graftui: --make-edits only works on", error.ToString(), StringComparison.Ordinal);
+        Assert.Equal("", output.ToString());
+        Assert.True(repo.IsClean);
+        Assert.True(other.IsClean);
+        Assert.False(File.Exists(Path.Combine(other.Dir, "notes.txt")));
+    }
+
+    [Fact]
+    public void Run_on_a_dirty_sandbox_refuses_and_changes_nothing()
+    {
+        using var repo = FakeSandbox();
+        repo.Write("x.txt", "mine\n");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var code = SandboxEdits.Run(null, repo.Dir, output, error);
+
+        Assert.Equal(1, code);
+        Assert.Contains("already has changes", error.ToString());
+        Assert.Equal("", output.ToString());
+        Assert.Equal("?? x.txt", repo.Status());
+    }
+
+    [Fact]
+    public void Run_with_a_missing_sandbox_says_how_to_build_it()
+    {
+        var dir = TempRepo.NewSandboxDir();
+        try
+        {
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            var code = SandboxEdits.Run(null, dir, output, error);
+
+            Assert.Equal(1, code);
+            Assert.StartsWith("graftui: --make-edits: there is no practice repo", error.ToString(), StringComparison.Ordinal);
+            Assert.Equal("", output.ToString());
+        }
+        finally
+        {
+            TempRepo.DeleteSandboxRoot(dir);
+        }
+    }
+
+    [Fact]
+    public void Make_refuses_an_ignored_notes_file_and_changes_nothing()
+    {
+        // An ignored file does not show in git status, so the clean check passes. The existence check still has to catch it.
+        using var repo = FakeSandbox();
+        repo.Commit(".gitignore", "notes.txt\n", "Ignore notes");
+        File.WriteAllText(Path.Combine(repo.Dir, "notes.txt"), "mine\n");
+        Assert.True(repo.IsClean);
+
+        var result = SandboxEdits.Make(repo.Git);
+
+        Assert.False(result.Success);
+        Assert.Equal("--make-edits: notes.txt already exists", result.Message);
+        Assert.Equal("# sandbox\n", Read(repo, "README.md"));
+        Assert.True(File.Exists(Path.Combine(repo.Dir, "app.txt")));
+        Assert.Equal("mine\n", Read(repo, "notes.txt"));
+    }
+
+    [Fact]
+    public void Run_reports_a_write_error_and_leaves_the_readme_unchanged()
+    {
+        // Unix file modes only: root ignores them, and Windows has no equivalent that File.SetUnixFileMode can set.
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root")
+            return;
+
+        using var repo = FakeSandbox();
+        var readme = Path.Combine(repo.Dir, "README.md");
+        File.SetUnixFileMode(readme, UnixFileMode.UserRead);
+        try
+        {
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            var code = SandboxEdits.Run(null, repo.Dir, output, error);
+
+            Assert.Equal(1, code);
+            Assert.StartsWith("graftui: ", error.ToString(), StringComparison.Ordinal);
+            Assert.Equal("", output.ToString());
+            Assert.Equal("# sandbox\n", Read(repo, "README.md"));
+            Assert.True(File.Exists(Path.Combine(repo.Dir, "app.txt")));
+        }
+        finally
+        {
+            File.SetUnixFileMode(readme, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
 }
