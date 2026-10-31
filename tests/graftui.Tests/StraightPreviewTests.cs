@@ -2,6 +2,7 @@ using graftui.Model;
 using graftui.Ui.App;
 using graftui.Ui.Scenes;
 using graftui.Ui.Text;
+using graftui.Ui.Views;
 
 namespace graftui.Tests;
 
@@ -26,5 +27,25 @@ public class StraightPreviewTests
     public void A_detached_head_is_never_straight()
     {
         Assert.False(BranchesTab.IsStraight(Layouts.FastForward() with { Detached = true }));
+    }
+
+    [Fact]
+    public void Setting_a_scene_clears_the_single_line_flag_so_other_scenes_keep_the_normal_height()
+    {
+        var pane = new ArtPaneView { SingleLine = true };
+
+        pane.Scene = _ => new SceneFrame(new ArtGrid(1, 1), null);
+
+        Assert.False(pane.SingleLine);
+    }
+
+    [Fact]
+    public void The_single_line_flag_stays_until_the_next_scene_is_set()
+    {
+        var pane = new ArtPaneView { Scene = _ => new SceneFrame(new ArtGrid(1, 1), null) };
+
+        pane.SingleLine = true;
+
+        Assert.True(pane.SingleLine);
     }
 }

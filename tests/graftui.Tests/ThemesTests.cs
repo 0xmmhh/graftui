@@ -1,4 +1,5 @@
 using graftui.Model;
+using graftui.Ui.Text;
 using graftui.Ui.Views;
 using Terminal.Gui.Drawing;
 
@@ -101,6 +102,13 @@ public class ThemesTests
     {
         for (var i = 0; i < BranchLanes.Count; i++)
             Assert.Equal(Themes.Default.Lanes[i], Palette.Lane(i));
+    }
+
+    [Fact]
+    public void A_lane_ink_is_drawn_in_its_lane_colour()
+    {
+        for (var i = 0; i < BranchLanes.Count; i++)
+            Assert.Equal(Palette.Lane(i), Palette.Get(new Style((Ink)((int)Ink.Lane0 + i))).Foreground);
     }
 
     [Theory]
