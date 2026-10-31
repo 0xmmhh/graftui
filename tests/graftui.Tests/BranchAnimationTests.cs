@@ -235,6 +235,91 @@ public class BranchAnimationTests
         Assert.Equal("⠋ Switching to feature…", anim.Render(Geo, 0).Caption?.Text);
     }
 
+    // main and feature point at one commit: one row of labels, the current one above the line and the selected one below it.
+    private static GraphLayout SameCommit() =>
+        new("main", false, "feature", Layouts.Cur, Layouts.Cur, Layouts.Cur,
+            [], false, [], false, [Layouts.C(Layouts.Cur)], false, Layouts.C(Layouts.Cur), Layouts.C(Layouts.Cur), 0, 0, GraphKind.Same);
+
+    // Detached HEAD on the diverged pair: the old label reads HEAD (detached).
+    private static GraphLayout Detached() =>
+        new("main", true, "feature", Layouts.Cur, Layouts.Sel, Layouts.Shared,
+            [Layouts.C(Layouts.Cur)], false, [Layouts.C(Layouts.Sel)], false, [Layouts.C(Layouts.Shared)], false,
+            Layouts.C(Layouts.Cur), Layouts.C(Layouts.Sel), 1, 1, GraphKind.Diverged);
+
+    [Fact]
+    public void Switch_to_a_branch_on_the_same_commit_moves_current_between_its_two_labels()
+    {
+        var before = SameCommit();
+        var anim = new BranchAnimation(BranchOp.Switch, before, "feature", null, 0, "Switching to feature…");
+        anim.SetResult(SwitchedOk(), 0);
+
+        Assert.True(SameCells(MergeScenes.Preview(Geo, before).Grid, anim.Render(Geo, 0).Grid));
+        var last = anim.Render(Geo, 1200).Grid;
+        Assert.Equal("main", Row(last, Geo.A - 2).Trim());
+        Assert.Equal("feature (current)", Row(last, Geo.A + 2).Trim());
+        Assert.Equal(new Cell('(', new Style(Ink.Dim)), last[Geo.XB + 8, Geo.A + 2]);
+
+        var rest = MergeScenes.Preview(Geo, before).Grid;
+        foreach (var t in new long[] { 0, 250, 500, 750, 1200 })
+        {
+            var grid = anim.Render(Geo, t).Grid;
+            for (var y = 0; y < Geo.Height; y++)
+                for (var x = 0; x < Geo.Width; x++)
+                {
+                    var label = x >= Geo.XB && x < Geo.XB + 20 && (y == Geo.A - 2 || y == Geo.A - 1 || y == Geo.A + 1 || y == Geo.A + 2);
+                    if (!label)
+                        Assert.True(grid[x, y] == rest[x, y], $"graph cell ({x},{y}) changed at {t} ms");
+                }
+        }
+    }
+
+    [Fact]
+    public void Switch_from_detached_head_fades_the_detached_extra_and_ends_on_the_branch()
+    {
+        var before = Detached();
+        var anim = new BranchAnimation(BranchOp.Switch, before, "feature", null, 0, "Switching to feature…");
+        anim.SetResult(SwitchedOk(), 0);
+        var x = Geo.TipX(1);
+
+        var t0 = anim.Render(Geo, 0).Grid;
+        Assert.True(SameCells(MergeScenes.Preview(Geo, before).Grid, t0));
+        Assert.Equal("HEAD (detached)", Row(t0, Geo.A - 2).Trim());
+        Assert.Equal(new Cell('(', new Style(Ink.Dim)), t0[x + 5, Geo.A - 2]);
+
+        // The extra fades out in the first half; the name is then normal, and it is never cut or moved.
+        Assert.Equal(new Cell('(', new Style(Ink.Frame)), anim.Render(Geo, 250).Grid[x + 5, Geo.A - 2]);
+        var mid = anim.Render(Geo, 500).Grid;
+        Assert.Equal("HEAD", Row(mid, Geo.A - 2).Trim());
+        Assert.Equal(new Cell('H', new Style(Ink.Inc, true)), mid[x, Geo.A - 2]);
+
+        var end = anim.Render(Geo, 1200).Grid;
+        Assert.Equal("HEAD", Row(end, Geo.A - 2).Trim());
+        Assert.Equal("feature (current)", Row(end, Geo.B + 2).Trim());
+    }
+
+    [Fact]
+    public void Right_edge_name_moves_only_when_the_fade_in_starts_and_never_during_the_wait_or_on_failure()
+    {
+        // A grid 26 columns wide: "feature" plus " (current)" cannot fit to the right of the tip, so the name's place counts the extra.
+        var narrow = new ArtGeometry(26, 11, 6, 3, 7, 16);
+        var anim = new BranchAnimation(BranchOp.Switch, Layouts.Diverged(), "feature", null, 0, "Switching to feature…");
+
+        // While git has not answered, the name stays where the preview put it.
+        Assert.Equal(19, Row(anim.Render(narrow, 5_000).Grid, narrow.B + 2).IndexOf("feature"));
+
+        anim.SetResult(SwitchedOk(), 0);
+        foreach (var t in new long[] { 0, 250, 500 })
+            Assert.Equal(19, Row(anim.Render(narrow, t).Grid, narrow.B + 2).IndexOf("feature"));
+
+        // The fade-in starts after 500 ms: the name moves left to make room for the extra, and the whole " (current)" is shown.
+        Assert.Equal(9, Row(anim.Render(narrow, 750).Grid, narrow.B + 2).IndexOf("feature"));
+        Assert.Equal("feature (current)", Row(anim.Render(narrow, 1200).Grid, narrow.B + 2).Substring(9, 17));
+
+        var failing = new BranchAnimation(BranchOp.Switch, Layouts.Diverged(), "feature", null, 0, "Switching to feature…");
+        failing.SetResult(new BranchResult(false, "Failed", new Caption("✕ Switch failed", new Style(Ink.Bad, true)), null), 0);
+        Assert.Equal(19, Row(failing.Render(narrow, 0).Grid, narrow.B + 2).IndexOf("feature"));
+    }
+
     // ----- create -----
 
     [Fact]

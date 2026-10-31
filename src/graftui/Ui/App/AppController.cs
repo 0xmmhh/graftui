@@ -23,11 +23,7 @@ public sealed class AppController
     private static readonly Style Bad = new(Ink.Bad);
 
     private readonly string _repoDisplay;
-    private int _wantedBranchWidth;
-
-    // While a switch's last frame is on screen the art keeps its width: the list's wanted width (from the new counts) waits here.
-    private bool _widthHeld;
-    private int? _heldWantedWidth;
+    private readonly BranchListWidth _listWidth;
 
     private volatile bool _outcomeShown;
 
@@ -54,7 +50,7 @@ public sealed class AppController
         DeleteBranchOp = new DeleteBranchOperation(rootGit);
         StashMergeOp = new StashMergeOperation(rootGit);
         Snapshot = initial;
-        _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
+        _listWidth = new BranchListWidth(BranchesView.WantedWidth(initial.Branches, initial.Counts));
         _repoDisplay = repoDisplay;
         BranchesTab = new BranchesTab(this);
         ChangesTab = new ChangesTab(this);
@@ -165,7 +161,7 @@ public sealed class AppController
     internal BranchAnimator BranchAnimator { get; }
     internal Animator Animator { get; }
 
-    internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _wantedBranchWidth);
+    internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _listWidth.Width);
 
     /// <summary>True when the whole art, and so the message box's fields, fits inside the art pane at this size.</summary>
     internal bool ArtFits() =>
@@ -236,6 +232,8 @@ public sealed class AppController
 
         App.ScreenChanged += (_, _) =>
         {
+            // A resize lays the art out at a new size anyway, so a held list width is applied with it.
+            ReleaseBranchWidth();
             _tooSmall.Cols = App.Screen.Width;
             _tooSmall.Rows = App.Screen.Height;
             Art.ScreenCols = App.Screen.Width;
@@ -328,8 +326,8 @@ public sealed class AppController
 
     private void OnKeyDown(object? sender, Key e)
     {
-        // A switch's animation holds Esc: Esc would quit graftui before the change's last frame. Other keys are refused by Busy.
-        if (e == Key.Esc && BranchAnimator.HoldsKeys)
+        // A switch's animation holds Esc once git has answered: Esc would quit graftui before the change's last frame. Other keys are refused by Busy.
+        if (e == Key.Esc && BranchAnimator.HoldsEsc)
         {
             e.Handled = true;
             return;
@@ -461,7 +459,7 @@ public sealed class AppController
         Snapshot = s;
         SnapshotSeq++;
         BranchesTab.ClearCache();
-        SetWantedWidth(BranchesView.WantedWidth(s.Branches, s.Counts));
+        _listWidth.Offer(BranchesView.WantedWidth(s.Branches, s.Counts));
         _window?.SetNeedsLayout();
         BranchesTab.KeepSelection(selName, s);
         SyncBranchKeys();
@@ -476,33 +474,14 @@ public sealed class AppController
         BranchList.SetNeedsDraw();
     }
 
-    private void SetWantedWidth(int wanted)
-    {
-        if (_widthHeld)
-        {
-            _heldWantedWidth = wanted;
-            return;
-        }
-        _wantedBranchWidth = wanted;
-        _window?.SetNeedsLayout();
-    }
+    /// <summary>Holds the branch list's width where it is, so the art does not reflow under a switch's last frame.</summary>
+    internal void HoldBranchWidth() => _listWidth.Hold();
 
-    /// <summary>
-    /// Keeps the branch list's width where it is when the next snapshot arrives, so the art does not reflow under a switch's last frame.
-    /// <see cref="ReleaseBranchWidth"/> applies the width the list wants, on the next selection or change.
-    /// </summary>
-    internal void HoldBranchWidth() => _widthHeld = true;
-
+    /// <summary>Applies the width the list wants, if it was held back. Called on a selection move, a change, a tab change, undo and a resize.</summary>
     internal void ReleaseBranchWidth()
     {
-        if (!_widthHeld)
-            return;
-        _widthHeld = false;
-        if (_heldWantedWidth is { } wanted)
-        {
-            _heldWantedWidth = null;
-            SetWantedWidth(wanted);
-        }
+        if (_listWidth.Release())
+            _window?.SetNeedsLayout();
     }
 
     /// <summary>

@@ -129,20 +129,23 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
         var oldT = Math.Clamp(te, 0, SwitchFade);
         var newT = Math.Clamp(te - SwitchFade, 0, SwitchFade);
 
-        // The old label: " (current)" fades out, and the name and marker go from the current style to the normal one.
+        // The old label: " (current)" fades out, and the name and marker go from the current style to the normal one. Its name is placed
+        // with the extra from the start, as the preview places a current label.
         var oldExtra = before.Detached ? " (detached)" : " (current)";
-        LabelAt(grid, g, s.CurX, s.CurRow, up: true, CurrentText(before), oldExtra,
+        LabelAt(grid, g, s.CurX, s.CurRow, up: true, CurrentText(before), oldExtra, reserveExtra: true,
             Step(oldT, Cur, Fg, Inc), Step(oldT, CurB, FgB, IncB), Step<Style?>(oldT, Dim, Faint, null));
 
-        // The new label: the name and marker go from the normal style to the current one, and " (current)" fades in.
-        LabelAt(grid, g, s.SelX, s.SelRow, up: false, name, " (current)",
+        // The new label: the name and marker go from the normal style to the current one, and " (current)" fades in. Its name keeps the
+        // place the preview gives a plain label until the fade-in starts, so a switch that fails (or waits on git) never moves it.
+        LabelAt(grid, g, s.SelX, s.SelRow, up: false, name, " (current)", reserveExtra: newT > 0,
             Step(newT, Inc, Fg, Cur), Step(newT, IncB, FgB, CurB), Step<Style?>(newT, null, Faint, Dim));
         return grid;
     }
 
-    // One label as the preview places it: the marker on the branch line, the name on its row, and the extra after the name. The name
-    // counts the extra in its place when the extra fits, which is the preview's rule for the current label, so the name never moves.
-    private static void LabelAt(ArtGrid grid, ArtGeometry g, int x, int row, bool up, string text, string extra,
+    // One label as the preview places it: the marker on the branch line, the name on its row, and the extra after the name. With
+    // reserveExtra the name's place counts the extra when it fits (the preview's rule for a current label); without it, the name's place
+    // is the plain label's. The name is never moved by the extra's fade alone.
+    private static void LabelAt(ArtGrid grid, ArtGeometry g, int x, int row, bool up, string text, string extra, bool reserveExtra,
         Style markerStyle, Style nameStyle, Style? extraStyle)
     {
         grid.Put(x, up ? row - 1 : row + 1, up ? '▾' : '▴', markerStyle);
@@ -151,7 +154,7 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
         var nameLen = MergeScenes.Runes(shown);
         var extraLen = MergeScenes.Runes(extra);
         var fits = nameLen + extraLen <= g.Width;
-        var tx = MergeScenes.LabelTextX(g, x, nameLen + (fits ? extraLen : 0));
+        var tx = MergeScenes.LabelTextX(g, x, nameLen + (fits && reserveExtra ? extraLen : 0));
         var ty = up ? row - 2 : row + 2;
 
         grid.Text(tx, ty, shown, nameStyle);

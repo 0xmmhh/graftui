@@ -19,16 +19,21 @@ internal sealed class BranchAnimator(AppController app)
     /// <summary>True from <see cref="Begin"/> until the animation has finished.</summary>
     internal bool Running => _anim is not null;
 
-    /// <summary>True while an animation that holds Esc runs (a switch): Esc must not quit graftui before its last frame.</summary>
-    internal bool HoldsKeys { get; private set; }
+    private bool _holdsEsc;
+
+    /// <summary>
+    /// True while a switch's animation holds Esc, once git has answered: Esc must not quit graftui before the last frame. During the wait
+    /// for git Esc still quits, as it always has, so a hung git can be left.
+    /// </summary>
+    internal bool HoldsEsc => _holdsEsc && _anim?.Result is not null;
 
     /// <summary>Starts the scene on the art pane. The result may arrive later through <see cref="SetPending"/>.</summary>
-    internal void Begin(IBranchAnimation anim, Func<int, IReadOnlyList<Seg>> direction, CommitPanel? panel, bool holdsKeys = false)
+    internal void Begin(IBranchAnimation anim, Func<int, IReadOnlyList<Seg>> direction, CommitPanel? panel, bool holdsEsc = false)
     {
         var clock = Stopwatch.StartNew();
         _anim = anim;
         _clock = clock;
-        HoldsKeys = holdsKeys;
+        _holdsEsc = holdsEsc;
         _pending = null; // a result from an earlier change must never be applied to this one
 
         app.Art.Title = anim.Title(0);
@@ -95,7 +100,7 @@ internal sealed class BranchAnimator(AppController app)
         _anim = null;
         _clock = null;
         _pending = null;
-        HoldsKeys = false;
+        _holdsEsc = false;
 
         app.Busy = false;
         app.Keys.Busy = false;

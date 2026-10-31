@@ -25,6 +25,7 @@ internal sealed partial class BranchesTab
         if (_app.Busy || layout.TooSmall)
             return;
 
+        _app.ReleaseBranchWidth();
         _app.Busy = true;
         _previewCts?.Cancel();
         _app.Keys.Busy = true;
