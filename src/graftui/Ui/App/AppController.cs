@@ -326,7 +326,7 @@ public sealed class AppController
 
     private void OnKeyDown(object? sender, Key e)
     {
-        // A switch's animation holds Esc once git has answered: Esc would quit graftui before the change's last frame. Other keys are refused by Busy.
+        // A branch change's animation holds Esc once git has answered: Esc would quit graftui before the change's last frame. Other keys are refused by Busy.
         if (e == Key.Esc && BranchAnimator.HoldsEsc)
         {
             e.Handled = true;

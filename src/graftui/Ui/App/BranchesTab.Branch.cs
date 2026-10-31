@@ -42,8 +42,7 @@ internal sealed partial class BranchesTab
             (loaded, _) =>
             {
                 var before = Or(loaded, snap, name, b.Hash);
-                return new BranchStart(new BranchAnimation(BranchOp.Switch, before, name, null, 0, $"Switching to {name}…"), direction, Panel(before),
-                    HoldsEsc: true);
+                return new BranchStart(new BranchAnimation(BranchOp.Switch, before, name, null, 0, $"Switching to {name}…"), direction, Panel(before));
             },
             (o, after) => SwitchFinish(o, name, after, Or(read, snap, name, b.Hash)),
             direction);
