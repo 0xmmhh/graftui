@@ -12,9 +12,9 @@ internal static class RepoState
     /// </summary>
     public static string? InProgress(Func<string[], GitResult> call, string gitDir)
     {
-        foreach (var (name, kind) in new[] { ("MERGE_HEAD", "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"), ("REVERT_HEAD", "revert") })
+        foreach (var (name, kind) in new[] { (GitArgs.MergeHead, "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"), ("REVERT_HEAD", "revert") })
         {
-            if (call(["rev-parse", "-q", "--verify", name]).Success)
+            if (call([GitArgs.RevParse, "-q", GitArgs.Verify, name]).Success)
                 return kind;
         }
         if (Directory.Exists(Path.Combine(gitDir, "rebase-merge")) || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
@@ -28,7 +28,7 @@ internal static class RepoState
     /// </summary>
     public static string? GitDir(GitClient git, List<GitResult> log)
     {
-        var r = git.Run("rev-parse", "--git-dir");
+        var r = git.Run(GitArgs.RevParse, "--git-dir");
         log.Add(r);
         var dir = r.StdOut.Trim();
         return r.Success && dir.Length > 0 ? Path.GetFullPath(Path.Combine(git.RepoPath, dir)) : null;

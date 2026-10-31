@@ -422,7 +422,9 @@ public static class MergeScenes
     private static void CurLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L, PreviewOptions? o = null)
     {
         var name = L.Detached ? "HEAD" : L.Current;
-        var extra = o?.NoCurrentExtra == true ? null : L.Detached ? " (detached)" : " (current)";
+        string? extra = L.Detached ? " (detached)" : " (current)";
+        if (o?.NoCurrentExtra == true)
+            extra = null;
         Label(grid, g, x, row, up: true, name, extra, Ink.Cur, showName: o?.NoCurName != true);
     }
 

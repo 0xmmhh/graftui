@@ -141,13 +141,13 @@ public static class Sandbox
         File.WriteAllText(Path.Combine(gitDir, MarkerFile), "created by graftui --sandbox; safe to delete\n", NoBom);
         Directory.CreateDirectory(Path.Combine(gitDir, "graftui-no-hooks"));
 
-        Git("config", "user.name", "graftui sandbox");
-        Git("config", "user.email", "sandbox@example.invalid");
-        Git("config", "commit.gpgsign", "false");
-        Git("config", "tag.gpgsign", "false");
-        Git("config", "core.hooksPath", ".git/graftui-no-hooks");
-        Git("config", "core.autocrlf", "false");
-        Git("config", "merge.ff", "true");
+        Git(GitArgs.Config, "user.name", "graftui sandbox");
+        Git(GitArgs.Config, "user.email", "sandbox@example.invalid");
+        Git(GitArgs.Config, "commit.gpgsign", "false");
+        Git(GitArgs.Config, "tag.gpgsign", "false");
+        Git(GitArgs.Config, "core.hooksPath", ".git/graftui-no-hooks");
+        Git(GitArgs.Config, "core.autocrlf", "false");
+        Git(GitArgs.Config, "merge.ff", "true");
 
         // Fixed identity and dates, so the commits are the same on every rebuild.
         void Commit(string message, bool all = false)
@@ -183,39 +183,39 @@ public static class Sandbox
         Append("app.txt", "line 1", "Add app");
 
         // conflict: edits the same line of app.txt as main will
-        Git("switch", "-q", "-c", "feature/conflict");
+        Git(GitArgs.Switch, "-q", "-c", "feature/conflict");
         Overwrite("app.txt", "line 1 (from conflict branch)\n", "Change line 1 on branch");
-        Git("switch", "-q", "main");
+        Git(GitArgs.Switch, "-q", "main");
 
         // main moves on, so the next two can't fast-forward
         Overwrite("app.txt", "line 1 (from main)\n", "Change line 1 on main");
 
         // merge commit: diverged, but touches a different file
-        Git("switch", "-q", "-c", "feature/merge-commit", "HEAD~1");
+        Git(GitArgs.Switch, "-q", "-c", "feature/merge-commit", "HEAD~1");
         Append("other.txt", "other", "Add other file");
-        Git("switch", "-q", "main");
+        Git(GitArgs.Switch, "-q", "main");
 
         // fast-forward: branches off main's final tip, so main is its ancestor
-        Git("switch", "-q", "-c", "feature/fast-forward");
+        Git(GitArgs.Switch, "-q", "-c", "feature/fast-forward");
         Append("ff.txt", "fast", "Add ff file");
-        Git("switch", "-q", "main");
+        Git(GitArgs.Switch, "-q", "main");
 
         // fast-forward onto a merge commit: main is an ancestor of the tip, and the tip is itself a merge
-        Git("switch", "-q", "-c", "feature/ff-to-merge");
+        Git(GitArgs.Switch, "-q", "-c", "feature/ff-to-merge");
         Append("ffm.txt", "ffm", "Add ffm file");
-        Git("switch", "-q", "-c", "side-for-ffm");
+        Git(GitArgs.Switch, "-q", "-c", "side-for-ffm");
         Append("side.txt", "side", "Add side file");
-        Git("switch", "-q", "feature/ff-to-merge");
+        Git(GitArgs.Switch, "-q", "feature/ff-to-merge");
         Git("merge", "-q", "--no-ff", "--no-edit", "side-for-ffm");
         Git("branch", "-q", "-d", "side-for-ffm");
-        Git("switch", "-q", "main");
+        Git(GitArgs.Switch, "-q", "main");
 
         // picks: three independent commits off main~1 (for cherry-pick later; merges as a merge commit)
-        Git("switch", "-q", "-c", "feature/picks", "main~1");
+        Git(GitArgs.Switch, "-q", "-c", "feature/picks", "main~1");
         Overwrite("README.md", "# Sandbox\n", "Fix typo in README");
         Append("log.txt", "log", "Add logging");
         Append("VERSION", "0.3", "Bump version to 0.3");
-        Git("switch", "-q", "main");
+        Git(GitArgs.Switch, "-q", "main");
 
         var status = Git("status", "--porcelain");
         if (!string.IsNullOrWhiteSpace(status.StdOut))

@@ -32,14 +32,14 @@ public static class CommandDisplay
     // Plumbing and read-only queries: they run, but the simplified pane does not list them unless they fail.
     private static readonly HashSet<string> HiddenSubcommands =
     [
-        "rev-parse", "symbolic-ref", "status", "diff", "for-each-ref", "ls-files", "ls-tree", "log", "rev-list",
-        "merge-base", "show", "cat-file", "write-tree", "mktree", "commit-tree", "check-ref-format",
+        GitArgs.RevParse, "symbolic-ref", "status", "diff", "for-each-ref", "ls-files", "ls-tree", "log", "rev-list",
+        "merge-base", "show", "cat-file", "write-tree", "mktree", GitArgs.CommitTree, "check-ref-format",
     ];
 
     // Flags that add nothing a reader needs. Dropping them only changes what is shown.
     private static readonly HashSet<string> DroppedFlags =
     [
-        "-q", "--quiet", "--no-gpg-sign", "--no-show-signature", "--no-color", "--no-ext-diff", "--no-edit", "--no-guess",
+        "-q", GitArgs.Quiet, GitArgs.NoGpgSign, "--no-show-signature", "--no-color", "--no-ext-diff", "--no-edit", "--no-guess",
     ];
 
     /// <summary>
@@ -120,9 +120,9 @@ public static class CommandDisplay
         return a[0] switch
         {
             "branch" => a.Contains("--contains"),
-            "stash" => a.Count > 1 && a[1] == "list",
+            GitArgs.Stash => a.Count > 1 && a[1] == "list",
             "update-index" => a.Contains("--refresh"),
-            "update-ref" => a.Skip(1).Any(x => x.StartsWith(GraftuiRefPrefix, StringComparison.Ordinal)),
+            GitArgs.UpdateRef => a.Skip(1).Any(x => x.StartsWith(GraftuiRefPrefix, StringComparison.Ordinal)),
             _ => false,
         };
     }
@@ -199,8 +199,8 @@ public static class CommandDisplay
         if (IsHash(a))
             return a[..7];
 
-        if (a.StartsWith("--source=", StringComparison.Ordinal) && IsHash(a["--source=".Length..]))
-            return "--source=" + a["--source=".Length..][..7];
+        if (a.StartsWith(GitArgs.SourcePrefix, StringComparison.Ordinal) && IsHash(a[GitArgs.SourcePrefix.Length..]))
+            return GitArgs.SourcePrefix + a[GitArgs.SourcePrefix.Length..][..7];
 
         return a;
     }
@@ -215,9 +215,9 @@ public static class CommandDisplay
 
         return a[0] switch
         {
-            "rev-parse" => a.Any(x => x is "-q" or "--quiet" or "--verify"),
-            "symbolic-ref" => a.Any(x => x is "-q" or "--quiet"),
-            "diff" => a.Contains("--quiet"),
+            GitArgs.RevParse => a.Any(x => x is "-q" or GitArgs.Quiet or GitArgs.Verify),
+            "symbolic-ref" => a.Any(x => x is "-q" or GitArgs.Quiet),
+            "diff" => a.Contains(GitArgs.Quiet),
             "merge-base" => true,
             _ => false,
         };
@@ -229,7 +229,7 @@ public static class CommandDisplay
         var a = r.Args;
         return r.Success
             && a.Count == 4
-            && a[0] == "update-ref"
+            && a[0] == GitArgs.UpdateRef
             && a[1].StartsWith(UndoRefPrefix, StringComparison.Ordinal)
             && a[3].Length == 0;
     }

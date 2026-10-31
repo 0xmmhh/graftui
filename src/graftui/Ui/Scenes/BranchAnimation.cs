@@ -102,9 +102,7 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
     private SceneFrame Done(ArtGeometry g)
     {
         var r = Result!;
-        var grid = !r.Success ? MergeScenes.Preview(g, before).Grid
-            : r.After is { } after ? MergeScenes.Preview(g, after).Grid
-            : Scene(g, TotalMs, TotalMs);
+        var grid = DoneGrid(g, r);
         if (r.Overlay is not null)
             MergeScenes.MessageOverlay(grid, r.OverlayTitle ?? r.Title, r.Overlay);
         return new SceneFrame(grid, r.Caption);
@@ -162,9 +160,37 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
             grid.Text(tx + nameLen, ty, extra, st);
     }
 
+    /// <summary>The picture once the change is done: the branch before it when it failed, the branch after it when it moved, else the finished scene.</summary>
+    private ArtGrid DoneGrid(ArtGeometry g, BranchResult r)
+    {
+        if (!r.Success)
+            return MergeScenes.Preview(g, before).Grid;
+        if (r.After is not null)
+            return MergeScenes.Preview(g, r.After).Grid;
+        return Scene(g, TotalMs, TotalMs);
+    }
+
     // The value at the fade's time: the first style until a third of the fade, the second until two thirds, then the third.
-    private static T Step<T>(long t, T first, T second, T last) =>
-        t < SwitchFade / 3 ? first : t < SwitchFade * 2 / 3 ? second : last;
+    private static T Step<T>(long t, T first, T second, T last)
+    {
+        if (t < SwitchFade / 3)
+            return first;
+        if (t < SwitchFade * 2 / 3)
+            return second;
+        return last;
+    }
+
+    /// <summary>The colour of the new name as it is typed out: bright, then increasing, then dim, then none.</summary>
+    private static Style? NameStyleAt(long te)
+    {
+        if (te < NameBright)
+            return IncB;
+        if (te < NameInc)
+            return Inc;
+        if (te < NameDim)
+            return Dim;
+        return null;
+    }
 
     // The new branch sprouts from the current one: a marker blinks under the current label while the name is typed out.
     private ArtGrid CreateScene(ArtGeometry g, long te, long elapsedMs)
@@ -218,7 +244,7 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
         var shown = MergeScenes.Runes(name) > g.Width ? TextFit.Fit(name, g.Width) : name;
         var len = MergeScenes.Runes(shown);
         var tx = MergeScenes.LabelTextX(g, s.SelX, len);
-        Style? style = te < NameBright ? IncB : te < NameInc ? Inc : te < NameDim ? Dim : null;
+        var style = NameStyleAt(te);
         if (style is { } st)
         {
             grid.Put(s.SelX, s.SelRow + 1, '▴', st);

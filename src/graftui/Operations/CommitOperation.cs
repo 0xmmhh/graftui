@@ -40,12 +40,33 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
         if (!c.CanRun)
             return c;
 
-        var refusal =
-            request.Subject.Trim().Length == 0 ? ChangeRefusals.EmptySubject
-            : request.ExpectedHead is not null && request.ExpectedHead != c.OldHead ? ChangeRefusals.HeadMoved
-            : request.Amend && c.PushedTo.Count > 0 && !request.PushedConfirmed ? ChangeRefusals.PushedNotConfirmed(c.PushedTo[0])
-            : null;
+        var refusal = RefusalFor(request, c);
         return refusal is null ? c : c with { Refusal = refusal };
+    }
+
+    /// <summary>The first reason the commit must not run, in the order the screen reports them; null when it may run.</summary>
+    private static string? RefusalFor(CommitRequest request, CommitCheck c)
+    {
+        if (request.Subject.Trim().Length == 0)
+            return ChangeRefusals.EmptySubject;
+        if (request.ExpectedHead is not null && request.ExpectedHead != c.OldHead)
+            return ChangeRefusals.HeadMoved;
+        if (request.Amend && c.PushedTo.Count > 0 && !request.PushedConfirmed)
+            return ChangeRefusals.PushedNotConfirmed(c.PushedTo[0]);
+        return null;
+    }
+
+    /// <summary>
+    /// Whether the new commit has the parents it should. An amend keeps the old commit's parents. A new commit has the old
+    /// HEAD as its only parent, or no parent when the branch had no commits yet.
+    /// </summary>
+    private static bool ParentsAsExpected(CommitRequest request, CommitCheck check, string[] newParents)
+    {
+        if (request.Amend)
+            return newParents.SequenceEqual(check.OldParents);
+        if (check.OldHead is null)
+            return newParents.Length == 0;
+        return newParents.Length > 0 && newParents[0] == check.OldHead;
     }
 
     public CommitOutcome Run(CommitRequest request, CommitCheck check)
@@ -61,7 +82,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
         try
         {
             // 1. HEAD must still be where the check saw it. Nothing has been written yet.
-            var head = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+            var head = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
             var current = head.Success ? head.StdOut.Trim() : null;
             if (current != check.OldHead)
                 return Done(CommitKind.Failed, null, null, ChangeRefusals.HeadMoved);
@@ -114,9 +135,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             var newHead = tokens[0];
             var newParents = tokens.Skip(1).ToArray();
             var moved = newHead != check.OldHead;
-            var shapeOk = moved && (request.Amend
-                ? newParents.SequenceEqual(check.OldParents)
-                : check.OldHead is null ? newParents.Length == 0 : newParents.Length > 0 && newParents[0] == check.OldHead);
+            var shapeOk = moved && ParentsAsExpected(request, check, newParents);
             var kind = request.Amend ? CommitKind.Amended : CommitKind.Committed;
 
             if (commit.Success)
@@ -163,7 +182,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             return Refused(ChangeRefusals.Detached, log);
 
         // 2. HEAD: null on an unborn branch.
-        var headResult = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+        var headResult = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         if (!headResult.Success && headResult.ExitCode != 1)
             return Refused(GitClient.Describe(headResult), log, branch);
         var oldHead = headResult.Success ? headResult.StdOut.Trim() : null;
@@ -171,7 +190,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             return Refused(ChangeRefusals.NoCommitToAmend, log, branch);
 
         // 3. The git dir, relative to the repo root when git prints it that way.
-        var gitDirResult = Call(log, "rev-parse", "--git-dir");
+        var gitDirResult = Call(log, GitArgs.RevParse, "--git-dir");
         if (!gitDirResult.Success)
             return Refused(GitClient.Describe(gitDirResult), log, branch);
         var gitDirOut = gitDirResult.StdOut.Trim();
@@ -251,7 +270,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
     {
         var newCommit = git.GetCommit(newHead);
         var undo = new UndoRecord(amend ? UndoKind.Amend : UndoKind.Commit, amend ? "amend" : "commit",
-            [new RefChange("refs/heads/" + branch, check.OldHead ?? "", newHead)], Branch: branch, Head: newHead);
+            [new RefChange(BranchGit.HeadsPrefix + branch, check.OldHead ?? "", newHead)], Branch: branch, Head: newHead);
         var problem = new UndoLog(git).Push(undo, log);
         return problem is null
             ? new CommitOutcome(kind, branch, check.OldHead, newHead, newCommit, message, log, undo)

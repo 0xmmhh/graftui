@@ -15,6 +15,7 @@ public enum KeyBarMode { Branches, Changes, Input, Ask, Message }
 public sealed class KeyBarView : View
 {
     private static readonly Style Fg = new(Ink.Fg);
+    private const string CancelLabel = " cancel";
 
     public bool Busy { get; set; }
 
@@ -82,7 +83,7 @@ public sealed class KeyBarView : View
         [
             (AskKey, AskYesLabel, 4),
             ("n", AskNoLabel, 4),
-            ("Esc", " cancel", 5),
+            ("Esc", CancelLabel, 5),
         ],
         _ => BranchesItems(BranchesState),
     };
@@ -127,21 +128,21 @@ public sealed class KeyBarView : View
         [
             ("Ctrl+J", " save", 5),
             ("Tab", " next field", 4),
-            ("Esc", " cancel", 6),
+            ("Esc", CancelLabel, 6),
         ]
         :
         [
             ("Enter", " save", 5),
             ("Tab", " next field", 4),
             ("Ctrl+Enter", " save from body", 3),
-            ("Esc", " cancel", 6),
+            ("Esc", CancelLabel, 6),
         ];
 
     /// <summary>The one-line message box's keys: Enter with the label the box names, then Esc.</summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> MessageItems(string enterLabel) =>
         [
             ("Enter", enterLabel, 4),
-            ("Esc", " cancel", 5),
+            ("Esc", CancelLabel, 5),
         ];
 
     /// <summary>

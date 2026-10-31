@@ -17,6 +17,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     private const string UndoPopRescue = "refs/graftui/rescue/undo-pop";
     private const string UndoStashRescue = "refs/graftui/rescue/undo-stash";
     private const string UndoStashMergeRescue = "refs/graftui/rescue/undo-stash-merge";
+    private const string CouldNotReadBranch = "could not read the branch";
 
     /// <summary>The copies that a failed pop or undo keeps. While one exists, nothing is undone: the user inspects or deletes it first.</summary>
     private static readonly (string Ref, string What)[] KeptCopies =
@@ -153,7 +154,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     {
         foreach (var (reference, what) in KeptCopies)
         {
-            var r = Call(log, "rev-parse", "-q", "--verify", reference);
+            var r = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, reference);
             if (r.Success)
                 return ChangeRefusals.RescueSaved(what, reference);
             if (r.ExitCode != 1)
@@ -168,7 +169,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     /// </summary>
     private string SaveCopy(List<GitResult> log, string reference, string commit, string problem)
     {
-        var saved = Call(log, "update-ref", reference, commit, "");
+        var saved = Call(log, GitArgs.UpdateRef, reference, commit, "");
         var where = saved.Success
             ? $"your changes are saved in {reference} (commit {commit}): restore them with git restore --source={commit} --worktree -- ., then git update-ref -d {reference}"
             : $"your changes are in commit {commit} ({GitClient.Describe(saved)})";
@@ -179,7 +180,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     private static bool Malformed(UndoRecord s) => s.Kind switch
     {
         UndoKind.Commit or UndoKind.Amend or UndoKind.Merge =>
-            s.Changes.Count != 1 || s.Branch is null || s.Changes[0].Ref != "refs/heads/" + s.Branch || s.Changes[0].After.Length == 0,
+            s.Changes.Count != 1 || s.Branch is null || s.Changes[0].Ref != BranchGit.HeadsPrefix + s.Branch || s.Changes[0].After.Length == 0,
         UndoKind.Discard =>
             string.IsNullOrEmpty(s.Path) || string.IsNullOrEmpty(s.Backup) || string.IsNullOrEmpty(s.StashCommit)
             || s.StashBelow is null || s.IndexBefore is null,
@@ -195,7 +196,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         UndoKind.DeleteBranch =>
             string.IsNullOrEmpty(s.Branch) || string.IsNullOrEmpty(s.Head),
         UndoKind.StashMerge =>
-            s.Changes.Count != 1 || s.Branch is null || s.Changes[0].Ref != "refs/heads/" + s.Branch || s.Changes[0].After.Length == 0
+            s.Changes.Count != 1 || s.Branch is null || s.Changes[0].Ref != BranchGit.HeadsPrefix + s.Branch || s.Changes[0].After.Length == 0
             || s.Changes[0].Before.Length == 0 || string.IsNullOrEmpty(s.StateBefore) || string.IsNullOrEmpty(s.StateAfter),
         UndoKind.Unstage =>
             s.IndexBefore is null || s.IndexAfter is null || s.IndexBefore.Count == 0 || s.IndexAfter.Count == 0
@@ -207,7 +208,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     private string? BranchGuard(UndoRecord s, List<GitResult> log)
     {
         var sym = Call(log, "symbolic-ref", "-q", "HEAD");
-        if (!sym.Success || sym.StdOut.Trim() != "refs/heads/" + s.Branch)
+        if (!sym.Success || sym.StdOut.Trim() != BranchGit.HeadsPrefix + s.Branch)
             return ChangeRefusals.UndoWrongBranch(s.Branch!);
 
         var head = RevParse(log, "HEAD");
@@ -238,7 +239,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
             if (Exists(Path.Combine(git.RepoPath, path)))
                 return ChangeRefusals.UndoChanged(path);
         }
-        else if (!CallLiteral(log, "diff", "--quiet", "--", path).Success)
+        else if (!CallLiteral(log, "diff", GitArgs.Quiet, "--", path).Success)
         {
             return ChangeRefusals.UndoChanged(path);
         }
@@ -297,7 +298,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         var other = s.OtherBranch!;
         var tip = RevParse(log, BranchRef(branch));
         if (tip is null)
-            return "could not read the branch";
+            return CouldNotReadBranch;
         if (tip.Length == 0)
             return BranchRefusals.UndoBranchGone(branch);
         if (tip != s.Head)
@@ -305,7 +306,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
 
         var otherTip = RevParse(log, BranchRef(other));
         if (otherTip is null)
-            return "could not read the branch";
+            return CouldNotReadBranch;
         if (otherTip.Length == 0)
             return BranchRefusals.UndoBranchGone(other);
         return BranchGit.IsAncestor(git, log, s.Head, BranchRef(other)) ? null : BranchRefusals.UndoWouldLose(other, branch);
@@ -318,7 +319,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         var old = s.OtherBranch!;
         var tip = RevParse(log, BranchRef(now));
         if (tip is null)
-            return "could not read the branch";
+            return CouldNotReadBranch;
         if (tip.Length == 0)
             return BranchRefusals.UndoBranchGone(now);
         if (tip != s.Head)
@@ -326,7 +327,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
 
         var oldTip = RevParse(log, BranchRef(old));
         if (oldTip is null)
-            return "could not read the branch";
+            return CouldNotReadBranch;
         return oldTip.Length == 0 ? null : BranchRefusals.UndoBranchExists(old);
     }
 
@@ -336,7 +337,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         var branch = s.Branch!;
         var existing = RevParse(log, BranchRef(branch));
         if (existing is null)
-            return "could not read the branch";
+            return CouldNotReadBranch;
         if (existing.Length > 0)
             return BranchRefusals.UndoBranchExists(branch);
 
@@ -378,6 +379,19 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     };
 
     /// <summary>
+    /// The caption after a moved branch is undone: a branch with no commits left, a commit's undo (its changes are staged
+    /// again), or any other step.
+    /// </summary>
+    private static string MovedCaption(UndoRecord s, string branch, string before)
+    {
+        if (before.Length == 0)
+            return $"↶ Undid the {s.What}: {branch} has no commits again, and its changes are staged";
+        if (s.Kind == UndoKind.Commit)
+            return $"↶ Undid the commit: {branch} is back at {Short(before)} and its changes are staged again";
+        return $"↶ Undid the {s.What}: {branch} is back at {Short(before)}";
+    }
+
+    /// <summary>
     /// Commit, amend and merge: the branch goes back to the commit it had before the step. A commit keeps its changes staged
     /// (a soft reset); a merge needs a clean tree, and its reset keeps the work tree.
     /// </summary>
@@ -392,7 +406,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
 
         GitResult move;
         if (before.Length == 0)
-            move = Call(log, "update-ref", "-d", "refs/heads/" + branch, change.After);
+            move = Call(log, GitArgs.UpdateRef, "-d", BranchGit.HeadsPrefix + branch, change.After);
         else if (s.Kind == UndoKind.Merge)
             move = Call(log, "reset", "-q", "--keep", before);
         else
@@ -404,18 +418,13 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (head is null || head != before)
             return ("HEAD is not where the undo should have put it; check git status", "");
         // A commit's undo keeps the index as it was. A merge's undo resets the index to the commit it goes back to.
-        var expectedIndex = s.Kind == UndoKind.Merge ? Hash(Call(log, "rev-parse", "-q", "--verify", before + "^{tree}")) : indexTree;
+        var expectedIndex = s.Kind == UndoKind.Merge ? Hash(Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, before + "^{tree}")) : indexTree;
         if (Hash(Call(log, "write-tree")) != expectedIndex)
             return ("the index is not what the undo should have left; check git status", "");
-        if (s.Kind == UndoKind.Merge && RevParse(log, "MERGE_HEAD") != "")
+        if (s.Kind == UndoKind.Merge && RevParse(log, GitArgs.MergeHead) != "")
             return ("a merge is still in progress after the undo", "");
 
-        var caption = before.Length == 0
-            ? $"↶ Undid the {s.What}: {branch} has no commits again, and its changes are staged"
-            : s.Kind == UndoKind.Commit
-                ? $"↶ Undid the commit: {branch} is back at {Short(before)} and its changes are staged again"
-                : $"↶ Undid the {s.What}: {branch} is back at {Short(before)}";
-        return (null, caption);
+        return (null, MovedCaption(s, branch, before));
     }
 
     /// <summary>
@@ -430,10 +439,10 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
 
         // 1. The file. A tracked file that the backup lacks was deleted before the discard; the guard showed it matches the
         // index, and the index keeps its content, so removing it loses nothing.
-        var inBackup = s.Untracked || Call(log, "rev-parse", "-q", "--verify", backup + ":" + path).Success;
+        var inBackup = s.Untracked || Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, backup + ":" + path).Success;
         if (inBackup)
         {
-            var put = CallLiteral(log, "restore", "-q", "--source=" + backup, "--worktree", "--", path);
+            var put = CallLiteral(log, "restore", "-q", GitArgs.SourcePrefix + backup, "--worktree", "--", path);
             if (!put.Success)
                 return ($"{GitClient.Describe(put)}; nothing was brought back", "");
         }
@@ -449,14 +458,14 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         var position = StashPosition(s.StashCommit!, log);
         if (position is null or < 0 || RevParse(log, $"stash@{{{position}}}") != s.StashCommit)
             return ($"{path} was brought back, but its stash entry moved, so the entry was left alone", "");
-        var drop = Call(log, "stash", "drop", "-q", $"stash@{{{position}}}");
+        var drop = Call(log, GitArgs.Stash, "drop", "-q", $"stash@{{{position}}}");
         if (!drop.Success)
             return ($"{path} was brought back, but the stash entry could not be dropped: {GitClient.Describe(drop)}", "");
 
         // 3. Verify: the file is the backup's version, its index entry is as it was, and the entry is gone.
         var state = new WorkState(git, gitDir);
         var rebuilt = state.PathTree(path, s.Untracked, log);
-        var backupTree = Hash(Call(log, "rev-parse", "-q", "--verify", backup + "^{tree}"));
+        var backupTree = Hash(Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, backup + "^{tree}"));
         var fromRebuilt = rebuilt is null ? null : PathEntry(rebuilt, path, log);
         var fromBackup = backupTree is null ? null : PathEntry(backupTree, path, log);
         if (fromRebuilt is null || fromRebuilt != fromBackup)
@@ -486,16 +495,16 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
             return ("could not save the working tree; nothing was undone", "");
 
         // Create-only, before git moves anything: a copy kept by an earlier failed undo is never replaced.
-        var saved = Call(log, "update-ref", UndoStashRescue, copy, "");
+        var saved = Call(log, GitArgs.UpdateRef, UndoStashRescue, copy, "");
         if (!saved.Success)
             return ($"could not save a safety copy ({GitClient.Describe(saved)}); nothing was undone", "");
 
-        var pop = Call(log, "stash", "pop", "-q", "--index");
+        var pop = Call(log, GitArgs.Stash, "pop", "-q", "--index");
         if (!pop.Success)
         {
             if (state.Take(log) == before)
             {
-                Call(log, "update-ref", "-d", UndoStashRescue, copy);
+                Call(log, GitArgs.UpdateRef, "-d", UndoStashRescue, copy);
                 return ($"git refused to bring the stash back ({FirstLine(pop)}); nothing changed, the entry is kept", "");
             }
 
@@ -503,7 +512,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
             var problem = removable is null ? "could not list the stash's untracked files" : state.RestoreTo(before, copy, removable, log);
             if (problem is not null)
                 return (SaveCopy(log, UndoStashRescue, copy, problem), "");
-            Call(log, "update-ref", "-d", UndoStashRescue, copy);
+            Call(log, GitArgs.UpdateRef, "-d", UndoStashRescue, copy);
             return ($"git stash pop failed ({FirstLine(pop)}); the state was put back and the stash entry is kept", "");
         }
 
@@ -511,14 +520,14 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (RevParse(log, StashRef) != s.StashBelow)
             return (SaveCopy(log, UndoStashRescue, copy, "the stash list is not as expected after the undo; check git stash list"), "");
         var indexTree = Hash(Call(log, "write-tree"));
-        var stashIndex = Hash(Call(log, "rev-parse", "-q", "--verify", s.StashCommit + "^2^{tree}"));
+        var stashIndex = Hash(Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, s.StashCommit + "^2^{tree}"));
         if (indexTree is null || indexTree != stashIndex)
             return (SaveCopy(log, UndoStashRescue, copy, "the index is not the stash's index after the undo; check git status"), "");
 
         var st = Call(log, StatusArgs);
         if (!st.Success)
             return (SaveCopy(log, UndoStashRescue, copy, "could not read the status after the undo: " + GitClient.Describe(st)), "");
-        Call(log, "update-ref", "-d", UndoStashRescue, copy);
+        Call(log, GitArgs.UpdateRef, "-d", UndoStashRescue, copy);
         var count = StatusParser.Parse(st.StdOut).ChangedPaths;
         return (null, $"↶ Unstashed {count} {(count == 1 ? "file" : "files")}");
     }
@@ -546,7 +555,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (problem is not null)
             return (SaveCopy(log, UndoPopRescue, s.StateAfter!, problem), "");
 
-        var store = Call(log, "stash", "store", "-m", s.StashMessage!, s.StashCommit!);
+        var store = Call(log, GitArgs.Stash, "store", "-m", s.StashMessage!, s.StashCommit!);
         if (!store.Success)
             return ($"the working tree is back, but the stash entry could not be stored again: {GitClient.Describe(store)}", "");
         if (RevParse(log, StashRef) != s.StashCommit)
@@ -590,7 +599,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         var wasOn = CurrentRef(log) == BranchRef(branch);
         if (wasOn)
         {
-            var sw = Call(log, "switch", "--no-guess", other);
+            var sw = Call(log, GitArgs.Switch, "--no-guess", other);
             if (!sw.Success)
                 return ($"{GitClient.Describe(sw)}; nothing was undone", "");
             if (CurrentRef(log) != BranchRef(other))
@@ -600,7 +609,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         // The guard has shown that the branch's commits are on the base branch. `branch -d` would check them against HEAD instead,
         // which may be a third branch that lacks them. update-ref -d with the old value deletes only if the branch is still at the
         // commit the guard saw.
-        var del = Call(log, "update-ref", "-d", BranchRef(branch), s.Head!);
+        var del = Call(log, GitArgs.UpdateRef, "-d", BranchRef(branch), s.Head!);
         if (!del.Success)
             return ($"git refused to delete {branch} ({FirstLine(del)})"
                 + (wasOn ? $"; HEAD was switched to {other} and {branch} is kept" : "; nothing was deleted"), "");
@@ -659,7 +668,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         var afterCommit = s.StateAfter!;
 
         // The state after the operation is kept, create-only, before anything moves.
-        var saved = Call(log, "update-ref", UndoStashMergeRescue, afterCommit, "");
+        var saved = Call(log, GitArgs.UpdateRef, UndoStashMergeRescue, afterCommit, "");
         if (!saved.Success)
             return ($"could not save a safety copy ({GitClient.Describe(saved)}); nothing was undone", "");
 
@@ -683,10 +692,10 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
             return (KeptCopy($"{branch} is not checked out after the undo", afterCommit), "");
         if (state.Take(log) != before)
             return (KeptCopy("the working tree is not exactly as it was before the merge", afterCommit), "");
-        if (RevParse(log, "MERGE_HEAD") != "")
+        if (RevParse(log, GitArgs.MergeHead) != "")
             return (KeptCopy("a merge is still in progress after the undo", afterCommit), "");
 
-        var drop = Call(log, "update-ref", "-d", UndoStashMergeRescue, afterCommit);
+        var drop = Call(log, GitArgs.UpdateRef, "-d", UndoStashMergeRescue, afterCommit);
         if (!drop.Success)
             return ($"the undo ran, but its copy could not be removed ({GitClient.Describe(drop)}); " +
                 $"{UndoStashMergeRescue} is kept: delete it with git update-ref -d {UndoStashMergeRescue}", "");
@@ -703,7 +712,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         $"then git update-ref -d {UndoStashMergeRescue}; the undo step is kept";
 
     /// <summary>The full name of a branch: refs/heads/name.</summary>
-    private static string BranchRef(string name) => "refs/heads/" + name;
+    private static string BranchRef(string name) => BranchGit.HeadsPrefix + name;
 
     /// <summary>The full name HEAD points at, "" when HEAD is detached, or null when git fails.</summary>
     private string? CurrentRef(List<GitResult> log)
@@ -753,7 +762,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     /// <summary>The position of a stash commit in the stash list (0 is the top), -1 when it is not listed, or null when git fails.</summary>
     private int? StashPosition(string commit, List<GitResult> log)
     {
-        var r = Call(log, "stash", "list", "--format=%H");
+        var r = Call(log, GitArgs.Stash, "list", "--format=%H");
         if (!r.Success)
             return null;
         var hashes = r.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -763,7 +772,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     /// <summary>The full hash that a name resolves to, "" when it does not exist, or null when git fails.</summary>
     private string? RevParse(List<GitResult> log, string name)
     {
-        var r = Call(log, "rev-parse", "-q", "--verify", name);
+        var r = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, name);
         if (r.Success)
             return r.StdOut.Trim();
         return r.ExitCode == 1 ? "" : null;

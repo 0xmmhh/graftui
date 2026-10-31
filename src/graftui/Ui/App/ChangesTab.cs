@@ -18,6 +18,9 @@ internal enum ChangesMode { Browse, Input, Ask }
 /// </summary>
 internal sealed partial class ChangesTab
 {
+    // The title of a change that failed, as the areas caption and the animation show it.
+    private const string FailedTitle = "Failed";
+
     private static readonly Style Dim = new(Ink.Dim), Warn = new(Ink.Warn), WarnB = new(Ink.Warn, true);
     private static readonly Style OkB = new(Ink.Ok, true), BadB = new(Ink.Bad, true);
     private static readonly Style FgB = new(Ink.Fg, true), CurB = new(Ink.Cur, true);
@@ -317,7 +320,7 @@ internal sealed partial class ChangesTab
         _app.ShowGitError(ex);
         if (_app.ChangesAnimator.Running)
         {
-            var failed = new AreasResult(false, Before(), new Caption($"✕ {verb} failed: {ex.Message}", BadB), "Failed", ex.Message);
+            var failed = new AreasResult(false, Before(), new Caption($"✕ {verb} failed: {ex.Message}", BadB), FailedTitle, ex.Message);
             _app.ChangesAnimator.SetPending(failed, [], $"{verb} failed: {ex.Message}", () => AfterChange(false, null, null, null));
             return;
         }

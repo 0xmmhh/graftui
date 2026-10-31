@@ -68,11 +68,7 @@ public sealed class RepoReader(GitClient git)
         var (ahead, behind) = git.GetAheadBehind(curTip, sel.Hash)
             ?? throw new InvalidOperationException("could not count commits between the two branches");
 
-        var kind = curTip == sel.Hash ? GraphKind.Same
-            : baseHash is null ? GraphKind.Unrelated
-            : baseHash == sel.Hash ? GraphKind.UpToDate
-            : baseHash == curTip ? GraphKind.FastForward
-            : GraphKind.Diverged;
+        var kind = KindOf(curTip, sel.Hash, baseHash);
 
         return new GraphLayout(
             snap.CurrentBranch, detached, sel.Name,
@@ -108,7 +104,7 @@ public sealed class RepoReader(GitClient git)
         var line = new HeadLine(branch, head, recent, newestFirst.Count > HeadCount);
 
         ct.ThrowIfCancellationRequested();
-        var stashes = git.Run("stash", "list", "--format=%H%x1f%gs");
+        var stashes = git.Run(GitArgs.Stash, "list", "--format=%H%x1f%gs");
         if (!stashes.Success)
             throw new InvalidOperationException(GitClient.Describe(stashes));
 
@@ -181,4 +177,18 @@ public sealed class RepoReader(GitClient git)
     /// <summary>Keeps the newest 3 of git's newest-first rows and returns them oldest-first, plus whether more existed.</summary>
     private static (IReadOnlyList<CommitInfo> Items, bool More) Window(IReadOnlyList<CommitInfo> newestFirst) =>
         (newestFirst.Take(ListCount).Reverse().ToList(), newestFirst.Count > ListCount);
+
+    /// <summary>How the selected branch relates to the current one: the same commit, unrelated, up to date, a fast-forward or diverged.</summary>
+    private static GraphKind KindOf(string curTip, string selHash, string? baseHash)
+    {
+        if (curTip == selHash)
+            return GraphKind.Same;
+        if (baseHash is null)
+            return GraphKind.Unrelated;
+        if (baseHash == selHash)
+            return GraphKind.UpToDate;
+        if (baseHash == curTip)
+            return GraphKind.FastForward;
+        return GraphKind.Diverged;
+    }
 }

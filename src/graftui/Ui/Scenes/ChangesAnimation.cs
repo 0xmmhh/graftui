@@ -33,12 +33,15 @@ public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyLis
     private long _offset;
 
     public long HoldMs { get; } = op is AreasOp.Commit or AreasOp.Amend
-        ? (moving.Count > 0 ? CommitFly : 0) + CommitBlink
+        ? FlyInMs(moving.Count) + CommitBlink
         : MoveFly + MoveStep * (Math.Max(1, Math.Min(moving.Count, 4)) - 1);
 
     public long TotalMs { get; } = op is AreasOp.Commit or AreasOp.Amend
-        ? (moving.Count > 0 ? CommitFly : 0) + CommitBlink + CommitDrop + CommitTail
+        ? FlyInMs(moving.Count) + CommitBlink + CommitDrop + CommitTail
         : MoveFly + MoveStep * (Math.Max(1, Math.Min(moving.Count, 4)) - 1) + MoveTail;
+
+    /// <summary>The tokens fly in only when there is something to move; with nothing to move the dot starts at once.</summary>
+    private static long FlyInMs(int movingCount) => movingCount > 0 ? CommitFly : 0;
 
     public AreasResult? Result { get; private set; }
 

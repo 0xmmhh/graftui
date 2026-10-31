@@ -15,6 +15,8 @@ namespace graftui.Operations;
 public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardRequest, DiscardCheck, DiscardOutcome>
 {
     private const string StashRef = "refs/stash";
+    // Where a copy of the changes is shown to the user: the top stash entry. Display text, not a git argument.
+    private const string CopyRef = "stash@{0}";
     private const string DetachedName = "(no branch)";
     private static readonly string[] StatusArgs = ["status", "--porcelain=v2", "-z", "--untracked-files=all"];
 
@@ -51,7 +53,7 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
     private DiscardCheck CheckCore(DiscardRequest request, List<GitResult> log)
     {
         // 1. A commit must exist: the backup is a child of HEAD.
-        var head = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+        var head = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         if (!head.Success)
             return Refused(head.ExitCode == 1 ? ChangeRefusals.NoCommitYet : GitClient.Describe(head), log);
 
@@ -89,7 +91,7 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         var untracked = check.Row!.Kind == ChangeKind.Untracked;
 
         // 1. HEAD is still the commit the check saw.
-        var now = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+        var now = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         if (!now.Success || now.StdOut.Trim() != head)
             return Done(DiscardKind.Failed, path, null, "HEAD moved since the list was read; nothing was discarded", null, log);
 
@@ -117,15 +119,15 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         // 4. The backup: B is the staged state on HEAD, I is the index commit, U holds untracked files, W is the stash.
         var subjectLine = Call(log, "log", "-1", "--no-show-signature", "--format=%h %s", head, "--");
         var subject = subjectLine.Success ? subjectLine.StdOut.Trim() : head[..Math.Min(7, head.Length)];
-        var b = Hash(Call(log, "commit-tree", "--no-gpg-sign", indexTree, "-p", head, "-m", $"graftui: staged state on {branch}"));
+        var b = Hash(Call(log, GitArgs.CommitTree, GitArgs.NoGpgSign, indexTree, "-p", head, "-m", $"graftui: staged state on {branch}"));
         var i = b is null ? null
-            : Hash(Call(log, "commit-tree", "--no-gpg-sign", indexTree, "-p", b, "-m", $"index on {branch}: {subject}"));
+            : Hash(Call(log, GitArgs.CommitTree, GitArgs.NoGpgSign, indexTree, "-p", b, "-m", $"index on {branch}: {subject}"));
         var u = i is null || !untracked ? null
-            : Hash(Call(log, "commit-tree", "--no-gpg-sign", workTree, "-m", $"untracked files on {branch}: {subject}"));
+            : Hash(Call(log, GitArgs.CommitTree, GitArgs.NoGpgSign, workTree, "-m", $"untracked files on {branch}: {subject}"));
         string? w = null;
         if (b is not null && i is not null && (!untracked || u is not null))
         {
-            var args = new List<string> { "commit-tree", "--no-gpg-sign", untracked ? indexTree : workTree, "-p", b, "-p", i };
+            var args = new List<string> { GitArgs.CommitTree, GitArgs.NoGpgSign, untracked ? indexTree : workTree, "-p", b, "-p", i };
             if (u is not null)
                 args.AddRange(["-p", u]);
             args.AddRange(["-m", $"On {branch}: graftui: discarded {path}"]);
@@ -138,7 +140,7 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         var below = RevParse(log, StashRef);
         if (below is null)
             return Done(DiscardKind.Failed, path, null, "could not read the stash; nothing was discarded", null, log);
-        var store = Call(log, "stash", "store", "-m", $"graftui: discarded {path}", w);
+        var store = Call(log, GitArgs.Stash, "store", "-m", $"graftui: discarded {path}", w);
         if (!store.Success)
             return Done(DiscardKind.Failed, path, null, GitClient.Describe(store) + "; nothing was discarded", null, log);
 
@@ -146,9 +148,9 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         if (state.PathTree(path, untracked, log) != workTree)
         {
             if (RevParse(log, StashRef) == w)
-                Call(log, "stash", "drop", "-q", "stash@{0}");
+                Call(log, GitArgs.Stash, "drop", "-q", GitArgs.StashTop);
             var kept = RevParse(log, StashRef) == w ? "; a copy is in stash@{0}" : "";
-            return Done(DiscardKind.Failed, path, kept.Length > 0 ? "stash@{0}" : null,
+            return Done(DiscardKind.Failed, path, kept.Length > 0 ? CopyRef : null,
                 $"{path} changed while it was being saved; nothing was discarded{kept}", null, log);
         }
 
@@ -157,13 +159,13 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
             ? CallLiteral(log, "clean", "-f", "-q", "--", path)
             : CallLiteral(log, "restore", "-q", "--worktree", "--", path);
         if (!put.Success)
-            return Done(DiscardKind.Failed, path, "stash@{0}",
+            return Done(DiscardKind.Failed, path, CopyRef,
                 $"{GitClient.Describe(put)}; nothing was discarded; a copy is in stash@{{0}}", null, log);
 
         // 8. Verify: the row is gone, the index is as it was, and the copy is the top entry.
         var problem = Verify(log, path, indexTree, indexBefore, w, out var after);
         if (problem is not null)
-            return Done(DiscardKind.Failed, path, "stash@{0}", $"{problem}; a copy of your changes is in stash@{{0}}", after, log);
+            return Done(DiscardKind.Failed, path, CopyRef, $"{problem}; a copy of your changes is in stash@{{0}}", after, log);
 
         // 9. The undo step, saved only now. If it cannot be saved the discard still stands, with a note.
         var undo = new UndoRecord(UndoKind.Discard, "discard of " + path, [], Branch: branch, Head: head,
@@ -171,8 +173,8 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         var undoProblem = new UndoLog(git).Push(undo, log);
         var saved = $"discarded {path}: saved as stash \"graftui: discarded {path}\"";
         return undoProblem is null
-            ? Done(DiscardKind.Discarded, path, "stash@{0}", saved, after, log, undo)
-            : Done(DiscardKind.Discarded, path, "stash@{0}",
+            ? Done(DiscardKind.Discarded, path, CopyRef, saved, after, log, undo)
+            : Done(DiscardKind.Discarded, path, CopyRef,
                 $"{saved}; could not save the undo step ({undoProblem}): u can't bring it back automatically; it is in stash@{{0}}", after, log);
     }
 
@@ -227,7 +229,7 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
     /// <summary>The hash of a ref, "" when the ref does not exist, or null when git fails.</summary>
     private string? RevParse(List<GitResult> log, string name)
     {
-        var r = Call(log, "rev-parse", "-q", "--verify", name);
+        var r = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, name);
         if (r.Success)
             return r.StdOut.Trim();
         return r.ExitCode == 1 ? "" : null;

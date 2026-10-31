@@ -110,15 +110,15 @@ internal sealed class BranchAnimator(AppController app)
 
     /// <summary>The log jumps to the first command that moves the branch or the stash: a switch, a branch change, a stash push or a merge.</summary>
     private static bool IsAnchor(GitResult r) =>
-        Is(r, "switch")
+        Is(r, GitArgs.Switch)
         || (Is(r, "branch") && !r.Args.Contains("--contains"))
-        || (Is(r, "stash") && Sub(r, "push"))
+        || (Is(r, GitArgs.Stash) && Sub(r, "push"))
         || Is(r, "merge");
 
     /// <summary>The anchors' output, the stash pop and the merge abort, and the output of any failed command.</summary>
     private static bool ShowOutput(GitResult r) =>
         IsAnchor(r)
-        || (Is(r, "stash") && Sub(r, "pop"))
+        || (Is(r, GitArgs.Stash) && Sub(r, "pop"))
         || (Is(r, "merge") && r.Args.Contains("--abort"))
         || !r.Success;
 

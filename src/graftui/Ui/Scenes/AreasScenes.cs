@@ -107,6 +107,16 @@ public static class AreasScenes
         return new SceneFrame(grid, null);
     }
 
+    /// <summary>The colour of the subject's length counter: dim up to 50 columns, a warning up to 72, bad beyond.</summary>
+    private static Style SubjectCountStyle(int subjectCols)
+    {
+        if (subjectCols <= 50)
+            return Dim;
+        if (subjectCols <= 72)
+            return Warn;
+        return Bad;
+    }
+
     /// <summary>
     /// The message form: the areas at rest, with the labels and counters. The fields are real views drawn over it. The focused
     /// field's label is teal and bold; the subject is bold, so its label is the one that stands out when the subject has focus.
@@ -127,7 +137,7 @@ public static class AreasScenes
         grid.Text(0, L.SubjectRow, "subject  ", bodyFocused ? Dim : CurB);
         grid.Text(0, L.BodyRow, "body     ", bodyFocused ? CurB : Dim);
 
-        var subjectStyle = subjectCols <= 50 ? Dim : subjectCols <= 72 ? Warn : Bad;
+        var subjectStyle = SubjectCountStyle(subjectCols);
         grid.Text(L.Width - 6, L.SubjectRow, $"{subjectCols}/50", subjectStyle);
         var bodyStyle = longestBodyCols <= 72 ? Dim : Warn;
         grid.Text(L.Width - 6, L.BodyRow, $"{longestBodyCols}/72", bodyStyle);

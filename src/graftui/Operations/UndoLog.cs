@@ -38,7 +38,7 @@ internal sealed class UndoLog(GitClient git)
             {
                 File.WriteAllText(msgPath, UndoJson.Message(r), new UTF8Encoding(false));
 
-                var args = new List<string> { "commit-tree", "--no-gpg-sign", tree };
+                var args = new List<string> { GitArgs.CommitTree, GitArgs.NoGpgSign, tree };
                 foreach (var parent in KeptCommits(r))
                     args.AddRange(["-p", parent]);
                 args.AddRange(["-F", RepoState.ArgPath(git, msgPath)]);
@@ -80,7 +80,7 @@ internal sealed class UndoLog(GitClient git)
 
     /// <summary>Removes a step. Returns true when the ref is gone. The ref is only removed while it still points at the step.</summary>
     public bool Drop(UndoEntry e, List<GitResult> log) =>
-        Call(log, "update-ref", "-d", e.Ref, e.Commit).Success;
+        Call(log, GitArgs.UpdateRef, "-d", e.Ref, e.Commit).Success;
 
     /// <summary>Parents that keep the step's commits reachable: the branch tips it moved, the stash commit and the pop snapshots.</summary>
     private static IEnumerable<string> KeptCommits(UndoRecord r) =>
@@ -122,7 +122,7 @@ internal sealed class UndoLog(GitClient git)
             var refs = Refs(log);
             var highest = refs.Select(r => Number(r.Ref)).DefaultIfEmpty(0).Max();
             var name = Prefix + (highest + 1).ToString("D6");
-            last = Call(log, "update-ref", name, commit, "");
+            last = Call(log, GitArgs.UpdateRef, name, commit, "");
             if (last.Success)
                 return null;
         }
@@ -136,7 +136,7 @@ internal sealed class UndoLog(GitClient git)
         {
             var refs = Refs(log);
             for (var i = 0; i < refs.Length - Max; i++)
-                Call(log, "update-ref", "-d", refs[i].Ref, refs[i].Oid);
+                Call(log, GitArgs.UpdateRef, "-d", refs[i].Ref, refs[i].Oid);
         }
         catch (InvalidOperationException)
         {

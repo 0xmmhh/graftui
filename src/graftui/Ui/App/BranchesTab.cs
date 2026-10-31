@@ -268,9 +268,10 @@ internal sealed partial class BranchesTab
             else if (layout.Kind == GraphKind.Same)
             {
                 // Same tip hash is not the same branch: another branch can point at the current commit.
+                var currentName = layout.Detached ? "HEAD" : layout.Current;
                 caption = layout.Selected == layout.Current
                     ? new Caption($"{layout.Current} is the current branch", Muted)
-                    : new Caption($"{layout.Selected} points at the same commit as {(layout.Detached ? "HEAD" : layout.Current)}: nothing to merge", Muted);
+                    : new Caption($"{layout.Selected} points at the same commit as {currentName}: nothing to merge", Muted);
             }
             else if (layout.Kind == GraphKind.Unrelated)
                 caption = new Caption($"{layout.Selected} and {layout.Current} have no common history", Muted);

@@ -73,12 +73,20 @@ public sealed class StashMergeAnimation(GraphLayout layout, int changed) : IBran
     private SceneFrame Done(ArtGeometry g)
     {
         var r = Result!;
-        var grid = r.Success && r.Merge is not null
-            ? (r.After is { } after ? MergeScenes.Preview(g, after).Grid : _merge.Render(g, _mergeOwnEnd).Grid)
-            : MergeScenes.Preview(g, layout).Grid;
+        var grid = DoneGrid(g, r);
         if (r.Overlay is not null)
             MergeScenes.MessageOverlay(grid, r.OverlayTitle ?? r.Title, r.Overlay);
         return new SceneFrame(grid, r.Caption);
+    }
+
+    /// <summary>The picture once the operation is done: the merged branch when the merge stands, else the layout as it was.</summary>
+    private ArtGrid DoneGrid(ArtGeometry g, BranchResult r)
+    {
+        if (!r.Success || r.Merge is null)
+            return MergeScenes.Preview(g, layout).Grid;
+        if (r.After is not null)
+            return MergeScenes.Preview(g, r.After).Grid;
+        return _merge.Render(g, _mergeOwnEnd).Grid;
     }
 
     // The merge's end on its own clock. MergeAnimation keeps its timing private, so the end is found by search: IsDone only
