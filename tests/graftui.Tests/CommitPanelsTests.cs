@@ -7,6 +7,7 @@ public class CommitPanelsTests
 {
     private const int Width = 62;      // the art pane's commit area: side by side, the left column is 29 wide
     private const int Divider = 30;    // the │ sits at column 30
+    private static readonly DateTimeOffset Now = new(2026, 10, 31, 12, 0, 0, TimeSpan.Zero);
 
     // feature/picks is 3 ahead of main (its own commits are p1..p3, oldest first) and 1 behind (main's m1).
     private static GraphLayout Picks() =>
@@ -17,7 +18,11 @@ public class CommitPanelsTests
             Layouts.C(Layouts.Cur), Layouts.C(Layouts.Sel), 3, 1, GraphKind.Diverged);
 
     private static IReadOnlyList<string> Lines(CommitPanel p, int width, int rows, bool sideBySide) =>
-        CommitPanels.Render(p, width, rows, sideBySide).Select(l => string.Concat(l.Select(s => s.Text))).ToList();
+        CommitPanels.Render(p, width, rows, sideBySide, Now).Select(l => string.Concat(l.Select(s => s.Text))).ToList();
+
+    // A commit row with a date, the given time before Now.
+    private static CommitRow Dated(string hash, string subject, TimeSpan ago) =>
+        new('●', new Style(Ink.Dim), hash, new Style(Ink.Hash), subject, new Style(Ink.Fg), Now - ago);
 
     [Fact]
     public void Idle_lists_the_selected_branch_on_the_left_and_main_on_the_right()
@@ -188,5 +193,60 @@ public class CommitPanelsTests
         Assert.All(lines, l => Assert.Equal(Divider, l.IndexOf('│')));
         Assert.All(lines, l => Assert.Equal(Width, TextFit.Columns(l)));
         Assert.Contains("…", lines[2]);
+    }
+
+    [Fact]
+    public void A_dated_row_shows_its_age_at_the_end_and_the_subject_is_cut_to_make_room()
+    {
+        const string subject = "Refactor the commit list so every row fits the pane";
+        var panel = new CommitPanel(new CommitGroup([new Seg("feature", new Style(Ink.Inc))], [Dated("abc1234", subject, TimeSpan.FromHours(2))], 1), null, []);
+
+        var line = Lines(panel, 35, 1, sideBySide: false).Single();
+
+        Assert.Equal("● abc1234 " + TextFit.Fit(subject, 22).PadRight(22) + " 2h", line);
+        Assert.Equal(35, TextFit.Columns(line));
+    }
+
+    [Fact]
+    public void A_dated_row_in_a_narrow_pane_drops_the_age_and_keeps_the_subject_as_long_as_it_can()
+    {
+        const string subject = "Refactor the commit list so every row fits the pane";
+        var panel = new CommitPanel(new CommitGroup([new Seg("feature", new Style(Ink.Inc))], [Dated("abc1234", subject, TimeSpan.FromHours(2))], 1), null, []);
+
+        var line = Lines(panel, 15, 1, sideBySide: false).Single();
+
+        Assert.Equal("● abc1234 " + TextFit.Fit(subject, 5), line);
+        Assert.DoesNotContain("2h", line);
+    }
+
+    // Two groups: the left one has six dated commits, the right one a single commit three days old.
+    private static CommitPanel SixAndOne()
+    {
+        List<CommitRow> rows = [];
+        for (var i = 1; i <= 6; i++)
+            rows.Add(Dated("hash" + i, "Subject " + i, TimeSpan.FromHours(i)));
+        var left = new CommitGroup([new Seg("feature/six", new Style(Ink.Inc, true))], rows, 6);
+        var right = new CommitGroup([new Seg("main (current)", new Style(Ink.Cur, true))], [Dated("1234567", "Main work", TimeSpan.FromDays(3))], 1);
+        return new CommitPanel(left, right, []);
+    }
+
+    [Fact]
+    public void Side_by_side_shows_every_dated_row_when_they_fit_and_says_no_more()
+    {
+        var lines = Lines(SixAndOne(), Width, 7, sideBySide: true);
+
+        Assert.Equal(7, lines.Count);
+        Assert.All(lines, l => Assert.DoesNotContain("more", l));
+    }
+
+    [Fact]
+    public void Side_by_side_counts_the_rows_that_do_not_fit_in_a_line_of_their_own()
+    {
+        var lines = Lines(SixAndOne(), Width, 4, sideBySide: true);
+
+        Assert.Equal(4, lines.Count);
+        Assert.Contains("Subject 1", lines[1]);
+        Assert.Contains("Subject 2", lines[2]);
+        Assert.Contains("+4 more", lines[3]);
     }
 }

@@ -198,4 +198,31 @@ public class LogViewTests
         log.ToggleExact();
         Assert.Equal(2, log.Count);
     }
+
+    [Fact]
+    public void An_empty_log_shows_the_hint_in_the_pane()
+    {
+        Assert.True(new LogView().ShowsEmptyHint);
+        Assert.Equal("git commands graftui runs show up here", LogView.EmptyHint);
+    }
+
+    [Fact]
+    public void A_message_line_takes_the_place_of_the_hint()
+    {
+        var log = new LogView();
+        log.Add(new LogLine(LogKind.Message, "x"));
+
+        Assert.False(log.ShowsEmptyHint);
+    }
+
+    [Fact]
+    public void An_entry_with_no_simplified_lines_keeps_the_hint_until_the_exact_list_is_shown()
+    {
+        var log = new LogView();
+        log.Add(new LogEntry([new LogLine(LogKind.Command, "git rev-parse -q --verify MERGE_HEAD", 1)], []));
+
+        Assert.True(log.ShowsEmptyHint);
+        log.ToggleExact();
+        Assert.False(log.ShowsEmptyHint);
+    }
 }

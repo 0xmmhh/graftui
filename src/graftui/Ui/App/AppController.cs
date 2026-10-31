@@ -164,9 +164,11 @@ public sealed class AppController
     internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _listWidth.Width);
 
     /// <summary>True when the whole art, and so the message box's fields, fits inside the art pane at this size.</summary>
-    internal bool ArtFits() =>
-        ArtPaneView.ArtArea(Art.Viewport.Width, Art.Viewport.Height) is { } area
-        && area.Y + area.H <= Art.Viewport.Height;
+    internal bool ArtFits()
+    {
+        var area = ArtPaneView.ArtArea(Art.Viewport.Width, Art.Viewport.Height, Art.CompactArt);
+        return area != null && area.Value.Y + area.Value.H <= Art.Viewport.Height;
+    }
 
     internal void MarkOutcomeShown() => _outcomeShown = true;
 
@@ -191,6 +193,7 @@ public sealed class AppController
             Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().Cols - CurrentLayout().BranchWidth),
             Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
             DirectionRule = false,
+            CompactArt = true,
         };
         Log = new LogView
         {
@@ -333,7 +336,7 @@ public sealed class AppController
 
     /// <summary>The name box's field position and width in the art pane; all zero when no row is free for it.</summary>
     private (int X, int Y, int W) NameBoxOrZero() =>
-        ArtPaneView.NameField(Art.Viewport.Width, Art.Viewport.Height, BranchesTab.NameCaptionTwoLines(Art.Viewport.Width, Art.Viewport.Height))
+        ArtPaneView.NameField(Art.Viewport.Width, Art.Viewport.Height, BranchesTab.NameCaptionTwoLines(Art.Viewport.Width, Art.Viewport.Height), Art.CompactArt)
             is { } n ? (n.X, n.Y, n.W) : (0, 0, 0);
 
     /// <summary>The name box moves when its caption wraps or unwraps, so its field is placed again.</summary>
@@ -454,6 +457,7 @@ public sealed class AppController
         BranchList.SetNeedsDraw();
         ChangesList.SetNeedsDraw();
         Art.DirectionRule = onChanges;
+        Art.CompactArt = !onChanges;
         Art.SetNeedsDraw();
 
         if (onChanges)

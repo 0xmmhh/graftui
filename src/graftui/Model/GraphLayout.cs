@@ -16,6 +16,14 @@ public sealed record GraphLayout(
     CommitInfo CurrentTipCommit, CommitInfo SelectedTipCommit,
     int Ahead, int Behind, GraphKind Kind)
 {
+    /// <summary>
+    /// Newest first, up to 50: the commits Ahead counts (on the selected branch only). Empty when the layout was not read from git.
+    /// </summary>
+    public IReadOnlyList<CommitInfo> SelectedNew { get; init; } = [];
+
+    /// <summary>Newest first, up to 50: the commits Behind counts (on the current branch only). Empty when the layout was not read from git.</summary>
+    public IReadOnlyList<CommitInfo> CurrentNew { get; init; } = [];
+
     /// <summary>Placeholder layout used when the real one cannot be read. Tip commits carry only their hash.</summary>
     public static GraphLayout Minimal(string cur, bool detached, string sel, string curTip, string selTip) =>
         new(cur, detached, sel, curTip, selTip, null,

@@ -10,7 +10,7 @@ namespace graftui.Ui.Text;
 public static class ChangesText
 {
     private const int VerbCols = 13;
-    private const string Arrow = "  ──▶  ";
+    private const string Arrow = "  ->  ";
 
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
     private static readonly Style Ok = new(Ink.Ok), Inc = new(Ink.Inc);
@@ -42,7 +42,7 @@ public static class ChangesText
 
     /// <summary>
     /// The line of an operation: the verb (padded to 13 columns), what it acts on, an arrow, and the target.
-    /// Example: "stage        README.md  ──▶  staging area".
+    /// Example: "stage        README.md  ->  staging area".
     /// </summary>
     public static IReadOnlyList<Seg> OpDirection(string verb13, string what, IReadOnlyList<Seg> target, int max)
     {

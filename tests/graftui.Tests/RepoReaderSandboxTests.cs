@@ -80,6 +80,33 @@ public sealed class RepoReaderSandboxTests : IDisposable
     }
 
     [Fact]
+    public void The_selected_branch_lists_every_commit_its_ahead_count_counts_newest_first_with_dates()
+    {
+        var snap = _reader.LoadSnapshot(withCounts: true, CancellationToken.None);
+        var branch = snap.Branches.Single(b => b.Name == "feature/ff-to-merge");
+
+        var layout = _reader.LoadLayout(snap, branch, CancellationToken.None);
+
+        Assert.Equal(
+            new[] { "Merge branch 'side-for-ffm' into feature/ff-to-merge", "Add side file", "Add ffm file" },
+            layout.SelectedNew.Select(c => c.Subject));
+        Assert.Empty(layout.CurrentNew);
+        Assert.All(layout.SelectedNew, c => Assert.Equal(new DateTime(2025, 1, 1), c.Date!.Value.UtcDateTime.Date));
+    }
+
+    [Fact]
+    public void The_current_branch_lists_the_commits_it_has_that_the_selected_branch_lacks()
+    {
+        var snap = _reader.LoadSnapshot(withCounts: true, CancellationToken.None);
+        var branch = snap.Branches.Single(b => b.Name == "feature/picks");
+
+        var layout = _reader.LoadLayout(snap, branch, CancellationToken.None);
+
+        Assert.Equal(3, layout.SelectedNew.Count);
+        Assert.Equal(new[] { "Change line 1 on main" }, layout.CurrentNew.Select(c => c.Subject));
+    }
+
+    [Fact]
     public void Main_previews_as_the_same_commit_as_itself()
     {
         var snap = _reader.LoadSnapshot(withCounts: true, CancellationToken.None);

@@ -8,6 +8,9 @@ public class MergeScenesTests
 {
     private static readonly ArtGeometry Geo = ArtGeometry.For(80, 11)!;
 
+    // The Branches tab's 9-row art: the same graph with no empty row above or below.
+    private static readonly ArtGeometry Geo9 = ArtGeometry.For(80, 9)!;
+
     // Where the two branch lines join on the 80x11 grid.
     private const int JoinX = 28;
     private const int JoinY = 3;
@@ -63,6 +66,44 @@ public class MergeScenesTests
         var frame = MergeScenes.UpToDate(Geo, Layouts.UpToDate(), 1000, 1000, outcome, false);
 
         Assert.Equal("Already up to date: feature is already part of main", frame.Caption?.Text);
+    }
+
+    [Fact]
+    public void The_nine_row_preview_labels_the_current_branch_on_the_first_row_and_the_selected_one_on_the_last()
+    {
+        var frame = MergeScenes.Preview(Geo9, Layouts.Diverged());
+
+        Assert.Contains("main", RowText(frame.Grid, 0), StringComparison.Ordinal);
+        Assert.Contains("feature", RowText(frame.Grid, 8), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_nine_row_merge_commit_is_drawn_on_the_join_row()
+    {
+        var outcome = new MergeOutcome(MergeKind.MergeCommit, "feature", "main", "e333333333", [], "merge commit created", []);
+
+        var frame = MergeScenes.Merge(Geo9, Layouts.Diverged(), 2250, 2250, outcome, false);
+
+        Assert.Contains('◉', RowText(frame.Grid, 2));
+    }
+
+    [Fact]
+    public void The_nine_row_conflict_draws_its_cross_on_the_join_row()
+    {
+        var frame = MergeScenes.Merge(Geo9, Layouts.Diverged(), 2250, 2250, Conflict, false);
+
+        Assert.Contains('✕', RowText(frame.Grid, 2));
+    }
+
+    [Fact]
+    public void A_refusal_box_with_three_lines_fits_inside_the_nine_row_art()
+    {
+        var grid = new ArtGrid(80, 9);
+
+        MergeScenes.MessageOverlay(grid, "Refused", string.Concat(Enumerable.Repeat("a reason that runs on for a while ", 4)) + "end.");
+
+        Assert.Contains("Refused", BoxText(grid), StringComparison.Ordinal);
+        Assert.Contains(Enumerable.Range(0, grid.Height), y => RowText(grid, y).Contains('└'));
     }
 
     [Fact]

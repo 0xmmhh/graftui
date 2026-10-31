@@ -147,7 +147,7 @@ graftui --version
 <summary>The screen</summary>
 
 - **Status bar (top):** the repository, the current branch, and whether the working tree is clean. When merging is disabled, the bar says why.
-- **Branches (left):** every local branch, with `*` on the current one. `↑2` means the branch has 2 commits the current branch lacks; `↓1` means the current branch has 1 commit the branch lacks.
+- **Branches (left):** every local branch, with `*` on the current one. `↑2` means the branch has 2 commits the current branch lacks; `↓1` means the current branch has 1 commit the branch lacks. The column is headed `vs <current branch>`.
 - **Preview and animation (right):** how the selected branch relates to the current one, a picture of the two branches, a caption and the commits involved. The commits are listed side by side: the selected branch's on the left, `main`'s on the right, with their headers. Narrower terminals (under 70 columns) stack them. During a merge the two lines grow together; afterwards it shows the result.
 - **Commands:** the git commands graftui ran, each as the command you would type (`$ git merge feature/x  ✔`), with git's output. A failed command is shown exactly, with its exit code. Press `v` to see the exact list instead: every git call, with its exit code and the reads graftui hides by default.
 - **Key bar (bottom):** the keys that work right now.

@@ -24,6 +24,12 @@ public class NameFieldTests
     }
 
     [Fact]
+    public void The_name_box_on_the_branches_tab_sits_under_the_nine_row_art()
+    {
+        Assert.Equal((13, 15, 65, true), ArtPaneView.NameField(80, 22, compact: true));
+    }
+
+    [Fact]
     public void A_pane_with_no_commit_row_under_the_caption_has_no_name_box()
     {
         Assert.Null(ArtPaneView.NameField(48, 12));

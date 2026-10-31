@@ -13,6 +13,14 @@ public sealed class ArtPaneView : PaneView
 {
     private const int MaxArtWidth = 70;
 
+    // Art heights: the tall art of the Changes tab, the 9-row art of the Branches tab (the same graph without its two empty rows),
+    // and the short art. Tall art needs at least TallMinInner inner rows; the 9-row art needs CompactTallMinInner.
+    private const int TallRows = 11;
+    private const int CompactTallRows = 9;
+    private const int ShortRows = 8;
+    private const int TallMinInner = 17;
+    private const int CompactTallMinInner = 15;
+
     private static readonly Style Dim = new(Ink.Dim);
     private static readonly Style FrameStyle = new(Ink.Frame);
 
@@ -42,14 +50,28 @@ public sealed class ArtPaneView : PaneView
     public bool DirectionRule { get; set; } = true;
 
     /// <summary>
+    /// True on the Branches tab: the tall art is 9 rows, the graph's own rows with no empty row above or below, instead of 11.
+    /// The Changes tab keeps 11.
+    /// </summary>
+    public bool CompactArt { get; set; }
+
+    // The art's height in a pane with ih inner rows.
+    private static int ArtRows(int ih, bool compact)
+    {
+        if (compact)
+            return ih >= CompactTallMinInner ? CompactTallRows : ShortRows;
+        return ih >= TallMinInner ? TallRows : ShortRows;
+    }
+
+    /// <summary>
     /// Where the art's grid is drawn in a pane of the given size (viewport coordinates), or null when no art fits.
     /// Used by the views and by the message form, which is laid over the art.
     /// </summary>
-    public static (int X, int Y, int W, int H)? ArtArea(int paneW, int paneH)
+    public static (int X, int Y, int W, int H)? ArtArea(int paneW, int paneH, bool compact = false)
     {
         var cw = paneW - 4;
         var ih = paneH - 2;
-        var ah = ih >= 17 ? 11 : 8;
+        var ah = ArtRows(ih, compact);
         var gw = Math.Min(cw, MaxArtWidth);
         if (cw <= 0 || ih <= 0 || ArtGeometry.For(gw, ah) is null)
             return null;
@@ -61,10 +83,10 @@ public sealed class ArtPaneView : PaneView
     /// the field's X, its row, its width, and whether a label row sits above it. Null when no commit row is free under the caption.
     /// Labels and the field share the rows under the caption that the commit list would use.
     /// </summary>
-    public static (int X, int Y, int W, bool LabelRow)? NameField(int paneW, int paneH, bool captionTwoLines = false)
+    public static (int X, int Y, int W, bool LabelRow)? NameField(int paneW, int paneH, bool captionTwoLines = false, bool compact = false)
     {
-        var l = CaptionLayout(paneH, captionTwoLines);
-        if (l.BelowRows == 0 || ArtArea(paneW, paneH) is null)
+        var l = CaptionLayout(paneH, captionTwoLines, compact);
+        if (l.BelowRows == 0 || ArtArea(paneW, paneH, compact) == null)
             return null;
         var label = l.BelowRows >= 2;
         // The rows under the caption are drawn at x=4; "name     " is 9 columns wide, so the field starts at 13.
@@ -75,22 +97,22 @@ public sealed class ArtPaneView : PaneView
     /// Whether a caption of this text is drawn on two lines in a pane of this size. With <paramref name="keepsBelowRows"/> (the name box
     /// is open) it is only when the rows under the two-line caption still hold a label and the field.
     /// </summary>
-    public static bool TwoLineCaption(string text, int paneW, int paneH, bool keepsBelowRows)
+    public static bool TwoLineCaption(string text, int paneW, int paneH, bool keepsBelowRows, bool compact = false)
     {
         if (TextFit.Wrap2(text, paneW - 4).Second is null)
             return false;
-        return !keepsBelowRows || CaptionLayout(paneH, true).BelowRows >= 2;
+        return !keepsBelowRows || CaptionLayout(paneH, true, compact).BelowRows >= 2;
     }
 
     /// <summary>
     /// Rows of the caption and the rows under it, for a pane of height <paramref name="paneH"/>. A two-line caption
     /// takes one commit row, and only when a commit row is free; otherwise it falls back to one line.
     /// </summary>
-    public static (int CaptionRows, int RuleRow, int BelowTop, int BelowRows) CaptionLayout(int paneH, bool twoLines)
+    public static (int CaptionRows, int RuleRow, int BelowTop, int BelowRows) CaptionLayout(int paneH, bool twoLines, bool compact = false)
     {
         var ih = paneH - 2;
-        var ah = ih >= 17 ? 11 : 8;
-        var commitRows = Math.Clamp(ih - 4 - ah, 0, 4);
+        var ah = ArtRows(ih, compact);
+        var commitRows = Math.Max(0, ih - 4 - ah);
         return twoLines && commitRows > 0
             ? (2, 5 + ah, 6 + ah, commitRows - 1)
             : (1, 4 + ah, 5 + ah, commitRows);
@@ -108,13 +130,13 @@ public sealed class ArtPaneView : PaneView
         if (cw <= 0 || ih <= 0)
             return true;
 
-        var ah = ih >= 17 ? 11 : 8;
+        var ah = ArtRows(ih, CompactArt);
 
         DrawSegs(2, 1, Direction(cw), cw);
         if (DirectionRule)
             DrawRule(2, 2, cw);
 
-        var area = ArtArea(pw, ph);
+        var area = ArtArea(pw, ph, CompactArt);
         SceneFrame? frame = null;
         if (area is { } scene && Scene is not null)
             frame = Scene(ArtGeometry.For(scene.W, scene.H)!);
@@ -136,12 +158,12 @@ public sealed class ArtPaneView : PaneView
         (string First, string? Second) split;
         if (caption is null)
             split = ("", null);
-        else if (CaptionKeepsBelowRows && !TwoLineCaption(caption.Text, pw, ph, keepsBelowRows: true))
+        else if (CaptionKeepsBelowRows && !TwoLineCaption(caption.Text, pw, ph, keepsBelowRows: true, compact: CompactArt))
             split = (TextFit.Fit(caption.Text, cw), null);
         else
             split = TextFit.Wrap2(caption.Text, cw);
         var (first, second) = split;
-        var layout = CaptionLayout(ph, second is not null);
+        var layout = CaptionLayout(ph, second != null, CompactArt);
         if (caption is not null)
         {
             if (layout.CaptionRows == 2)
@@ -164,7 +186,7 @@ public sealed class ArtPaneView : PaneView
 
         if (Panel is { } panel)
         {
-            var lines = CommitPanels.Render(panel, cw - 2, layout.BelowRows, ScreenCols >= CommitPanels.SideBySideMinCols);
+            var lines = CommitPanels.Render(panel, cw - 2, layout.BelowRows, ScreenCols >= CommitPanels.SideBySideMinCols, DateTimeOffset.UtcNow);
             for (var k = 0; k < lines.Count; k++)
                 DrawSegs(4, layout.BelowTop + k, lines[k], cw - 2);
         }
