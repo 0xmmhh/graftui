@@ -124,7 +124,8 @@ internal sealed partial class BranchesTab
                     check =>
                     {
                         var layoutNow = loaded
-                            ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, b.Name, snap.HeadHash ?? "", b.Hash);
+                            ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, b.Name, snap.HeadHash ?? "", b.Hash)
+                                .WithLanes(snap.Branches);
                         _app.Ui(() => _app.Animator.BeginAnimation(check, layoutNow));
                     });
                 if (o is null)

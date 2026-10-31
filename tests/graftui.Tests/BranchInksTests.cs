@@ -20,4 +20,20 @@ public class BranchInksTests
         for (var i = 0; i < BranchLanes.Count; i++)
             Assert.Equal((Ink)((int)Ink.Lane0 + i), BranchInks.Of(i));
     }
+
+    [Fact]
+    public void Current_and_selected_read_the_layout_lanes()
+    {
+        var layout = Layouts.Diverged() with { CurrentLane = 0, SelectedLane = 3 };
+        Assert.Equal(Ink.Lane0, BranchInks.Current(layout));
+        Assert.Equal(Ink.Lane3, BranchInks.Selected(layout));
+    }
+
+    [Fact]
+    public void An_unstamped_layout_draws_both_branches_in_the_foreground()
+    {
+        var layout = Layouts.Diverged();
+        Assert.Equal(Ink.Fg, BranchInks.Current(layout));
+        Assert.Equal(Ink.Fg, BranchInks.Selected(layout));
+    }
 }

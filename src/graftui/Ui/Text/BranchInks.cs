@@ -13,4 +13,10 @@ public static class BranchInks
 
         return (Ink)((int)Ink.Lane0 + lane);
     }
+
+    /// <summary>The ink of the current branch's line and label in a layout.</summary>
+    public static Ink Current(GraphLayout L) => Of(L.CurrentLane);
+
+    /// <summary>The ink of the selected branch's line and label in a layout.</summary>
+    public static Ink Selected(GraphLayout L) => Of(L.SelectedLane);
 }
