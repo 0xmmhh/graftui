@@ -21,7 +21,7 @@ public class ChangesTextTests
     {
         var segs = ChangesText.OpDirection("stage", "README.md", [new Seg("staging area", new Style(Ink.Dim))], 200);
 
-        Assert.Equal("stage        README.md  ──▶  staging area", string.Concat(segs.Select(s => s.Text)));
+        Assert.Equal("stage        README.md  ->  staging area", string.Concat(segs.Select(s => s.Text)));
     }
 
     [Fact]

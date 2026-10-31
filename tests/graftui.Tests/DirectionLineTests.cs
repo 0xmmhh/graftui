@@ -54,7 +54,7 @@ public class DirectionLineTests
     {
         var text = Text(DirectionLine.Merge("feature/conflict", "main", false, 66));
 
-        Assert.Equal("merge        feature/conflict  ──▶ into  main (current)", text);
+        Assert.Equal("merge        feature/conflict  -> into  main (current)", text);
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public class DirectionLineTests
     {
         var segs = DirectionLine.Switch("main", "feature/fast-forward", 44);
 
-        Assert.Equal("switch       main  ──▶  feature/fast-forward", Text(segs));
+        Assert.Equal("switch       main  ->  feature/fast-forward", Text(segs));
         Assert.Equal(new Style(Ink.Cur, true), segs[1].Style);
         Assert.Equal(new Style(Ink.Inc, true), segs[3].Style);
     }
@@ -70,9 +70,9 @@ public class DirectionLineTests
     [Fact]
     public void Switch_cuts_the_long_name_and_keeps_the_fixed_parts_at_30_columns()
     {
-        var segs = DirectionLine.Switch("feature/fast-forward", "main", 30);
+        var segs = DirectionLine.Switch("feature/fast-forward", "main", 29);
 
-        Assert.Equal("switch       featu…  ──▶  main", Text(segs));
+        Assert.Equal("switch       featu…  ->  main", Text(segs));
         Assert.True(TextFit.Columns(Text(segs)) <= 30);
     }
 
@@ -110,9 +110,9 @@ public class DirectionLineTests
     [Fact]
     public void Rename_names_both_at_44_columns_and_cuts_the_new_one()
     {
-        var text = Text(DirectionLine.Rename("feature/picks", "feature/cherries", 44));
+        var text = Text(DirectionLine.Rename("feature/picks", "feature/cherries", 43));
 
-        Assert.Equal("rename       feature/picks  ──▶  feature/ch…", text);
+        Assert.Equal("rename       feature/picks  ->  feature/ch…", text);
         Assert.True(TextFit.Columns(text) <= 44);
     }
 
@@ -131,7 +131,7 @@ public class DirectionLineTests
     {
         var text = Text(DirectionLine.StashMerge("feature/fast-forward", "main", 66));
 
-        Assert.Equal("stash, merge feature/fast-forward  ──▶ into  main (current)", text);
+        Assert.Equal("stash, merge feature/fast-forward  -> into  main (current)", text);
         Assert.Equal(new Style(Ink.Dim), DirectionLine.StashMerge("a", "main", 66)[0].Style);
     }
 
