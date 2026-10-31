@@ -9,7 +9,7 @@ namespace graftui.Ui.Views;
 public sealed class StatusBarView : View
 {
     private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim), Ok = new(Ink.Ok), Warn = new(Ink.Warn);
-    private static readonly Style Bad = new(Ink.Bad), CurB = new(Ink.Cur, true), Name = new(Ink.Cur, true);
+    private static readonly Style Bad = new(Ink.Bad), CurB = new(Ink.Cur, true), Glyph = new(Ink.Cur);
 
     public RepoSnapshot? Snapshot { get; set; }
 
@@ -22,8 +22,14 @@ public sealed class StatusBarView : View
     /// </summary>
     public int? ChangedFiles { get; set; }
 
-    // Column where the path starts: after "graftui" and its two spaces.
-    private const int LeftEnd = 10;
+    // Column where the path starts: after the "▸" at column 1 and its space.
+    internal const int LeftEnd = 3;
+
+    /// <summary>Column where the right side starts. When the window is too narrow, the right side is cut, never the left.</summary>
+    internal static int RightStart(int width, int rightCols) => Math.Max(LeftEnd, width - 2 - rightCols);
+
+    /// <summary>How many columns the path may use: it stops three columns before the right side.</summary>
+    internal static int PathMax(int width, int rightCols) => Math.Max(0, RightStart(width, rightCols) - 3 - LeftEnd);
 
     protected override bool OnDrawingContent(DrawContext? context)
     {
@@ -32,17 +38,14 @@ public sealed class StatusBarView : View
         if (w <= 0)
             return true;
 
-        // "graftui" and two spaces (columns 1 to 9) are never overwritten: when the window is too narrow, the right side is cut instead.
         var right = RightSegs();
         var rightCols = right.Sum(s => TextFit.Columns(s.Text));
-        var rightStart = Math.Max(LeftEnd, w - 2 - rightCols);
 
-        // "graftui" and two spaces, then the path. The path is cut so it stops three columns before the right side.
-        Paint.Text(this, 1, 0, "graftui", 7, Name);
-        Paint.Text(this, 8, 0, "  ", 2, Fg);
-        var pathMax = Math.Max(0, rightStart - 3 - LeftEnd);
-        Paint.Text(this, LeftEnd, 0, RepoDisplay, pathMax, Dim);
+        // The "▸" at column 1 and the path from LeftEnd on. Neither is overwritten by the right side.
+        Paint.Text(this, 1, 0, "▸", 1, Glyph);
+        Paint.Text(this, LeftEnd, 0, RepoDisplay, PathMax(w, rightCols), Fg);
 
+        var rightStart = RightStart(w, rightCols);
         Paint.Segs(this, rightStart, 0, right, w - 1 - rightStart);
         return true;
     }

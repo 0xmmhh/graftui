@@ -16,6 +16,9 @@ public sealed class LogView : PaneView
 {
     private const int MaxLines = 1000;
 
+    /// <summary>What the empty pane says: the one thing a new user needs to know about it.</summary>
+    internal const string EmptyHint = "git commands graftui runs show up here";
+
     private static readonly Style Dim = new(Ink.Dim), Fg = new(Ink.Fg), FgB = new(Ink.Fg, true);
     private static readonly Style Ok = new(Ink.Ok), Bad = new(Ink.Bad);
 
@@ -60,6 +63,9 @@ public sealed class LogView : PaneView
         SetNeedsDraw();
     }
 
+    /// <summary>True when the list on screen has no lines, so the empty hint is shown instead.</summary>
+    internal bool ShowsEmptyHint => VisibleLines().Count == 0;
+
     /// <summary>Switches between the simplified and the exact list. Entries, positions and the anchor do not change.</summary>
     public void ToggleExact()
     {
@@ -101,10 +107,12 @@ public sealed class LogView : PaneView
             return true;
 
         // The lines of the list on screen, each tagged with the index of its entry. The anchor is the first line of that entry or later.
-        var flat = new List<(LogLine Line, int Entry)>();
-        for (var i = 0; i < _entries.Count; i++)
-            foreach (var line in ShowExact ? _entries[i].Exact : _entries[i].Simple)
-                flat.Add((line, i));
+        var flat = VisibleLines();
+        if (flat.Count == 0)
+        {
+            DrawText(2, 1, EmptyHint, maxCols, Dim);
+            return true;
+        }
 
         var rowsOf = flat.Select(f => Rows(f.Line, maxCols)).ToList();
         var anchorLine = AnchorLine(flat.Select(f => f.Entry).ToList(), _anchor);
@@ -118,6 +126,16 @@ public sealed class LogView : PaneView
                 DrawLine(2, 1 + y++, row, maxCols);
             }
         return true;
+    }
+
+    // The lines the pane shows now: the simplified or the exact list of every entry, each tagged with the index of its entry.
+    private List<(LogLine Line, int Entry)> VisibleLines()
+    {
+        var flat = new List<(LogLine Line, int Entry)>();
+        for (var i = 0; i < _entries.Count; i++)
+            foreach (var line in ShowExact ? _entries[i].Exact : _entries[i].Simple)
+                flat.Add((line, i));
+        return flat;
     }
 
     /// <summary>
