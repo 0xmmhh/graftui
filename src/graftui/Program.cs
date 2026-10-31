@@ -7,7 +7,7 @@ using Terminal.Gui.App;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
-// Every early exit prints and returns at once, so awaiting its write never moves the code below onto another thread.
+// Every error exit prints its message and returns at once, so awaiting the write never moves code below it onto another thread.
 var parsed = CliArgs.Parse(args);
 if (parsed.Options is not { } options)
 {

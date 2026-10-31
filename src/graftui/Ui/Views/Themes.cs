@@ -55,20 +55,17 @@ public static class Themes
     /// <summary>Looks a preset up by name, ignoring case. On a miss, <paramref name="t"/> is the default and the result is false.</summary>
     public static bool TryGet(string name, out Theme t)
     {
-        var match = All.FirstOrDefault(candidate => IsNamed(candidate, name));
-        if (match == null)
+        foreach (var candidate in All)
         {
-            t = Default;
-            return false;
+            if (string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                t = candidate;
+                return true;
+            }
         }
 
-        t = match;
-        return true;
-    }
-
-    private static bool IsNamed(Theme candidate, string name)
-    {
-        return string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase);
+        t = Default;
+        return false;
     }
 
     private static Color Hex(string rrggbb) => new(

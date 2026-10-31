@@ -176,7 +176,8 @@ public static class CommitPanels
         {
             var footer = Math.Min(p.Footer.Count, Math.Max(0, rows - groups.Length));
             var body = rows - footer;
-            // lines is still empty here, so taking the first body groups that have a row adds the same rows as the room check did.
+            // lines is still empty here, so taking the first `body` groups that have a row
+            // adds the same rows as a "while there is room" check would.
             foreach (var group in groups.Where(HasRows).Take(body))
                 lines.Add(Cell(RowSegs(group.Rows[0]), width));
             lines.AddRange(p.Footer.Take(footer).Select(row => Cell(RowSegs(row), width)));
