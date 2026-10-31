@@ -279,8 +279,17 @@ internal sealed partial class BranchesTab
                 caption = new Caption($"{layout.Selected} and {layout.Current} have no common history", Muted);
             return new SceneFrame(grid, caption);
         };
+        // Set after the scene, which clears the flag: a straight graph's preview is drawn in the single-line art.
+        _app.Art.SingleLine = IsStraight(layout);
         _app.Art.SetNeedsDraw();
     }
+
+    /// <summary>
+    /// Whether a layout is a straight graph: fast-forward, up to date or the same commit, and not a detached HEAD. Its preview is drawn
+    /// in the single-line art, since no branch line goes off on its own.
+    /// </summary>
+    internal static bool IsStraight(GraphLayout L) =>
+        !L.Detached && (L.Kind == GraphKind.FastForward || L.Kind == GraphKind.UpToDate || L.Kind == GraphKind.Same);
 
     private static (string Current, string Head, string Name, string Tip) CacheKey(RepoSnapshot snap, Branch b) =>
         (snap.CurrentBranch, snap.HeadHash ?? "", b.Name, b.Hash);

@@ -37,4 +37,11 @@ public class ArtGeometryTests
     {
         Assert.Null(ArtGeometry.For(22, 8));
     }
+
+    [Fact]
+    public void Five_rows_is_the_single_line_art_with_its_line_on_row_two()
+    {
+        // Row B (4) is never drawn on in the single-line art; it only keeps the record valid.
+        Assert.Equal(new ArtGeometry(80, 5, 6, 2, 4, 16), ArtGeometry.For(80, 5));
+    }
 }

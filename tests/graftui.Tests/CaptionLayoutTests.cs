@@ -42,4 +42,28 @@ public class CaptionLayoutTests
     {
         Assert.Equal((1, 12, 13, 1), ArtPaneView.CaptionLayout(15, twoLines: false, compact: true));
     }
+
+    [Fact]
+    public void Single_line_art_gives_the_commit_list_four_more_rows()
+    {
+        // Pane height 22: the 9-row art leaves 7 commit rows, the 5-row single-line art leaves 11.
+        Assert.Equal((1, 9, 10, 11), ArtPaneView.CaptionLayout(22, twoLines: false, compact: true, singleLine: true));
+        Assert.Equal(7 + 4, ArtPaneView.CaptionLayout(22, twoLines: false, compact: true, singleLine: true).BelowRows);
+    }
+
+    [Fact]
+    public void Single_line_art_only_applies_on_the_branches_tab()
+    {
+        Assert.Equal(ArtPaneView.CaptionLayout(22, twoLines: false), ArtPaneView.CaptionLayout(22, twoLines: false, singleLine: true));
+    }
+
+    [Fact]
+    public void Single_line_art_keeps_its_line_on_the_same_screen_row()
+    {
+        var normal = ArtPaneView.ArtArea(80, 22, compact: true);
+        var single = ArtPaneView.ArtArea(80, 22, compact: true, singleLine: true);
+
+        Assert.Equal(normal!.Value.Y, single!.Value.Y);
+        Assert.Equal(5, single.Value.H);
+    }
 }

@@ -10,7 +10,8 @@ public sealed record ArtGeometry(int Width, int Height, int Step, int A, int B, 
 
     /// <summary>
     /// Geometry for a grid of the given size, or null when the size is not one the scenes support: 11 rows (the Changes tab),
-    /// 9 rows (the Branches tab, without the two empty rows of 11) or 8 rows (a short pane).
+    /// 9 rows (the Branches tab, without the two empty rows of 11), 8 rows (a short pane) or 5 rows (a straight graph's
+    /// single-line art: its line is row 2, and row 4 is never drawn on).
     /// The widest step that fits is used (6, 4 or 3 columns between commits).
     /// </summary>
     public static ArtGeometry? For(int width, int height)
@@ -31,6 +32,11 @@ public sealed record ArtGeometry(int Width, int Height, int Step, int A, int B, 
         {
             a = 2;
             b = 5;
+        }
+        else if (height == 5)
+        {
+            a = 2;
+            b = 4;
         }
         else
         {
