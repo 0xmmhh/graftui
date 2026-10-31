@@ -31,8 +31,10 @@ internal sealed class Animator
             _app.LogMessage(line, WarnB);
 
         var detached = check.CurrentBranch.Length == 0;
+        var selInk = _app.InkOf(selName);
+        var curInk = _app.InkOf(check.CurrentBranch);
         _app.Art.Title = "Refused";
-        _app.Art.Direction = cols => DirectionLine.Merge(selName, check.CurrentBranch, detached, cols);
+        _app.Art.Direction = cols => DirectionLine.Merge(selName, selInk, check.CurrentBranch, curInk, detached, cols);
         _app.Art.Panel = layout is null ? null : CommitLists.Idle(layout);
         _app.Art.FallbackCaption = null;
         _app.Art.Scene = geo =>
@@ -64,9 +66,11 @@ internal sealed class Animator
         _clock = clock;
         _pending = null; // an outcome from an earlier merge must never be applied to this one
         var detached = layout.Detached;
+        var selInk = BranchInks.Selected(layout);
+        var curInk = BranchInks.Current(layout);
 
         _app.Art.Title = anim.Title(0);
-        _app.Art.Direction = cols => DirectionLine.Merge(layout.Selected, layout.Current, detached, cols);
+        _app.Art.Direction = cols => DirectionLine.Merge(layout.Selected, selInk, layout.Current, curInk, detached, cols);
         _app.Art.Panel = CommitLists.Idle(layout);
         _app.Art.FallbackCaption = null;
         _app.Art.Scene = geo => anim.Render(geo, clock.ElapsedMilliseconds);

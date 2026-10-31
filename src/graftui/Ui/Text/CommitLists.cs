@@ -25,7 +25,12 @@ public sealed record CommitPanel(CommitGroup Left, CommitGroup? Right, IReadOnly
 public static class CommitLists
 {
     private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim);
-    private static readonly Style CurB = new(Ink.Cur, true), IncB = new(Ink.Inc, true), MrgB = new(Ink.Mrg, true), BadB = new(Ink.Bad, true);
+    private static readonly Style MrgB = new(Ink.Mrg, true), BadB = new(Ink.Bad, true);
+
+    // A branch's header and dots are in its own lane colour: the current branch's, and the selected branch's.
+    private static Style CurB(GraphLayout L) => new(BranchInks.Current(L), true);
+
+    private static Style SelB(GraphLayout L) => new(BranchInks.Selected(L), true);
 
     /// <summary>
     /// Before the merge: the selected branch's own commits (newest first) beside main's own commits that the branch lacks.
@@ -37,8 +42,8 @@ public static class CommitLists
             return new CommitPanel(TipGroup(L), null, []);
 
         var left = new CommitGroup(
-            [new Seg(L.Selected, IncB), new Seg($"  {L.Ahead} new", Dim)],
-            NewRows(L.SelectedNew, L.SelectedOwn, IncB),
+            [new Seg(L.Selected, SelB(L)), new Seg($"  {L.Ahead} new", Dim)],
+            NewRows(L.SelectedNew, L.SelectedOwn, SelB(L)),
             L.Ahead);
         return new CommitPanel(left, MainGroup(L), []);
     }
@@ -53,13 +58,13 @@ public static class CommitLists
                 List<CommitRow> rows =
                 [
                     new CommitRow('◉', MrgB, MergeScenes.Short(o.NewHead), new Style(Ink.Hash), mergeCommit?.Subject ?? "", MrgB, mergeCommit?.Date),
-                    .. NewRows(L.SelectedNew, L.SelectedOwn, IncB),
+                    .. NewRows(L.SelectedNew, L.SelectedOwn, SelB(L)),
                 ];
                 return new CommitPanel(new CommitGroup(CurHeader(L, $"  {L.Ahead + 1} new"), rows, L.Ahead + 1), null, []);
             }
 
             case MergeKind.FastForward:
-                return new CommitPanel(new CommitGroup(CurHeader(L, $"  {L.Ahead} new"), NewRows(L.SelectedNew, L.SelectedOwn, CurB), L.Ahead), null, []);
+                return new CommitPanel(new CommitGroup(CurHeader(L, $"  {L.Ahead} new"), NewRows(L.SelectedNew, L.SelectedOwn, CurB(L)), L.Ahead), null, []);
 
             case MergeKind.Conflict:
                 var files = o.ConflictFiles
@@ -80,38 +85,42 @@ public static class CommitLists
     {
         var now = L.Selected;
         var was = L.Detached ? "HEAD" : L.Current;
+        var nowInk = BranchInks.Selected(L);
+        var wasInk = BranchInks.Current(L);
         if (L.Kind is GraphKind.Same or GraphKind.UpToDate)
-            return new CommitPanel(new CommitGroup(NowHeader(now, "  tip"), [R(L.SelectedTipCommit, CurB)], 1), null, []);
+            return new CommitPanel(new CommitGroup(NowHeader(now, nowInk, "  tip"), [R(L.SelectedTipCommit, SelB(L))], 1), null, []);
 
-        var left = new CommitGroup(NowHeader(now, $"  {L.Ahead} new"), NewRows(L.SelectedNew, L.SelectedOwn, CurB), L.Ahead);
+        var left = new CommitGroup(NowHeader(now, nowInk, $"  {L.Ahead} new"), NewRows(L.SelectedNew, L.SelectedOwn, SelB(L)), L.Ahead);
         var right = L.Behind == 0
-            ? new CommitGroup(WasHeader(was, "  tip"), [R(L.CurrentTipCommit, IncB)], 1)
-            : new CommitGroup(WasHeader(was, $"  {L.Behind} new"), NewRows(L.CurrentNew, L.CurrentOwn, IncB), L.Behind);
+            ? new CommitGroup(WasHeader(was, wasInk, "  tip"), [R(L.CurrentTipCommit, CurB(L))], 1)
+            : new CommitGroup(WasHeader(was, wasInk, $"  {L.Behind} new"), NewRows(L.CurrentNew, L.CurrentOwn, CurB(L)), L.Behind);
         return new CommitPanel(left, right, []);
     }
 
-    private static IReadOnlyList<Seg> NowHeader(string name, string tail) =>
-        [new Seg(name, CurB), new Seg(" (current)", Dim), new Seg(tail, Dim)];
+    // The header of the branch that is now current, in its own lane colour, with "(current)" after its name.
+    private static IReadOnlyList<Seg> NowHeader(string name, Ink ink, string tail) =>
+        [new Seg(name, new Style(ink, true)), new Seg(" (current)", Dim), new Seg(tail, Dim)];
 
-    private static IReadOnlyList<Seg> WasHeader(string name, string tail) =>
-        [new Seg(name, IncB), new Seg(tail, Dim)];
+    // The header of the branch that was current, in its own lane colour.
+    private static IReadOnlyList<Seg> WasHeader(string name, Ink ink, string tail) =>
+        [new Seg(name, new Style(ink, true)), new Seg(tail, Dim)];
 
     // The current branch's header: its name with "(current)" (or "HEAD (detached)"), then the tail (a count or "tip").
     private static IReadOnlyList<Seg> CurHeader(GraphLayout L, string tail) =>
     [
-        new Seg(L.Detached ? "HEAD" : L.Current, CurB),
+        new Seg(L.Detached ? "HEAD" : L.Current, CurB(L)),
         new Seg(L.Detached ? " (detached)" : " (current)", Dim),
         new Seg(tail, Dim),
     ];
 
     private static CommitGroup TipGroup(GraphLayout L) =>
-        new(CurHeader(L, "  tip"), [R(L.CurrentTipCommit, CurB)], 1);
+        new(CurHeader(L, "  tip"), [R(L.CurrentTipCommit, CurB(L))], 1);
 
     // main's side of a comparison: the commits it has and the branch lacks (Behind), or its tip when there are none.
     private static CommitGroup MainGroup(GraphLayout L) =>
         L.Behind == 0
             ? TipGroup(L)
-            : new CommitGroup(CurHeader(L, $"  {L.Behind} new"), NewRows(L.CurrentNew, L.CurrentOwn, CurB), L.Behind);
+            : new CommitGroup(CurHeader(L, $"  {L.Behind} new"), NewRows(L.CurrentNew, L.CurrentOwn, CurB(L)), L.Behind);
 
     // The stored lists run oldest first; the commit list shows the newest first.
     private static List<CommitRow> OwnRows(IEnumerable<CommitInfo> oldestFirst, Style ink) =>

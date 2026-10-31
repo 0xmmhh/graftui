@@ -139,7 +139,10 @@ internal sealed partial class BranchesTab
         var art = _app.Art;
         art.Title = rename ? "Rename" : "New branch";
         if (rename)
-            art.Direction = cols => DirectionLine.Rename(old, null, cols);
+        {
+            var oldInk = _app.InkOf(old);
+            art.Direction = cols => DirectionLine.Rename(old, oldInk, null, cols);
+        }
         else
             art.Direction = cols => DirectionLine.NewBranch("", BranchGit.Short(tip), cols);
         art.Below = below;
@@ -178,7 +181,7 @@ internal sealed partial class BranchesTab
             return;
         }
 
-        var direction = NameDirection(rename, old, name, tip);
+        var direction = NameDirection(rename, old, _app.InkOf(old), name, tip);
         StartWork();
         Task.Run(() =>
         {
@@ -299,8 +302,8 @@ internal sealed partial class BranchesTab
         ArtPaneView.TwoLineCaption(_nameNote?.Text ?? (_nameRename ? RenameHint : NewHint), paneW, paneH, keepsBelowRows: true, compact: _app.Art.CompactArt);
 
     /// <summary>The direction line while the name is checked or refused: the typed name in the change's own line.</summary>
-    private static Func<int, IReadOnlyList<Seg>> NameDirection(bool rename, string old, string name, string tip) =>
+    private static Func<int, IReadOnlyList<Seg>> NameDirection(bool rename, string old, Ink oldInk, string name, string tip) =>
         rename
-            ? cols => DirectionLine.Rename(old, name, cols)
+            ? cols => DirectionLine.Rename(old, oldInk, name, cols)
             : cols => DirectionLine.NewBranch(name, BranchGit.Short(tip), cols);
 }

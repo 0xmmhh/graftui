@@ -19,20 +19,61 @@ public class CommitListsTests
 
     private static string HeaderText(CommitGroup g) => string.Concat(g.Header.Select(s => s.Text));
 
+    // The diverged pair with its lanes: main is lane 0 (blue), feature lane 3 (pink).
+    private static GraphLayout Stamped() => Layouts.Diverged() with { CurrentLane = 0, SelectedLane = 3 };
+
     [Fact]
     public void Switched_keeps_the_columns_and_moves_current_to_the_new_branch()
     {
         // Before the switch: feature is on the left, main (current) on the right.
-        var before = CommitLists.Idle(Layouts.Diverged());
+        var before = CommitLists.Idle(Stamped());
         Assert.Equal("feature  1 new", HeaderText(before.Left));
         Assert.Equal("main (current)  1 new", HeaderText(before.Right!));
 
-        var panel = CommitLists.Switched(Layouts.Diverged());
+        var panel = CommitLists.Switched(Stamped());
 
         Assert.Equal("feature (current)  1 new", HeaderText(panel.Left));
         Assert.Equal("main  1 new", HeaderText(panel.Right!));
-        Assert.Equal(Ink.Cur, panel.Left.Header[0].Style.Ink);
-        Assert.Equal(Ink.Inc, panel.Right!.Header[0].Style.Ink);
+        // Each header keeps its branch's colour: the "(current)" moves, the colours do not.
+        Assert.Equal(Ink.Lane3, panel.Left.Header[0].Style.Ink);
+        Assert.Equal(Ink.Lane0, panel.Right!.Header[0].Style.Ink);
+        Assert.Equal(Ink.Lane3, panel.Left.Rows[0].DotStyle.Ink);
+        Assert.Equal(Ink.Lane0, panel.Right.Rows[0].DotStyle.Ink);
+    }
+
+    [Fact]
+    public void Idle_draws_each_header_and_its_dots_in_its_branch_lane()
+    {
+        var panel = CommitLists.Idle(Stamped());
+
+        Assert.Equal(Ink.Lane3, panel.Left.Header[0].Style.Ink);
+        Assert.Equal(Ink.Lane3, panel.Left.Rows[0].DotStyle.Ink);
+        Assert.Equal(Ink.Lane0, panel.Right!.Header[0].Style.Ink);
+        Assert.Equal(Ink.Lane0, panel.Right.Rows[0].DotStyle.Ink);
+    }
+
+    [Fact]
+    public void After_a_merge_commit_the_merge_dot_is_gold_and_the_selected_branch_keeps_its_lane()
+    {
+        var outcome = new MergeOutcome(MergeKind.MergeCommit, "feature", "main", "e333333333", [], "", []);
+
+        var panel = CommitLists.After(Stamped(), outcome, null);
+
+        Assert.Equal('◉', panel.Left.Rows[0].Dot);
+        Assert.Equal(Ink.Mrg, panel.Left.Rows[0].DotStyle.Ink);
+        Assert.Equal(Ink.Lane3, panel.Left.Rows[1].DotStyle.Ink);
+        Assert.Equal(Ink.Lane0, panel.Left.Header[0].Style.Ink);
+    }
+
+    [Fact]
+    public void After_a_fast_forward_the_rows_are_in_the_current_branch_lane()
+    {
+        var outcome = new MergeOutcome(MergeKind.FastForward, "feature", "main", Layouts.Sel, [], "fast-forward", []);
+
+        var panel = CommitLists.After(Stamped(), outcome, null);
+
+        Assert.Equal(Ink.Lane0, panel.Left.Rows[0].DotStyle.Ink);
+        Assert.Equal(Ink.Lane0, panel.Left.Header[0].Style.Ink);
     }
 
     [Fact]

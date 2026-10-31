@@ -240,7 +240,8 @@ internal sealed partial class BranchesTab
     private void ShowLoading(Branch b)
     {
         _app.Art.Title = "Preview";
-        _app.Art.Direction = _ => DirectionLine.Loading(b.Name);
+        var selInk = _app.InkOf(b.Name);
+        _app.Art.Direction = _ => DirectionLine.Loading(b.Name, selInk);
         _app.Art.Scene = null;
         _app.Art.FallbackCaption = new Caption("Loading…", Muted);
         _app.Art.Panel = null;
