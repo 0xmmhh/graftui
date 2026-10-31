@@ -48,7 +48,7 @@ internal sealed partial class BranchesTab
             direction);
     }
 
-    private BranchFinish SwitchFinish(SwitchOutcome o, string name, RepoSnapshot? after, GraphLayout before)
+    private static BranchFinish SwitchFinish(SwitchOutcome o, string name, RepoSnapshot? after, GraphLayout before)
     {
         if (o.Kind == SwitchKind.Refused)
             return RefusedFinish(o.Message, o.Commands, after, name);

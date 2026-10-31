@@ -141,6 +141,6 @@ internal sealed partial class ChangesTab
                 _app.Ui(() => FailUnexpectedly(ex, verb));
                 return $"graftui: {verb.ToLowerInvariant()} failed: {ex.Message}";
             }
-        });
+        }, CancellationToken.None);
     }
 }
