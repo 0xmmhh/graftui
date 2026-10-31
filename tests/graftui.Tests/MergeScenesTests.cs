@@ -179,4 +179,143 @@ public class MergeScenesTests
 
     private static string RowText(ArtGrid grid, int y) =>
         new(Enumerable.Range(0, grid.Width).Select(x => grid[x, y].Ch).ToArray());
+
+    // ---------- branch colours ----------
+
+    private static readonly GraphLayout Lanes03 = Layouts.Diverged() with { CurrentLane = 0, SelectedLane = 3 };
+
+    // The label's name starts where the scene places it: its extra counts with it when the current label is drawn.
+    private static int CurrentNameX(ArtGeometry g, GraphLayout L) =>
+        MergeScenes.LabelTextX(g, MergeScenes.LabelSpots(g, L).CurX, MergeScenes.Runes(L.Current) + " (current)".Length);
+
+    private static int SelectedNameX(ArtGeometry g, GraphLayout L) =>
+        MergeScenes.LabelTextX(g, MergeScenes.LabelSpots(g, L).SelX, MergeScenes.Runes(L.Selected));
+
+    // Every drawn (non-blank) cell of one row has this ink.
+    private static void AssertRowIs(ArtGrid grid, int y, Ink ink)
+    {
+        for (var x = 0; x < grid.Width; x++)
+        {
+            var cell = grid[x, y];
+            if (cell.Ch != ' ')
+                Assert.True(cell.Style.Ink == ink, $"({x},{y}) '{cell.Ch}' is {cell.Style.Ink}, expected {ink}");
+        }
+    }
+
+    [Fact]
+    public void Diverged_preview_draws_each_line_and_its_label_in_the_branch_lane()
+    {
+        var grid = MergeScenes.Preview(Geo9, Lanes03).Grid;
+        var s = MergeScenes.LabelSpots(Geo9, Lanes03);
+
+        // Current: the shared history, its row, its marker and its label's name.
+        AssertRowIs(grid, Geo9.A, Ink.Lane0);
+        Assert.Equal(Ink.Lane0, grid[s.CurX, s.CurRow - 1].Style.Ink);
+        Assert.Equal(Ink.Lane0, grid[CurrentNameX(Geo9, Lanes03), s.CurRow - 2].Style.Ink);
+
+        // Selected: its row, the join, its marker and its label's name.
+        AssertRowIs(grid, Geo9.B, Ink.Lane3);
+        Assert.Equal(Ink.Lane3, grid[Geo9.XB, Geo9.A + 1].Style.Ink);
+        Assert.Equal(Ink.Lane3, grid[s.SelX, s.SelRow + 1].Style.Ink);
+        Assert.Equal(Ink.Lane3, grid[SelectedNameX(Geo9, Lanes03), s.SelRow + 2].Style.Ink);
+    }
+
+    [Fact]
+    public void Fast_forward_preview_draws_the_selected_tip_in_its_lane_and_the_current_label_in_the_current_lane()
+    {
+        var L = Layouts.FastForward() with { CurrentLane = 0, SelectedLane = 3 };
+        var grid = MergeScenes.Preview(Geo9, L).Grid;
+        var s = MergeScenes.LabelSpots(Geo9, L);
+
+        Assert.Equal(Ink.Lane3, grid[s.SelX, Geo9.A].Style.Ink);
+        Assert.Equal(Ink.Lane0, grid[Geo9.XB, Geo9.A].Style.Ink);
+        Assert.Equal(Ink.Lane0, grid[s.CurX, s.CurRow - 1].Style.Ink);
+        Assert.Equal(Ink.Lane0, grid[CurrentNameX(Geo9, L), s.CurRow - 2].Style.Ink);
+        Assert.Equal(Ink.Lane3, grid[SelectedNameX(Geo9, L), s.SelRow + 2].Style.Ink);
+    }
+
+    [Fact]
+    public void Up_to_date_preview_draws_the_current_tip_in_its_lane()
+    {
+        var L = Layouts.UpToDate() with { CurrentLane = 0, SelectedLane = 3 };
+        var grid = MergeScenes.Preview(Geo9, L).Grid;
+        var s = MergeScenes.LabelSpots(Geo9, L);
+
+        Assert.Equal(Ink.Lane0, grid[s.CurX, Geo9.A].Style.Ink);
+        Assert.Equal(Ink.Lane0, grid[CurrentNameX(Geo9, L), s.CurRow - 2].Style.Ink);
+    }
+
+    [Fact]
+    public void A_branch_keeps_its_lane_when_it_becomes_the_current_branch()
+    {
+        // Before: main is current (lane 0), feature is selected (lane 3). After: feature is current, main is selected.
+        var before = Lanes03;
+        var after = new GraphLayout("feature", false, "main", Layouts.Sel, Layouts.Cur, Layouts.Shared,
+            [Layouts.C(Layouts.Sel)], false, [Layouts.C(Layouts.Cur)], false, [Layouts.C(Layouts.Shared)], false,
+            Layouts.C(Layouts.Sel), Layouts.C(Layouts.Cur), 1, 1, GraphKind.Diverged) with { CurrentLane = 3, SelectedLane = 0 };
+
+        var beforeGrid = MergeScenes.Preview(Geo9, before).Grid;
+        var afterGrid = MergeScenes.Preview(Geo9, after).Grid;
+
+        // feature's own line is on row B before, and on row A after: the same ink either way.
+        Assert.Equal(Ink.Lane3, beforeGrid[Geo9.TipX(1), Geo9.B].Style.Ink);
+        Assert.Equal(Ink.Lane3, afterGrid[Geo9.TipX(1), Geo9.A].Style.Ink);
+        // main's line keeps lane 0.
+        Assert.Equal(Ink.Lane0, beforeGrid[Geo9.TipX(1), Geo9.A].Style.Ink);
+        Assert.Equal(Ink.Lane0, afterGrid[Geo9.TipX(1), Geo9.B].Style.Ink);
+    }
+
+    [Fact]
+    public void An_unstamped_layout_draws_the_branch_parts_in_the_plain_foreground()
+    {
+        var grid = MergeScenes.Preview(Geo9, Layouts.Diverged()).Grid;
+
+        Assert.Equal(Ink.Fg, grid[Geo9.TipX(1), Geo9.A].Style.Ink);
+        Assert.Equal(Ink.Fg, grid[Geo9.TipX(1), Geo9.B].Style.Ink);
+    }
+
+    [Fact]
+    public void A_detached_head_label_is_in_the_foreground_while_the_selected_branch_keeps_its_lane()
+    {
+        var L = Layouts.Diverged() with { Current = "", Detached = true, CurrentLane = BranchLanes.None, SelectedLane = 3 };
+        var grid = MergeScenes.Preview(Geo9, L).Grid;
+        var s = MergeScenes.LabelSpots(Geo9, L);
+
+        Assert.Equal(Ink.Fg, grid[s.CurX, s.CurRow - 1].Style.Ink);
+        Assert.Equal(Ink.Lane3, grid[SelectedNameX(Geo9, L), s.SelRow + 2].Style.Ink);
+    }
+
+    [Fact]
+    public void The_fast_forward_sweep_turns_each_commit_from_the_selected_lane_to_the_current_lane()
+    {
+        var L = Layouts.FastForward() with { CurrentLane = 0, SelectedLane = 3 };
+        var outcome = new MergeOutcome(MergeKind.FastForward, "feature", "main", Layouts.Sel, [], "fast-forward", []);
+        var tip = Geo9.TipX(1);
+
+        // Before the tip has moved, the commit is still the selected branch's.
+        var start = MergeScenes.FastForward(Geo9, L, 0, 0, outcome, false).Grid;
+        Assert.Equal(Ink.Lane3, start[tip, Geo9.A].Style.Ink);
+
+        // Once the sweep has reached it, it is the current branch's.
+        var end = MergeScenes.FastForward(Geo9, L, MergeAnimation.FfGrow + MergeAnimation.FfFlash + 10, 0, outcome, false).Grid;
+        Assert.Equal(Ink.Lane0, end[tip, Geo9.A].Style.Ink);
+    }
+
+    [Fact]
+    public void A_merge_commit_keeps_its_gold_and_moves_the_current_label_onto_it_in_the_current_lane()
+    {
+        var outcome = new MergeOutcome(MergeKind.MergeCommit, "feature", "main", "e333333333", [], "merge commit created", []);
+        var te = MergeAnimation.MergeGrow + MergeAnimation.MergeFlash + 10;
+
+        var frame = MergeScenes.Merge(Geo, Lanes03, te, 0, outcome, false);
+        var join = frame.Grid[JoinX, JoinY];
+        var labelX = MergeScenes.LabelTextX(Geo, JoinX, MergeScenes.Runes(Lanes03.Current) + " (current)".Length);
+
+        Assert.Equal('◉', join.Ch);
+        Assert.Equal(Ink.Mrg, join.Style.Ink);
+        Assert.Equal(Ink.Lane0, frame.Grid[labelX, JoinY - 2].Style.Ink);
+        Assert.Equal(Ink.Lane3, frame.Grid[JoinX, Geo.B].Style.Ink);
+        Assert.Equal(Ink.Lane0, frame.Grid[JoinX - 1, Geo.A].Style.Ink);
+    }
 }
+

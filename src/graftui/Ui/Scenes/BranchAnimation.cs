@@ -21,13 +21,12 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
     private const long RenameHold = 700, RenameTotal = 900;
     private const long DeleteHold = 300, DeleteTotal = 1000;
 
-    // Delete: the grey ghosts of the commits no other branch holds appear at 450 ms; the name is bright until 300, Inc until 600, Dim until 900.
+    // Delete: the grey ghosts of the commits no other branch holds appear at 450 ms; the name is bold until 300, plain until 600, Dim until 900.
     private const long GhostAt = 450, NameBright = 300, NameInc = 600, NameDim = 900;
 
-    private static readonly Style Fg = new(Ink.Fg), Warn = new(Ink.Warn), FgB = new(Ink.Fg, true);
+    private static readonly Style Fg = new(Ink.Fg), Warn = new(Ink.Warn);
     private static readonly Style Dim = new(Ink.Dim), Faint = new(Ink.Frame);
-    private static readonly Style Cur = new(Ink.Cur), CurB = new(Ink.Cur, true);
-    private static readonly Style Inc = new(Ink.Inc), IncB = new(Ink.Inc, true);
+    private static readonly Style IncB = new(Ink.Inc, true);
     private static readonly Style OkB = new(Ink.Ok, true);
 
     private long _offset;
@@ -118,7 +117,8 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
 
     // The "(current)" marker moves from the old label to the new one as two fades. The graph and the label places are the preview's:
     // only the two labels' marker, name and " (current)" are written over it, so nothing else on the grid changes in any frame.
-    // Fades are stepped through the palette's own styles (no colour mixing): three steps per fade, the last one the resting style.
+    // Each label keeps its branch's colour in every frame; only its " (current)" fades (three steps per fade, the last one the resting
+    // style, all from the palette: no colour mixing).
     private ArtGrid SwitchScene(ArtGeometry g, long te)
     {
         var grid = MergeScenes.Preview(g, before, new PreviewOptions(NoCurrentExtra: true, NoCurName: true, NoSelName: true)).Grid;
@@ -127,16 +127,18 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
         var oldT = Math.Clamp(te, 0, SwitchFade);
         var newT = Math.Clamp(te - SwitchFade, 0, SwitchFade);
 
-        // The old label: " (current)" fades out, and the name and marker go from the current style to the normal one. Its name is placed
-        // with the extra from the start, as the preview places a current label.
+        // The old label keeps the current branch's colour; " (current)" fades out. Its name is placed with the extra from the start,
+        // as the preview places a current label.
+        var oldInk = BranchInks.Current(before);
         var oldExtra = before.Detached ? " (detached)" : " (current)";
         LabelAt(grid, g, s.CurX, s.CurRow, up: true, CurrentText(before), oldExtra, reserveExtra: true,
-            Step(oldT, Cur, Fg, Inc), Step(oldT, CurB, FgB, IncB), Step<Style?>(oldT, Dim, Faint, null));
+            new Style(oldInk), new Style(oldInk, true), Step<Style?>(oldT, Dim, Faint, null));
 
-        // The new label: the name and marker go from the normal style to the current one, and " (current)" fades in. Its name keeps the
-        // place the preview gives a plain label until the fade-in starts, so a switch that fails (or waits on git) never moves it.
+        // The new label keeps the selected branch's colour; " (current)" fades in. Its name keeps the place the preview gives a plain
+        // label until the fade-in starts, so a switch that fails (or waits on git) never moves it.
+        var newInk = BranchInks.Selected(before);
         LabelAt(grid, g, s.SelX, s.SelRow, up: false, name, " (current)", reserveExtra: newT > 0,
-            Step(newT, Inc, Fg, Cur), Step(newT, IncB, FgB, CurB), Step<Style?>(newT, null, Faint, Dim));
+            new Style(newInk), new Style(newInk, true), Step<Style?>(newT, null, Faint, Dim));
         return grid;
     }
 
@@ -180,13 +182,13 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
         return last;
     }
 
-    /// <summary>The colour of the new name as it is typed out: bright, then increasing, then dim, then none.</summary>
-    private static Style? NameStyleAt(long te)
+    /// <summary>The colour of a name as it fades out: bold in its branch's colour, then plain in it, then dim, then none.</summary>
+    private static Style? NameStyleAt(long te, Ink ink)
     {
         if (te < NameBright)
-            return IncB;
+            return new Style(ink, true);
         if (te < NameInc)
-            return Inc;
+            return new Style(ink);
         if (te < NameDim)
             return Dim;
         return null;
@@ -244,7 +246,7 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
         var shown = MergeScenes.Runes(name) > g.Width ? TextFit.Fit(name, g.Width) : name;
         var len = MergeScenes.Runes(shown);
         var tx = MergeScenes.LabelTextX(g, s.SelX, len);
-        var style = NameStyleAt(te);
+        var style = NameStyleAt(te, BranchInks.Selected(before));
         if (style is { } st)
         {
             grid.Put(s.SelX, s.SelRow + 1, '▴', st);
