@@ -15,6 +15,8 @@ namespace graftui.Operations;
 public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardRequest, DiscardCheck, DiscardOutcome>
 {
     private const string StashRef = "refs/stash";
+    // Where a copy of the changes is shown to the user: the top stash entry. Display text, not a git argument.
+    private const string CopyRef = "stash@{0}";
     private const string DetachedName = "(no branch)";
     private static readonly string[] StatusArgs = ["status", "--porcelain=v2", "-z", "--untracked-files=all"];
 
@@ -148,7 +150,7 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
             if (RevParse(log, StashRef) == w)
                 Call(log, GitArgs.Stash, "drop", "-q", GitArgs.StashTop);
             var kept = RevParse(log, StashRef) == w ? "; a copy is in stash@{0}" : "";
-            return Done(DiscardKind.Failed, path, kept.Length > 0 ? GitArgs.StashTop : null,
+            return Done(DiscardKind.Failed, path, kept.Length > 0 ? CopyRef : null,
                 $"{path} changed while it was being saved; nothing was discarded{kept}", null, log);
         }
 
@@ -157,13 +159,13 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
             ? CallLiteral(log, "clean", "-f", "-q", "--", path)
             : CallLiteral(log, "restore", "-q", "--worktree", "--", path);
         if (!put.Success)
-            return Done(DiscardKind.Failed, path, GitArgs.StashTop,
+            return Done(DiscardKind.Failed, path, CopyRef,
                 $"{GitClient.Describe(put)}; nothing was discarded; a copy is in stash@{{0}}", null, log);
 
         // 8. Verify: the row is gone, the index is as it was, and the copy is the top entry.
         var problem = Verify(log, path, indexTree, indexBefore, w, out var after);
         if (problem is not null)
-            return Done(DiscardKind.Failed, path, GitArgs.StashTop, $"{problem}; a copy of your changes is in stash@{{0}}", after, log);
+            return Done(DiscardKind.Failed, path, CopyRef, $"{problem}; a copy of your changes is in stash@{{0}}", after, log);
 
         // 9. The undo step, saved only now. If it cannot be saved the discard still stands, with a note.
         var undo = new UndoRecord(UndoKind.Discard, "discard of " + path, [], Branch: branch, Head: head,
@@ -171,8 +173,8 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         var undoProblem = new UndoLog(git).Push(undo, log);
         var saved = $"discarded {path}: saved as stash \"graftui: discarded {path}\"";
         return undoProblem is null
-            ? Done(DiscardKind.Discarded, path, GitArgs.StashTop, saved, after, log, undo)
-            : Done(DiscardKind.Discarded, path, GitArgs.StashTop,
+            ? Done(DiscardKind.Discarded, path, CopyRef, saved, after, log, undo)
+            : Done(DiscardKind.Discarded, path, CopyRef,
                 $"{saved}; could not save the undo step ({undoProblem}): u can't bring it back automatically; it is in stash@{{0}}", after, log);
     }
 

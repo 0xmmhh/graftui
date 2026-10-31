@@ -389,7 +389,7 @@ internal sealed partial class ChangesTab
         if (o.Kind == CommitKind.Failed)
         {
             var verb = request.Amend ? AmendTitle : CommitTitle;
-            return new AreasResult(false, before, new Caption($"✕ {verb} failed: {o.Message}", BadB), "Failed", o.Message);
+            return new AreasResult(false, before, new Caption($"✕ {verb} failed: {o.Message}", BadB), FailedTitle, o.Message);
         }
 
         // The new areas come from a fresh read; if that fails, the staged rows are shown as gone, which is what a commit does.

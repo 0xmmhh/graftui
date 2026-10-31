@@ -171,7 +171,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         // 6b. The merge did not move the branch. If it left the tree as it was, the pop puts the changes back, with their index.
         var headNow = RevParse(log, "HEAD");
         var statusNow = Call(log, StatusArgs);
-        var mergeHeadAbsent = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "MERGE_HEAD").ExitCode == 1;
+        var mergeHeadAbsent = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead).ExitCode == 1;
         var clean = statusNow.Success && StatusParser.Parse(statusNow.StdOut).Rows.Count == 0;
         if (headNow != head || !clean || !mergeHeadAbsent)
             return Done(StashMergeKind.Failed, merge, [], Keep($"{merged.Message}; your changes are in stash@{{0}}"), log);
@@ -207,7 +207,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         }
         if (stashNow != top)
             return Done(StashMergeKind.Failed, merge, [], Keep("the stash entry moved, so it was left alone; your changes are in the stash"), log);
-        var drop = Call(log, GitArgs.Stash, "drop", "-q", "stash@{0}");
+        var drop = Call(log, GitArgs.Stash, "drop", "-q", GitArgs.StashTop);
         if (!drop.Success)
             return Done(StashMergeKind.Failed, merge, [],
                 Keep($"the state is back, but the stash entry could not be dropped ({GitClient.Describe(drop)})"), log);

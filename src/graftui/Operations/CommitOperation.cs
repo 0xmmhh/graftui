@@ -82,7 +82,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
         try
         {
             // 1. HEAD must still be where the check saw it. Nothing has been written yet.
-            var head = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+            var head = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
             var current = head.Success ? head.StdOut.Trim() : null;
             if (current != check.OldHead)
                 return Done(CommitKind.Failed, null, null, ChangeRefusals.HeadMoved);
@@ -182,7 +182,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             return Refused(ChangeRefusals.Detached, log);
 
         // 2. HEAD: null on an unborn branch.
-        var headResult = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+        var headResult = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         if (!headResult.Success && headResult.ExitCode != 1)
             return Refused(GitClient.Describe(headResult), log, branch);
         var oldHead = headResult.Success ? headResult.StdOut.Trim() : null;
@@ -190,7 +190,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             return Refused(ChangeRefusals.NoCommitToAmend, log, branch);
 
         // 3. The git dir, relative to the repo root when git prints it that way.
-        var gitDirResult = Call(log, "rev-parse", "--git-dir");
+        var gitDirResult = Call(log, GitArgs.RevParse, "--git-dir");
         if (!gitDirResult.Success)
             return Refused(GitClient.Describe(gitDirResult), log, branch);
         var gitDirOut = gitDirResult.StdOut.Trim();
@@ -270,7 +270,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
     {
         var newCommit = git.GetCommit(newHead);
         var undo = new UndoRecord(amend ? UndoKind.Amend : UndoKind.Commit, amend ? "amend" : "commit",
-            [new RefChange("refs/heads/" + branch, check.OldHead ?? "", newHead)], Branch: branch, Head: newHead);
+            [new RefChange(BranchGit.HeadsPrefix + branch, check.OldHead ?? "", newHead)], Branch: branch, Head: newHead);
         var problem = new UndoLog(git).Push(undo, log);
         return problem is null
             ? new CommitOutcome(kind, branch, check.OldHead, newHead, newCommit, message, log, undo)

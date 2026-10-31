@@ -104,7 +104,7 @@ public sealed class RepoReader(GitClient git)
         var line = new HeadLine(branch, head, recent, newestFirst.Count > HeadCount);
 
         ct.ThrowIfCancellationRequested();
-        var stashes = git.Run("stash", "list", "--format=%H%x1f%gs");
+        var stashes = git.Run(GitArgs.Stash, "list", "--format=%H%x1f%gs");
         if (!stashes.Success)
             throw new InvalidOperationException(GitClient.Describe(stashes));
 

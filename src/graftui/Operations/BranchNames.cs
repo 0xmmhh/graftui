@@ -22,7 +22,7 @@ internal static class BranchNames
         if (!format.Success || format.StdOut.Trim() != name)
             return BranchRefusals.InvalidName;
 
-        var taken = git.Run("rev-parse", "-q", "--verify", "refs/heads/" + name);
+        var taken = git.Run(GitArgs.RevParse, "-q", GitArgs.Verify, BranchGit.HeadsPrefix + name);
         log.Add(taken);
         if (taken.Success)
             return name == allowExisting ? null : BranchRefusals.Exists(name);

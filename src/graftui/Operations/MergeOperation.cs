@@ -83,7 +83,7 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
         var oldHead = "";
         var mergeRan = false;
         UndoRecord Moved(string head) =>
-            new(UndoKind.Merge, $"merge of {branch}", [new RefChange("refs/heads/" + into, oldHead, head)], Branch: into, Head: head);
+            new(UndoKind.Merge, $"merge of {branch}", [new RefChange(BranchGit.HeadsPrefix + into, oldHead, head)], Branch: into, Head: head);
         try
         {
             var headResult = Run(GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
@@ -91,7 +91,7 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
             if (oldHead.Length == 0)
                 return Done(MergeKind.Failed, null, NoFiles, "HEAD has no commits yet");
 
-            var tipResult = Run(GitArgs.RevParse, GitArgs.Verify, "refs/heads/" + branch + "^{commit}");
+            var tipResult = Run(GitArgs.RevParse, GitArgs.Verify, BranchGit.HeadsPrefix + branch + "^{commit}");
             var branchTip = tipResult.StdOut.Trim();
             if (!tipResult.Success || branchTip.Length == 0)
                 return Done(MergeKind.Failed, null, NoFiles, $"could not resolve branch {branch}");

@@ -98,7 +98,7 @@ public sealed class SwitchOperation(GitClient git) : IGitOperation<SwitchRequest
             return Done(SwitchKind.Failed, check, BranchRefusals.TipMoved(target), [], log);
 
         // 2. The switch. --no-guess: a name that is not a branch is an error, never a new branch from a remote.
-        var sw = Call(git, log, "switch", "--no-guess", target);
+        var sw = Call(git, log, GitArgs.Switch, "--no-guess", target);
         if (sw.Success)
         {
             if (SymbolicHead(git, log) != HeadsPrefix + target || RefOrEmpty(git, log, "HEAD") != check.TargetTip)

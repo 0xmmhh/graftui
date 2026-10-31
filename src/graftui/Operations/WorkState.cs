@@ -33,7 +33,7 @@ internal sealed class WorkState(GitClient git, string gitDir)
                 return null;
 
             // Copying the real index keeps its stat data, so only files that changed are hashed again.
-            var indexPath = Call(log, "rev-parse", "--git-path", "index");
+            var indexPath = Call(log, GitArgs.RevParse, "--git-path", "index");
             if (!indexPath.Success)
                 return null;
             var realIndex = Path.Combine(git.RepoPath, indexPath.StdOut.Trim());
@@ -93,17 +93,17 @@ internal sealed class WorkState(GitClient git, string gitDir)
     /// <summary>Stores a snapshot as a commit and returns its hash, or null when git fails.</summary>
     public string? Save(WorkSnapshot s, string head, List<GitResult> log)
     {
-        var indexCommit = Hash(Call(log, "commit-tree", "--no-gpg-sign", s.IndexTree, "-p", head, "-m", "graftui: index"));
+        var indexCommit = Hash(Call(log, GitArgs.CommitTree, GitArgs.NoGpgSign, s.IndexTree, "-p", head, "-m", "graftui: index"));
         if (indexCommit is null)
             return null;
-        return Hash(Call(log, "commit-tree", "--no-gpg-sign", s.AllTree, "-p", head, "-p", indexCommit, "-m", "graftui: working tree"));
+        return Hash(Call(log, GitArgs.CommitTree, GitArgs.NoGpgSign, s.AllTree, "-p", head, "-p", indexCommit, "-m", "graftui: working tree"));
     }
 
     /// <summary>The snapshot stored by <see cref="Save"/>, or null when the commit lacks the expected trees.</summary>
     public WorkSnapshot? Load(string commit, List<GitResult> log)
     {
-        var allTree = Hash(Call(log, "rev-parse", "-q", "--verify", commit + "^{tree}"));
-        var indexTree = Hash(Call(log, "rev-parse", "-q", "--verify", commit + "^2^{tree}"));
+        var allTree = Hash(Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, commit + "^{tree}"));
+        var indexTree = Hash(Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, commit + "^2^{tree}"));
         return allTree is null || indexTree is null ? null : new WorkSnapshot(indexTree, allTree);
     }
 
@@ -128,7 +128,7 @@ internal sealed class WorkState(GitClient git, string gitDir)
             if (diff.StdOut.Length > 0)
             {
                 File.WriteAllBytes(_pathsFile, new UTF8Encoding(false).GetBytes(diff.StdOut));
-                var restore = CallLiteral(log, "restore", "-q", "--source=" + targetCommit, "--worktree",
+                var restore = CallLiteral(log, "restore", "-q", GitArgs.SourcePrefix + targetCommit, "--worktree",
                     "--pathspec-from-file=" + RepoState.ArgPath(git, _pathsFile), "--pathspec-file-nul");
                 if (!restore.Success)
                     return Problem("could not restore the files", restore);

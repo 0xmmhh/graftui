@@ -43,15 +43,6 @@ internal sealed partial class ChangesTab
         }
     }
 
-    /// <summary>The result of a stage or an unstage that worked: the caption says what moved and where it is now.</summary>
-    private static AreasResult MovedResult(bool staging, string moved, AreasModel after)
-    {
-        var text = staging
-            ? $"✔ Staged {moved}: it goes into the next commit"
-            : $"✔ Unstaged {moved}: the edit is still in your working tree";
-        return new AreasResult(true, after, new Caption(text, OkB), staging ? "Staged" : "Unstaged");
-    }
-
     private void StageAll() =>
         StartStage(new StageRequest(StageAction.StageAll, null), "Stage", all: true, _ => 0);
 
@@ -87,6 +78,15 @@ internal sealed partial class ChangesTab
         if (staged > 0)
             return Math.Clamp(position, 0, staged - 1);
         return Math.Max(0, IndexOfRow(rows, ChangeSide.Unstaged, path));
+    }
+
+    /// <summary>The result of a stage or an unstage that worked: the caption says what moved and where it is now.</summary>
+    private static AreasResult MovedResult(bool staging, string moved, AreasModel after)
+    {
+        var text = staging
+            ? $"✔ Staged {moved}: it goes into the next commit"
+            : $"✔ Unstaged {moved}: the edit is still in your working tree";
+        return new AreasResult(true, after, new Caption(text, OkB), staging ? "Staged" : "Unstaged");
     }
 
     /// <summary>
@@ -133,7 +133,7 @@ internal sealed partial class ChangesTab
                 var after = o.Success && o.After is { } s ? new AreasModel(s.Unstaged, s.Staged, snap.Head, snap.Stash) : before;
                 var result = o.Success
                     ? MovedResult(staging, moved, after)
-                    : new AreasResult(false, before, new Caption($"✕ {verb} failed: {o.Message}", BadB), "Failed", o.Message);
+                    : new AreasResult(false, before, new Caption($"✕ {verb} failed: {o.Message}", BadB), FailedTitle, o.Message);
                 var failureLog = o.Success ? null : $"{verb} failed: {o.Message}";
                 _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,
                     () => AfterChange(o.Success, chooseAfter, anim, direction)));

@@ -17,7 +17,6 @@ internal sealed partial class ChangesTab
     // The stash words of a direction line: the verb of the operation, and the place the change goes to or from.
     private const string StashVerb = "stash";
     private const string StashPlace = "stash";
-    private const string FailedTitle = "Failed";
 
     /// <summary>What a change shows when it starts: its animation and its direction line.</summary>
     private sealed record ChangeStart(IAreasAnimation Anim, Func<int, IReadOnlyList<Seg>> Direction);

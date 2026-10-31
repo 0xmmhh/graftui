@@ -15,6 +15,8 @@ namespace graftui.Operations;
 public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, StashCheck, StashOutcome>
 {
     private const string StashRef = "refs/stash";
+    // The name the undo step shows on screen. A label, not a git argument.
+    private const string StashStepLabel = "stash";
     private static readonly string[] StatusArgs = ["status", "--porcelain=v2", "-z", "--untracked-files=all"];
 
     public StashCheck Check(StashRequest request)
@@ -121,7 +123,7 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
 
         // 4. The undo step, saved only now. The stash stands even when its step cannot be saved.
         var label = StashLabel(log);
-        var undo = new UndoRecord(UndoKind.Stash, GitArgs.Stash, [], Head: check.Head, StashCommit: top, StashBelow: below);
+        var undo = new UndoRecord(UndoKind.Stash, StashStepLabel, [], Head: check.Head, StashCommit: top, StashBelow: below);
         var undoProblem = new UndoLog(git).Push(undo, log);
         var count = before.ChangedPaths;
         var stashed = $"stashed {count} {(count == 1 ? "file" : "files")} as stash@{{0}}";

@@ -24,7 +24,7 @@ internal static class BranchGit
     /// <summary>The hash of a name, "" when the name does not exist (exit 1). Throws when git fails.</summary>
     public static string RefOrEmpty(GitClient git, List<GitResult> log, string name)
     {
-        var r = Call(git, log, "rev-parse", "-q", "--verify", name);
+        var r = Call(git, log, GitArgs.RevParse, "-q", GitArgs.Verify, name);
         if (r.Success)
             return r.StdOut.Trim();
         if (r.ExitCode == 1)

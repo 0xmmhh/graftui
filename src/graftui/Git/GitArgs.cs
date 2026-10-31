@@ -17,5 +17,6 @@ internal static class GitArgs
     public const string Config = "config";
     public const string Switch = "switch";
     public const string Quiet = "--quiet";
+    /// <summary>The start of <c>restore</c>'s <c>--source=&lt;commit&gt;</c> option. The commit is appended to it, as one argument.</summary>
     public const string SourcePrefix = "--source=";
 }

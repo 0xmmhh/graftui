@@ -106,7 +106,7 @@ public sealed class GitClient(string repoPath)
     /// <summary>True if RepoPath is inside a git work tree.</summary>
     public bool IsRepository()
     {
-        var result = Run("rev-parse", "--is-inside-work-tree");
+        var result = Run(GitArgs.RevParse, "--is-inside-work-tree");
         return result.Success && result.StdOut.Trim() == "true";
     }
 
@@ -121,7 +121,7 @@ public sealed class GitClient(string repoPath)
     /// <summary>Full hash of HEAD, or null when there are no commits yet.</summary>
     public string? GetHeadHash()
     {
-        var result = Run("rev-parse", "-q", "--verify", "HEAD");
+        var result = Run(GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         var hash = result.StdOut.Trim();
         return result.Success && hash.Length > 0 ? hash : null;
     }
@@ -228,7 +228,7 @@ public sealed class GitClient(string repoPath)
     /// <summary>Absolute path of the top-level folder of the work tree, or null when there is none.</summary>
     public string? GetTopLevel()
     {
-        var result = Run("rev-parse", "--show-toplevel");
+        var result = Run(GitArgs.RevParse, "--show-toplevel");
         var top = result.StdOut.Trim();
         return result.Success && top.Length > 0 ? top : null;
     }

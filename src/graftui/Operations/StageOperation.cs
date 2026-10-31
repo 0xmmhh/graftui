@@ -21,7 +21,7 @@ public sealed class StageOperation(GitClient git) : IGitOperation<StageRequest, 
         var log = new List<GitResult>();
         try
         {
-            var head = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+            var head = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
             // Exit 1 is quiet and means an unborn branch; anything else is a real failure.
             if (!head.Success && head.ExitCode != 1)
                 return new StageCheck(GitClient.Describe(head), false, [], log, []);

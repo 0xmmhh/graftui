@@ -77,7 +77,7 @@ public sealed class CreateBranchOperation(GitClient git) : IGitOperation<CreateB
             return Failed(name, check.Tip, "HEAD moved since the check; nothing was created", log);
 
         // 2. Create and switch. git refuses before it writes the ref, so a failure leaves no branch behind.
-        var sw = Call(git, log, "switch", "-c", name);
+        var sw = Call(git, log, GitArgs.Switch, "-c", name);
         if (!sw.Success)
         {
             var exists = RefOrEmpty(git, log, HeadsPrefix + name).Length > 0;

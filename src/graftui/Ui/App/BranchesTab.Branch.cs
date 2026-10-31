@@ -14,6 +14,7 @@ namespace graftui.Ui.App;
 internal sealed partial class BranchesTab
 {
     private const string DeleteCancelled = "Delete cancelled: nothing changed";
+    // Two names for one word: the question box's title and the operation's verb are separate roles, so each can change alone.
     private const string DeleteTitle = "Delete";
     private const string DeleteVerb = "Delete";
 
