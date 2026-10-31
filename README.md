@@ -31,7 +31,7 @@ graftui is a thin, safety-first layer over the git CLI. It never reimplements gi
 ## What it does
 
 - **Animated merges.** Every outcome has its own animation: fast-forward, merge commit, already up to date, conflict and refused
-- **Branch overview.** Local branches with ahead/behind counts and a preview of how each one relates to the current branch
+- **Branch overview.** Local branches with ahead/behind counts and a preview of how each one relates to the current branch. Switch, create, rename and delete branches from the list, each with its own animation
 - **Nothing hidden.** A live log of the git commands that ran, each one as the command you would type. Press `v` for the exact list, with exit codes and git's output
 - **Safe by default.** Refuses to merge over uncommitted work or a detached HEAD, and aborts conflicts automatically so the repo is never left mid-merge
 - **Practice sandbox.** `graftui --sandbox` builds a throwaway repo with one branch per merge outcome
@@ -102,14 +102,30 @@ graftui --version
 | `Tab` | Switch between Branches and Changes |
 | `v` | Switch the Commands pane between the simplified commands and the exact list |
 | `↑` / `↓` | Select a branch (Branches) or a file (Changes) |
-| `m` | Merge the selected branch into the current branch (Branches) |
+| `m` | Merge the selected branch into the current branch (Branches). With uncommitted changes, asks first whether to stash them, merge and pop them back |
+| `s` | Switch to the selected branch (Branches); changes that don't collide come along |
+| `n` | New branch at the current tip, from a one-line name box (Branches) |
+| `R` | Rename the selected branch, the current one included (Branches) |
+| `D` | Delete the selected branch, after a question; an unmerged one asks twice (Branches) |
 | `Space` | Stage or unstage the selected file (Changes) |
 | `a` / `U` | Stage all / unstage all (Changes) |
 | `c` / `A` | Commit what is staged / amend the last commit (Changes) |
 | `x` | Discard the unstaged change to the selected file, after a question (Changes) |
 | `z` / `Z` | Stash everything / pop the newest stash entry (Changes) |
-| `u` | Undo the last step, on either tab |
+| `u` | Undo the last step, on either tab: commits, merges, stash and pop, discards, and branch create, rename, delete and stash-merge-pop |
 | `Esc` | Quit (if a merge, a commit or another change is running, graftui waits for it to finish first) |
+
+<details>
+<summary>The Branches tab</summary>
+
+- **Switch** (`s`) checks out the selected branch with `git switch --no-guess`. Uncommitted changes come along when git can carry them. A change that git would overwrite (the same file changed on both sides) is refused before anything moves, and the file is named. A switch is not undoable.
+- **New** (`n`) creates a branch at the current tip and switches to it (`git switch -c`). A box asks for the name: Enter creates it, Esc cancels. An invalid or existing name keeps the box open with the reason. It is refused on a detached HEAD or in a repo with no commit.
+- **Rename** (`R`) renames any branch, the current one included (`git branch -m`). The box starts with the old name. A branch's upstream follows the new name.
+- **Delete** (`D`) refuses the current branch. A branch that is already in the current branch gets one question and `git branch -d`. An unmerged one gets two questions, answered `y` and then `1`, and `git branch -D`. Its tip is recorded, so `u` brings it back at the same commit. Undoing a delete restores the branch's commit, not its config (for example its upstream).
+- **Stash, merge, pop** (`m` over uncommitted changes): "You have 3 uncommitted changes. Stash them, merge feature/x into main, then pop them back?" `y` stashes everything (untracked files included), merges, and pops the changes back with `git stash pop --index`, so staged changes stay staged. If the merge conflicts, it is aborted and your changes are put back exactly as they were. If the pop conflicts, the merge stands and your changes stay in `stash@{0}`; `Z` tries the pop again and `u` undoes the merge.
+- **Undo** (`u`) covers branch create, rename and delete and the stash-merge-pop, like the other steps.
+
+</details>
 
 <details>
 <summary>The Changes tab</summary>
@@ -121,8 +137,8 @@ graftui --version
 - **Unstaging hand-picked changes.** A staged file that also differs in the working tree (you staged one version, then edited again) has a staged version that exists only in the index. Unstaging it asks first: "<file> has hand-picked staged changes; unstage them all?" (`y` or `n`). `U` asks once for all of them. `u` restores the exact staged version.
 - **Discard** (`x`) asks first. graftui saves the unstaged change as a stash entry named `graftui: discarded <file>`, then puts the file back. A partly staged file keeps its staged part in the index, and a new file is removed. `git stash list` shows the entry, and `u` brings the change back.
 - **Stash** (`z`) takes every change, untracked files included (`git stash push -u`). A one-line box asks for a message; Enter with it empty uses git's default message.
-- **Pop** (`Z`) runs a plain `git stash pop`: the changes come back unstaged. If git cannot apply the entry, graftui puts the working tree and index back exactly as they were, keeps the stash entry, and lists the conflicting files. The repository is never left with conflict markers.
-- **Undo** (`u`) reverses the newest graftui step, one step per press, newest first: commit, amend, merge, discard, stash, pop and the hand-picked unstage. It refuses when undoing would overwrite something that changed since (the refusal names the file or branch). Undo steps are commits under `refs/graftui/undo/`, so `git log --all`, gitk and other git GUIs show them (as "graftui undo: …"). They are harmless, and only the last 50 are kept.
+- **Pop** (`Z`) runs a plain `git stash pop`: the changes come back unstaged. The exception is the stash-merge-pop's own entry, which `Z` pops with `git stash pop --index` so staged changes stay staged; if git refuses `--index` because the staged part cannot apply, the plain pop runs only when it loses nothing (for every file, the staged and working-tree versions are the same), and the caption says the staged changes came back unstaged. Otherwise `Z` refuses, names the files whose staged changes would be lost, and keeps the stash entry (`git stash show -p` shows it). If git cannot apply the entry, graftui puts the working tree and index back exactly as they were, keeps the stash entry, and lists the conflicting files. The repository is never left with conflict markers.
+- **Undo** (`u`) reverses the newest graftui step, one step per press, newest first: commit, amend, merge, discard, stash, pop, the hand-picked unstage, and the branch steps (create, rename, delete) and stash-merge-pop. It refuses when undoing would overwrite something that changed since (the refusal names the file or branch). Undo steps are commits under `refs/graftui/undo/`, so `git log --all`, gitk and other git GUIs show them (as "graftui undo: …"). They are harmless, and only the last 50 are kept.
 - **Refusals** are shown in the caption and logged: nothing staged, an empty subject, a conflicted file, a nested repository, an unfinished merge, rebase, cherry-pick or revert, a submodule, or a detached HEAD.
 
 </details>
@@ -160,7 +176,7 @@ graftui works out the outcome from the commit graph (did `HEAD` move, to which c
 
 graftui refuses, without running `git merge`, when:
 
-- the working tree has uncommitted changes (including untracked files)
+- the working tree has uncommitted changes (including untracked files). On the Branches tab, `m` asks instead whether to stash them, merge and pop them back
 - `HEAD` is detached
 - a merge is already in progress (graftui never aborts a merge it didn't start)
 - you selected the current branch
@@ -207,12 +223,11 @@ graftui refuses, without running `git merge`, when:
 
 ## Status and plans
 
-Early, and deliberately narrow: **graftui does merges, and does them safely.** It also covers everyday local work: the Changes tab stages, unstages, commits and amends, discards (always recoverable), stashes and pops, and `u` undoes the last steps one at a time. Planned next, roughly in this order (ideas, not promises):
+Early, and deliberately narrow: **graftui does merges, and does them safely.** It also covers everyday local work: the Changes tab stages, unstages, commits and amends, discards (always recoverable), stashes and pops; the Branches tab switches, creates, renames and deletes branches; and `u` undoes the last steps one at a time. Planned next, roughly in this order (ideas, not promises):
 
-1. **Branches** - switch, create, rename and delete branches, each with its own animation, and "stash, merge, pop" as one guided step
-2. **Remotes** - fetch, pull (fast-forward first) and push (never forced), with ahead/behind against `origin`
-3. **History tools** - cherry-pick, rebase, and a choice of merge types (no-ff, ff-only, squash, linear)
-4. **The smart layer** - a forecast of what each key would do, resolving conflicts inside graftui, interactive rebase, a whole-repo graph view, and plain-English explanations of each command
+1. **Remotes** - fetch, pull (fast-forward first) and push (never forced), with ahead/behind against `origin`
+2. **History tools** - cherry-pick, rebase, and a choice of merge types (no-ff, ff-only, squash, linear)
+3. **The smart layer** - a forecast of what each key would do, resolving conflicts inside graftui, interactive rebase, a whole-repo graph view, and plain-English explanations of each command
 
 ## Development
 
@@ -232,7 +247,7 @@ Develop against the sandbox, never against the graftui repository itself. Warnin
 - `src/graftui/Git/` - `GitClient` (all git CLI access), `RepoReader` (read-only queries for the screen), `Sandbox` (builds `~/.graftui/sandbox`)
 - `src/graftui/Model/` - plain records (branches, commits, layouts, merge outcomes, undo records)
 - `src/graftui/Operations/` - the shared operation shape (`IGitOperation`: check, run, verify, roll back), `MergeOperation`, `StageOperation`, `CommitOperation`, `DiscardOperation`, `StashOperation`, `PopOperation` and `UndoOperation`, with the undo history in `UndoLog` and the saved working-tree states in `WorkState`
-- `src/graftui/Ui/App/` - `AppController` (wires the views to git), `BranchesTab` (with its undo), `Animator`, `QuitGate`, `ChangesTab` (the Changes tab, in five files: browsing, commit, stage, ask and stash) and `ChangesAnimator`
+- `src/graftui/Ui/App/` - `AppController` (wires the views to git), `BranchesTab` (the list, with its branch changes, questions, name box and undo), `Animator`, `QuitGate`, `ChangesTab` (the Changes tab, in five files: browsing, commit, stage, ask and stash) and `ChangesAnimator`
 - `src/graftui/Ui/Scenes/` and `src/graftui/Ui/Text/` - pure drawing, animation and text code, unit-tested without a terminal
 - `src/graftui/Ui/Views/` - the Terminal.Gui views and `Palette`
 - `tests/graftui.Tests/` - xUnit tests, including the git safety tests (run in temp repositories)

@@ -16,7 +16,8 @@ public sealed record MergeOutcome(
     IReadOnlyList<GitResult> Commands,
     UndoRecord? Undo = null);
 
-public sealed record MergeCheck(string CurrentBranch, string? Refusal, IReadOnlyList<GitResult> Commands)
+/// <summary>Dirty: true only when the one reason to refuse is uncommitted changes (the stash-merge-pop question is offered then).</summary>
+public sealed record MergeCheck(string CurrentBranch, string? Refusal, IReadOnlyList<GitResult> Commands, bool Dirty = false)
 {
     public bool CanMerge => Refusal is null;
 }

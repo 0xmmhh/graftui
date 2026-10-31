@@ -38,6 +38,9 @@ public sealed class KeyBarView : View
     /// <summary>The label after the no key, with its leading space: " no", or " keep" for the discard question.</summary>
     public string AskNoLabel { get; set; } = " no";
 
+    /// <summary>The label after Enter in the one-line message box, with its leading space: " stash", or " create" for a new branch.</summary>
+    public string MessageEnterLabel { get; set; } = " stash";
+
     protected override bool OnDrawingContent(DrawContext? context)
     {
         Paint.ClearAll(this);
@@ -74,11 +77,7 @@ public sealed class KeyBarView : View
     {
         KeyBarMode.Changes => ChangesItems(ChangesState),
         KeyBarMode.Input => InputItems(BodyFocused),
-        KeyBarMode.Message =>
-        [
-            ("Enter", " stash", 4),
-            ("Esc", " cancel", 5),
-        ],
+        KeyBarMode.Message => MessageItems(MessageEnterLabel),
         KeyBarMode.Ask =>
         [
             (AskKey, AskYesLabel, 4),
@@ -138,19 +137,35 @@ public sealed class KeyBarView : View
             ("Esc", " cancel", 6),
         ];
 
+    /// <summary>The one-line message box's keys: Enter with the label the box names, then Esc.</summary>
+    internal static IReadOnlyList<(string Key, string Label, int Priority)> MessageItems(string enterLabel) =>
+        [
+            ("Enter", enterLabel, 4),
+            ("Esc", " cancel", 5),
+        ];
+
     /// <summary>
-    /// The Branches tab's keys that act now. Priority: Esc, Tab, m, u, ↑↓.
+    /// The Branches tab's keys that act now, in the order they are listed. Priority decides what is dropped first when the bar is
+    /// narrow (higher is kept): Esc, Tab, m, s, u, n, R, D, ↑↓.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s)
     {
-        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " changes", 4) };
+        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " changes", 8) };
         if (s.BranchCount >= 2)
             items.Add(("↑↓", " select", 1));
         if (s.CanMerge)
-            items.Add(("m", " merge", 3));
+            items.Add(("m", " merge", 7));
+        if (s.CanSwitch)
+            items.Add(("s", " switch", 6));
+        if (s.CanCreate)
+            items.Add(("n", " new", 4));
+        if (s.CanRename)
+            items.Add(("R", " rename", 3));
+        if (s.CanDelete)
+            items.Add(("D", " delete", 2));
         if (s.HasUndo)
-            items.Add(("u", " undo", 2));
-        items.Add(("Esc", " quit", 5));
+            items.Add(("u", " undo", 5));
+        items.Add(("Esc", " quit", 9));
         return items;
     }
 

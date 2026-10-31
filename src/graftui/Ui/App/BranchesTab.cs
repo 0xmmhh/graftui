@@ -5,8 +5,12 @@ using graftui.Ui.Text;
 
 namespace graftui.Ui.App;
 
+/// <summary>Which keys the Branches tab is taking: browsing the list, typing a branch name, or answering a question.</summary>
+internal enum BranchesMode { Browse, Input, Ask }
+
 /// <summary>
-/// The branch list's behaviour: selection, the preview of the selected branch, and starting a merge.
+/// The branch list's behaviour: selection, the preview of the selected branch, and starting a merge. The branch changes (switch,
+/// new, rename, delete, stash-merge-pop) are in the Branch, Run, Ask and Name partial files.
 /// </summary>
 internal sealed partial class BranchesTab
 {
@@ -30,10 +34,32 @@ internal sealed partial class BranchesTab
 
     internal int Selected => _selected;
 
+    /// <summary>The keys the tab is taking. Browse unless a question or the name box is open.</summary>
+    internal BranchesMode Mode { get; private set; } = BranchesMode.Browse;
+
     /// <summary>Name of the selected branch, or null when there are no branches.</summary>
     internal string? SelectedName() => _app.Snapshot.Branches.Count > 0 ? _app.Snapshot.Branches[_selected].Name : null;
 
     internal void ClearCache() => _cache.Clear();
+
+    /// <summary>The cached layout of a branch in the snapshot, or null. Reads the cache, so it is used on the UI thread only.</summary>
+    private GraphLayout? CachedLayout(RepoSnapshot snap, Branch b) =>
+        _cache.TryGetValue(CacheKey(snap, b), out var layout) ? layout : null;
+
+    /// <summary>Moves the selection to the named branch when it is listed (a change selects the branch it leaves selected).</summary>
+    internal void SelectName(string name)
+    {
+        for (var i = 0; i < _app.Snapshot.Branches.Count; i++)
+        {
+            if (_app.Snapshot.Branches[i].Name != name)
+                continue;
+            _selected = i;
+            break;
+        }
+        _app.BranchList.Selected = _selected;
+        _app.BranchList.SetNeedsDraw();
+        _app.SyncBranchKeys();
+    }
 
     /// <summary>Keeps the selection on the same branch name; if that branch is gone, keeps the index (clamped).</summary>
     internal void KeepSelection(string? selName, RepoSnapshot s)
@@ -53,6 +79,7 @@ internal sealed partial class BranchesTab
         if (_app.Busy || _app.Snapshot.Branches.Count == 0)
             return;
 
+        _app.ReleaseBranchWidth();
         var n = _app.Snapshot.Branches.Count;
         _selected = ((_selected + delta) % n + n) % n;
         _app.Result = null;
@@ -70,6 +97,7 @@ internal sealed partial class BranchesTab
 
         var snap = _app.Snapshot;
         var b = snap.Branches[_selected];
+        _app.ReleaseBranchWidth();
         _app.Busy = true;
         _previewCts?.Cancel();
         _app.Keys.Busy = true;
@@ -85,7 +113,14 @@ internal sealed partial class BranchesTab
                 // The layout is read first, so that Check is the last git work before the merge.
                 var loaded = cached ?? _app.TryLoadLayout(snap, b);
                 var o = RunGated(_app.MergeOp, new MergeRequest(b.Name), () => _app.Gate.IsQuitting,
-                    check => _app.Ui(() => _app.Animator.ShowRefused(check, b.Name, loaded)),
+                    check =>
+                    {
+                        // Uncommitted changes are not a dead end: the stash-merge-pop question is offered instead of the refusal.
+                        if (check.Dirty)
+                            OfferStashMerge(b.Name, check, loaded);
+                        else
+                            _app.Ui(() => _app.Animator.ShowRefused(check, b.Name, loaded));
+                    },
                     check =>
                     {
                         var layoutNow = loaded
@@ -151,12 +186,12 @@ internal sealed partial class BranchesTab
         var key = CacheKey(snap, b);
         if (_cache.TryGetValue(key, out var hit))
         {
-            if (!_app.Busy && _app.Result is null)
+            if (MayDrawPreview)
                 ShowPreview(hit);
             return;
         }
 
-        if (!_app.Busy && _app.Result is null)
+        if (MayDrawPreview)
             ShowLoading(b);
 
         Task.Run(() =>
@@ -169,7 +204,7 @@ internal sealed partial class BranchesTab
                     if (seq != _previewSeq)
                         return;
                     _cache[key] = layout;
-                    if (!_app.Busy && _app.Result is null)
+                    if (MayDrawPreview)
                         ShowPreview(layout);
                 });
             }
@@ -187,6 +222,9 @@ internal sealed partial class BranchesTab
             }
         });
     }
+
+    /// <summary>A preview may replace the art only when nothing is running, no change's result is shown, and no question is open.</summary>
+    private bool MayDrawPreview => !_app.Busy && _app.Result is null && Mode == BranchesMode.Browse;
 
     internal void ShowInitialState()
     {

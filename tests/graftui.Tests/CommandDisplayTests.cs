@@ -508,4 +508,57 @@ public class CommandDisplayTests
         Assert.Equal("git commit --cleanup=whitespace -F .git/GRAFTUI_MSG", entry.Exact[0].Text);
         Assert.Equal("git commit -m \"Fix login redirect\" -m \"Users landed on /\"", entry.Simple[0].Text);
     }
+
+    // ----- Branch commands (A3) -----
+
+    [Fact]
+    public void Switch_drops_no_guess_and_the_separator()
+    {
+        Assert.Equal(new DisplayLine(DisplayKind.Command, "git switch feature/x", Exact: false),
+            Simplify(L("switch --no-guess -- feature/x")));
+        Assert.Equal("git switch feature/x", Shown(L("switch --no-guess feature/x")));
+    }
+
+    [Theory]
+    [InlineData("switch -c topic", "git switch -c topic")]
+    [InlineData("branch -m old new", "git branch -m old new")]
+    [InlineData("branch -d x", "git branch -d x")]
+    [InlineData("branch -D x", "git branch -D x")]
+    [InlineData("stash pop --index", "git stash pop --index")]
+    [InlineData("merge feature/x", "git merge feature/x")]
+    [InlineData("clean -f notes.md", "git clean -f notes.md")]
+    public void Branch_and_stash_commands_read_as_they_ran(string line, string expected)
+    {
+        Assert.Equal(expected, Shown(L(line)));
+    }
+
+    [Fact]
+    public void A_branch_at_a_full_hash_shows_the_short_hash()
+    {
+        Assert.Equal("git branch x " + H7, Shown(L("branch x " + H40)));
+    }
+
+    [Fact]
+    public void Check_ref_format_is_hidden_and_an_invalid_name_is_an_answer_not_a_failure()
+    {
+        var invalid = RExit(128, "check-ref-format", "--branch", "a b");
+        Assert.False(CommandDisplay.IsFailure(invalid));
+        AssertHidden(invalid);
+        Assert.False(CommandDisplay.IsFailure(RExit(1, "check-ref-format", "--branch", "x")));
+        AssertHidden(R("check-ref-format", "--branch", "feature/x"));
+    }
+
+    [Fact]
+    public void The_stash_merge_rescue_ref_is_hidden()
+    {
+        AssertHidden(R("update-ref", "refs/graftui/rescue/stash-merge", H40, ""));
+        AssertHidden(L("update-ref -d refs/graftui/rescue/stash-merge " + H40));
+    }
+
+    [Fact]
+    public void A_stash_push_with_a_message_that_names_two_branches_is_quoted()
+    {
+        Assert.Equal("git stash push -u -m \"graftui: before merging feature/x into main\"",
+            Shown(R("stash", "push", "-u", "-m", "graftui: before merging feature/x into main")));
+    }
 }

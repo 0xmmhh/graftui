@@ -159,7 +159,8 @@ internal sealed partial class ChangesTab
         ShowBrowse();
     }
 
-    private static char CharOf(Key e)
+    /// <summary>The typed character of a key ('\0' when it has none). Shared with the Branches tab's questions.</summary>
+    internal static char CharOf(Key e)
     {
         var rune = e.AsRune;
         return rune.Value is > 0 and < 0x10000 ? (char)rune.Value : '\0';

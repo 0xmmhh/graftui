@@ -1,5 +1,6 @@
 using graftui.Model;
 using graftui.Ui.Scenes;
+using graftui.Ui.Text;
 
 namespace graftui.Tests;
 
@@ -72,6 +73,67 @@ public class MergeScenesTests
         MergeScenes.RefusedOverlay(grid, "working tree has uncommitted changes");
 
         Assert.Contains(Enumerable.Range(0, grid.Height), y => RowText(grid, y).Contains("Refused", StringComparison.Ordinal));
+    }
+
+    /// <summary>The art at 64x22 is 36x8: the unmerged delete question must read in full there, and a short form must take over when it cannot.</summary>
+    [Fact]
+    public void The_unmerged_delete_question_reads_in_full_in_the_64_by_22_art()
+    {
+        var grid = Art(36, 8);
+        const string text = "feature/some-branch has 12 commits that main doesn't have. Deleting it needs git branch -D; "
+            + "graftui records where it pointed, so u can bring it back.";
+
+        MergeScenes.MessageOverlay(grid, "Delete", text);
+
+        Assert.Contains("u can bring it back.", BoxText(grid));
+    }
+
+    [Fact]
+    public void A_text_too_long_for_the_art_uses_the_short_form_rather_than_losing_its_end()
+    {
+        var grid = Art(36, 8);
+        var text = string.Concat(Enumerable.Repeat("a long explanation that repeats itself ", 6)) + "end.";
+
+        MergeScenes.MessageOverlay(grid, "Delete", text, "topic: 2 commits main doesn't have. Needs git branch -D; u brings it back.");
+
+        Assert.Contains("u brings it back.", BoxText(grid));
+        Assert.DoesNotContain("explanation", BoxText(grid));
+    }
+
+    /// <summary>Nothing from the art shows beside the box: every cell in the box's rows and outside its columns is blank.</summary>
+    [Fact]
+    public void The_overlay_leaves_nothing_of_the_art_beside_the_box()
+    {
+        var grid = Art(36, 8);
+
+        MergeScenes.MessageOverlay(grid, "Uncommitted changes", "You have 3 uncommitted changes. Stash them, merge topic into main, then pop them back?");
+
+        var top = Enumerable.Range(0, grid.Height).First(y => RowText(grid, y).Contains('┌'));
+        var bottom = Enumerable.Range(0, grid.Height).Last(y => RowText(grid, y).Contains('└'));
+        var left = RowText(grid, top).IndexOf('┌');
+        var right = RowText(grid, top).IndexOf('┐');
+        for (var y = top; y <= bottom; y++)
+            for (var x = 0; x < grid.Width; x++)
+                if (x < left || x > right)
+                    Assert.Equal(' ', grid[x, y].Ch);
+    }
+
+    private static ArtGrid Art(int width, int height)
+    {
+        var grid = new ArtGrid(width, height);
+        for (var y = 0; y < height; y++)
+            grid.Text(0, y, new string('a', width), new Style(Ink.Fg));
+        return grid;
+    }
+
+    /// <summary>The text inside the box's sides, one line per row, joined with single spaces.</summary>
+    private static string BoxText(ArtGrid grid)
+    {
+        var rows = Enumerable.Range(0, grid.Height)
+            .Select(y => RowText(grid, y))
+            .Where(r => r.Contains('│'))
+            .Select(r => r[(r.IndexOf('│') + 1)..r.LastIndexOf('│')].Trim());
+        return string.Join(" ", rows).Replace("  ", " ");
     }
 
     private static string RowText(ArtGrid grid, int y) =>

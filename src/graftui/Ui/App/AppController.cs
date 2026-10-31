@@ -23,7 +23,8 @@ public sealed class AppController
     private static readonly Style Bad = new(Ink.Bad);
 
     private readonly string _repoDisplay;
-    private int _wantedBranchWidth;
+    private readonly BranchListWidth _listWidth;
+
     private volatile bool _outcomeShown;
 
     private TooSmallView _tooSmall = null!;
@@ -43,12 +44,18 @@ public sealed class AppController
         StashOp = new StashOperation(rootGit);
         PopOp = new PopOperation(rootGit);
         UndoOp = new UndoOperation(rootGit);
+        SwitchOp = new SwitchOperation(rootGit);
+        CreateBranchOp = new CreateBranchOperation(rootGit);
+        RenameBranchOp = new RenameBranchOperation(rootGit);
+        DeleteBranchOp = new DeleteBranchOperation(rootGit);
+        StashMergeOp = new StashMergeOperation(rootGit);
         Snapshot = initial;
-        _wantedBranchWidth = BranchesView.WantedWidth(initial.Branches, initial.Counts);
+        _listWidth = new BranchListWidth(BranchesView.WantedWidth(initial.Branches, initial.Counts));
         _repoDisplay = repoDisplay;
         BranchesTab = new BranchesTab(this);
         ChangesTab = new ChangesTab(this);
         ChangesAnimator = new ChangesAnimator(this);
+        BranchAnimator = new BranchAnimator(this);
         Animator = new Animator(this);
     }
 
@@ -71,8 +78,22 @@ public sealed class AppController
 
     internal void MarkChangeOutcomeShown() => _changeOutcomeShown = true;
 
+    private volatile int _changeExitCode;
+
+    /// <summary>
+    /// The exit code the latest change asks for: 1 when a stash-merge-pop conflicted or failed (as a failed merge exits 1), else 0.
+    /// Program reads it after the change's worker has finished.
+    /// </summary>
+    public int ChangeExitCode => _changeExitCode;
+
+    internal void SetChangeExitCode(int code) => _changeExitCode = code;
+
     /// <summary>Called when a new change starts, so an outcome drawn for an earlier change does not count for this one.</summary>
-    internal void BeginChangeOutcome() => _changeOutcomeShown = false;
+    internal void BeginChangeOutcome()
+    {
+        _changeOutcomeShown = false;
+        _changeExitCode = 0;
+    }
 
     /// <summary>True once the outcome has been drawn in the UI (so the exit path need not print it again).</summary>
     public bool OutcomeShown => _outcomeShown;
@@ -90,6 +111,11 @@ public sealed class AppController
     internal StashOperation StashOp { get; }
     internal PopOperation PopOp { get; }
     internal UndoOperation UndoOp { get; }
+    internal SwitchOperation SwitchOp { get; }
+    internal CreateBranchOperation CreateBranchOp { get; }
+    internal RenameBranchOperation RenameBranchOp { get; }
+    internal DeleteBranchOperation DeleteBranchOp { get; }
+    internal StashMergeOperation StashMergeOp { get; }
     internal QuitGate Gate { get; } = new();
 
     /// <summary>The top-level repo. The Changes tab's paths are relative to it, so its reads and writes run here.</summary>
@@ -114,12 +140,33 @@ public sealed class AppController
     internal TextField SubjectField { get; private set; } = null!;
     internal BodyTextView BodyField { get; private set; } = null!;
 
+    /// <summary>Where the subject field sits: the commit and stash form's area, or the one-line name box's rows (new branch, rename).</summary>
+    internal enum FieldSpot { Areas, BranchName }
+
+    private FieldSpot _fieldPlacement;
+
+    internal FieldSpot FieldPlacement
+    {
+        get => _fieldPlacement;
+        set
+        {
+            _fieldPlacement = value;
+            Art?.SetNeedsLayout();
+        }
+    }
+
     internal BranchesTab BranchesTab { get; }
     internal ChangesTab ChangesTab { get; }
     internal ChangesAnimator ChangesAnimator { get; }
+    internal BranchAnimator BranchAnimator { get; }
     internal Animator Animator { get; }
 
-    internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _wantedBranchWidth);
+    internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _listWidth.Width);
+
+    /// <summary>True when the whole art, and so the message box's fields, fits inside the art pane at this size.</summary>
+    internal bool ArtFits() =>
+        ArtPaneView.ArtArea(Art.Viewport.Width, Art.Viewport.Height) is { } area
+        && area.Y + area.H <= Art.Viewport.Height;
 
     internal void MarkOutcomeShown() => _outcomeShown = true;
 
@@ -185,6 +232,8 @@ public sealed class AppController
 
         App.ScreenChanged += (_, _) =>
         {
+            // A resize lays the art out at a new size anyway, so a held list width is applied with it.
+            ReleaseBranchWidth();
             _tooSmall.Cols = App.Screen.Width;
             _tooSmall.Rows = App.Screen.Height;
             Art.ScreenCols = App.Screen.Width;
@@ -211,9 +260,12 @@ public sealed class AppController
         {
             Visible = false,
             CanFocus = false,
-            X = Pos.Func(_ => FieldX()),
-            Y = Pos.Func(_ => FieldArea() is { } a ? a.Y + AreasLayout.For(a.W, a.H).SubjectRow : 0),
-            Width = Dim.Func(_ => FieldArea() is { } a && !CurrentLayout().TooSmall ? a.W - AreasLayout.FieldX - 7 : 0),
+            X = Pos.Func(_ => FieldPlacement == FieldSpot.BranchName ? NameBoxOrZero().X : FieldX()),
+            Y = Pos.Func(_ => FieldPlacement == FieldSpot.BranchName ? NameBoxOrZero().Y
+                : FieldArea() is { } a ? a.Y + AreasLayout.For(a.W, a.H).SubjectRow : 0),
+            Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0
+                : FieldPlacement == FieldSpot.BranchName ? NameBoxOrZero().W
+                : FieldArea() is { } a ? a.W - AreasLayout.FieldX - 7 : 0),
             Height = 1,
         };
         BodyField = new BodyTextView
@@ -258,10 +310,29 @@ public sealed class AppController
 
     private int FieldX() => FieldArea() is { } a ? a.X + AreasLayout.FieldX : 0;
 
+    /// <summary>The name box's field position and width in the art pane; all zero when no row is free for it.</summary>
+    private (int X, int Y, int W) NameBoxOrZero() =>
+        ArtPaneView.NameField(Art.Viewport.Width, Art.Viewport.Height, BranchesTab.NameCaptionTwoLines(Art.Viewport.Width, Art.Viewport.Height))
+            is { } n ? (n.X, n.Y, n.W) : (0, 0, 0);
+
+    /// <summary>The name box moves when its caption wraps or unwraps, so its field is placed again.</summary>
+    internal void RelayoutNameBox()
+    {
+        Art?.SetNeedsLayout();
+        _window?.SetNeedsLayout();
+    }
+
     // ---------- keys ----------
 
     private void OnKeyDown(object? sender, Key e)
     {
+        // A branch change's animation holds Esc once git has answered: Esc would quit graftui before the change's last frame. Other keys are refused by Busy.
+        if (e == Key.Esc && BranchAnimator.HoldsEsc)
+        {
+            e.Handled = true;
+            return;
+        }
+
         // The message box and the amend confirmations take every key first, so Esc cancels them rather than quitting.
         if (ActiveTab == TabKind.Changes && ChangesTab.Mode == ChangesMode.Input)
         {
@@ -271,6 +342,16 @@ public sealed class AppController
         if (ActiveTab == TabKind.Changes && ChangesTab.Mode == ChangesMode.Ask)
         {
             ChangesTab.HandleAskKey(e);
+            return;
+        }
+        if (ActiveTab == TabKind.Branches && BranchesTab.Mode == BranchesMode.Input)
+        {
+            BranchesTab.HandleInputKey(e);
+            return;
+        }
+        if (ActiveTab == TabKind.Branches && BranchesTab.Mode == BranchesMode.Ask)
+        {
+            BranchesTab.HandleAskKey(e);
             return;
         }
 
@@ -311,6 +392,26 @@ public sealed class AppController
             e.Handled = true;
             BranchesTab.StartMerge();
         }
+        else if (e == Key.S)
+        {
+            e.Handled = true;
+            BranchesTab.StartSwitch();
+        }
+        else if (e == Key.N)
+        {
+            e.Handled = true;
+            BranchesTab.BeginCreate();
+        }
+        else if (e == Key.R.WithShift)
+        {
+            e.Handled = true;
+            BranchesTab.BeginRename();
+        }
+        else if (e == Key.D.WithShift)
+        {
+            e.Handled = true;
+            BranchesTab.AskDelete();
+        }
         else if (e == Key.U)
         {
             e.Handled = true;
@@ -322,6 +423,7 @@ public sealed class AppController
     private void ToggleTab()
     {
         Result = null;
+        ReleaseBranchWidth();
         ActiveTab = ActiveTab == TabKind.Branches ? TabKind.Changes : TabKind.Branches;
         var onChanges = ActiveTab == TabKind.Changes;
         BranchList.Visible = !onChanges;
@@ -357,7 +459,7 @@ public sealed class AppController
         Snapshot = s;
         SnapshotSeq++;
         BranchesTab.ClearCache();
-        _wantedBranchWidth = BranchesView.WantedWidth(s.Branches, s.Counts);
+        _listWidth.Offer(BranchesView.WantedWidth(s.Branches, s.Counts));
         _window?.SetNeedsLayout();
         BranchesTab.KeepSelection(selName, s);
         SyncBranchKeys();
@@ -372,15 +474,25 @@ public sealed class AppController
         BranchList.SetNeedsDraw();
     }
 
+    /// <summary>Holds the branch list's width where it is, so the art does not reflow under a switch's last frame.</summary>
+    internal void HoldBranchWidth() => _listWidth.Hold();
+
+    /// <summary>Applies the width the list wants, if it was held back. Called on a selection move, a change, a tab change, undo and a resize.</summary>
+    internal void ReleaseBranchWidth()
+    {
+        if (_listWidth.Release())
+            _window?.SetNeedsLayout();
+    }
+
     /// <summary>
-    /// The Branches key bar: m shows when the selected branch can be merged (it is not the current one, and it is ahead of HEAD or
-    /// its counts are not known yet), u when there is an undo step. Called whenever the snapshot or the selection changes.
+    /// The Branches key bar: the keys that act for the selected branch (m, s, n, R, D), and u when there is an undo step. Called whenever
+    /// the snapshot or the selection changes.
     /// </summary>
     internal void SyncBranchKeys()
     {
         var s = Snapshot;
         var sel = BranchesTab.Selected < s.Branches.Count ? s.Branches[BranchesTab.Selected] : null;
-        var state = new BranchesKeyState(s.Branches.Count, BranchesKeyState.MergeOffered(sel, s.Counts), s.HasUndo);
+        var state = BranchesKeyState.For(s, sel);
         if (Keys is null || Keys.BranchesState == state)
             return;
         Keys.BranchesState = state;

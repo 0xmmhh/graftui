@@ -15,9 +15,20 @@ public sealed record ChangesKeyState(int RowCount, ChangeSide? SelectedSide, boo
 /// <summary>
 /// What the Branches tab's key bar needs: how many branches there are, whether m can merge the selected branch, and whether u has a step.
 /// </summary>
-public sealed record BranchesKeyState(int BranchCount, bool CanMerge, bool HasUndo)
+public sealed record BranchesKeyState(int BranchCount, bool CanMerge, bool HasUndo, bool CanSwitch = false, bool CanCreate = false,
+    bool CanRename = false, bool CanDelete = false)
 {
     public static readonly BranchesKeyState Empty = new(0, false, false);
+
+    /// <summary>
+    /// What the bar needs for the selected branch: s switches to a branch that is not current; n needs a commit and a current branch (not
+    /// detached); R works on any branch; D deletes a branch that is not current; m is <see cref="MergeOffered"/>.
+    /// </summary>
+    public static BranchesKeyState For(RepoSnapshot s, Branch? sel) => new(s.Branches.Count, MergeOffered(sel, s.Counts), s.HasUndo,
+        CanSwitch: sel is { IsCurrent: false },
+        CanCreate: s.HeadHash is not null && s.CurrentBranch.Length > 0,
+        CanRename: sel is not null,
+        CanDelete: sel is { IsCurrent: false });
 
     /// <summary>
     /// m shows for a branch that is not the current one and is ahead of HEAD. An unknown count shows m too: the merge checks and explains.

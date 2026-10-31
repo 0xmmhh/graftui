@@ -33,13 +33,13 @@ public static class CommandDisplay
     private static readonly HashSet<string> HiddenSubcommands =
     [
         "rev-parse", "symbolic-ref", "status", "diff", "for-each-ref", "ls-files", "ls-tree", "log", "rev-list",
-        "merge-base", "show", "cat-file", "write-tree", "mktree", "commit-tree",
+        "merge-base", "show", "cat-file", "write-tree", "mktree", "commit-tree", "check-ref-format",
     ];
 
     // Flags that add nothing a reader needs. Dropping them only changes what is shown.
     private static readonly HashSet<string> DroppedFlags =
     [
-        "-q", "--quiet", "--no-gpg-sign", "--no-show-signature", "--no-color", "--no-ext-diff", "--no-edit",
+        "-q", "--quiet", "--no-gpg-sign", "--no-show-signature", "--no-color", "--no-ext-diff", "--no-edit", "--no-guess",
     ];
 
     /// <summary>
@@ -90,11 +90,15 @@ public static class CommandDisplay
 
     /// <summary>
     /// True when git failed. Exit 1 is an answer, not a failure, for the queries that use it to say "no":
-    /// rev-parse with -q or --verify, symbolic-ref -q, diff --quiet and merge-base.
+    /// rev-parse with -q or --verify, symbolic-ref -q, diff --quiet and merge-base. check-ref-format answers any non-zero exit.
     /// </summary>
     public static bool IsFailure(GitResult r)
     {
         if (r.ExitCode == 0)
+            return false;
+
+        // check-ref-format exits 128 for a name that is not valid: that is the answer, not a failure.
+        if (r.Args.Count > 0 && r.Args[0] == "check-ref-format")
             return false;
 
         return !(r.ExitCode == 1 && IsAnswerQuery(r.Args));

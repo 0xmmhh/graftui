@@ -48,6 +48,19 @@ public static class ChangeRefusals
 
     public static string IntentToAddStash(string path) => $"{path} was added with git add -N: graftui won't stash or pop over it";
 
+    /// <summary>
+    /// git refused `pop --index`, and the plain pop would lose the staged part of these files (their staged and working versions
+    /// differ). Up to three names are shown; the rest are counted.
+    /// </summary>
+    public static string StagedWouldBeLost(IReadOnlyList<string> paths)
+    {
+        const int named = 3;
+        var names = string.Join(", ", paths.Take(named));
+        if (paths.Count > named)
+            names += $" +{paths.Count - named} more";
+        return $"your staged {names} can't be put back on this commit without losing it. The stash entry is kept (git stash show -p).";
+    }
+
     public static string Submodule(string path) => $"{path} is a submodule: graftui won't discard, stash or pop over it";
 
     public static string HandPickedNotConfirmed(string path) => $"{path} has hand-picked staged changes: confirm before unstaging them";

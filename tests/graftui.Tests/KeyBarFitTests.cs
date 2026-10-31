@@ -9,7 +9,8 @@ public class KeyBarFitTests
     private static readonly ChangesKeyState AllChanges = new(RowCount: 5, SelectedSide: ChangeSide.Unstaged, HasUnstaged: true, HasStaged: true,
         HasHead: true, HasStash: true, HasUndo: true);
 
-    private static readonly BranchesKeyState AllBranches = new(BranchCount: 3, CanMerge: true, HasUndo: true);
+    private static readonly BranchesKeyState AllBranches = new(BranchCount: 3, CanMerge: true, HasUndo: true, CanSwitch: true,
+        CanCreate: true, CanRename: true, CanDelete: true);
 
     private static IEnumerable<string> Keys(IReadOnlyList<(string Key, string Label)> items) => items.Select(i => i.Key);
 
@@ -100,13 +101,75 @@ public class KeyBarFitTests
     }
 
     [Fact]
-    public void Branches_bar_at_64_columns_keeps_every_key()
+    public void Branches_bar_at_64_columns_drops_rename_and_delete_and_the_arrows()
+    {
+        // With every key on, the bar is one space apart at 64 columns: ↑↓, D and R go first (lowest priority).
+        var kept = KeyBarView.FitItems(KeyBarView.BranchesItems(AllBranches), 64, out var separator);
+
+        Assert.Equal(new[] { "Tab", "m", "s", "n", "u", "Esc" }, Keys(kept));
+        Assert.Equal(1, separator);
+    }
+
+    [Fact]
+    public void Branches_bar_at_80_columns_drops_only_the_arrows_and_delete()
+    {
+        var kept = KeyBarView.FitItems(KeyBarView.BranchesItems(AllBranches), 80, out _);
+
+        Assert.Equal(new[] { "Tab", "m", "s", "n", "R", "u", "Esc" }, Keys(kept));
+    }
+
+    [Fact]
+    public void Branches_bar_with_every_key_lists_them_in_order()
     {
         var all = KeyBarView.BranchesItems(AllBranches);
-        var kept = KeyBarView.FitItems(all, 64, out var separator);
 
-        Assert.Equal(all.Select(i => i.Key), Keys(kept));
-        Assert.Equal(2, separator);
+        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "u", "Esc" }, Names(all));
+        Assert.Equal("Tab changes  ↑↓ select  m merge  s switch  n new  R rename  D delete  u undo  Esc quit", Bar(all));
+    }
+
+    [Fact]
+    public void Branches_bar_for_the_selected_current_branch_has_no_switch_merge_or_delete()
+    {
+        var snapshot = new RepoSnapshot("main", "a111111", true,
+            [new Branch("main", "a111111", "a111111", true), new Branch("feature/x", "b222222", "b222222", false)],
+            new Dictionary<string, (int, int)>());
+
+        var state = BranchesKeyState.For(snapshot, snapshot.Branches[0]);
+
+        Assert.Equal("Tab changes  ↑↓ select  n new  R rename  Esc quit", Bar(KeyBarView.BranchesItems(state)));
+    }
+
+    [Fact]
+    public void Branches_bar_for_a_branch_ahead_has_every_key_it_can_act_on()
+    {
+        var snapshot = new RepoSnapshot("main", "a111111", true,
+            [new Branch("main", "a111111", "a111111", true), new Branch("feature/x", "b222222", "b222222", false)],
+            new Dictionary<string, (int, int)> { ["feature/x"] = (1, 0) }, HasUndo: true);
+
+        var state = BranchesKeyState.For(snapshot, snapshot.Branches[1]);
+
+        Assert.Equal("Tab changes  ↑↓ select  m merge  s switch  n new  R rename  D delete  u undo  Esc quit", Bar(KeyBarView.BranchesItems(state)));
+    }
+
+    [Fact]
+    public void Detached_head_has_no_new_branch_key_but_keeps_rename_and_delete_rules()
+    {
+        var snapshot = new RepoSnapshot("", "a111111", true,
+            [new Branch("feature/x", "b222222", "b222222", false)], new Dictionary<string, (int, int)>());
+
+        var state = BranchesKeyState.For(snapshot, snapshot.Branches[0]);
+
+        Assert.False(state.CanCreate);
+        Assert.True(state.CanRename);
+        Assert.True(state.CanDelete);
+        Assert.True(state.CanSwitch);
+    }
+
+    [Fact]
+    public void Message_bar_names_the_enter_action_it_is_given()
+    {
+        Assert.Equal("Enter create  Esc cancel", Bar(KeyBarView.MessageItems(" create")));
+        Assert.Equal("Enter stash  Esc cancel", Bar(KeyBarView.MessageItems(" stash")));
     }
 
     [Fact]

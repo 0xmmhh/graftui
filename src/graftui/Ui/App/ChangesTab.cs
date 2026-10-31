@@ -169,10 +169,7 @@ internal sealed partial class ChangesTab
             StartUndo();
         }
     }
-    /// <summary>True when the whole art, and so the message box's fields, fits inside the art pane at this size.</summary>
-    private bool ArtFits() =>
-        ArtPaneView.ArtArea(_app.Art.Viewport.Width, _app.Art.Viewport.Height) is { } area
-        && area.Y + area.H <= _app.Art.Viewport.Height;
+    private bool ArtFits() => _app.ArtFits();
 
     private static string Short(string? hash) => string.IsNullOrEmpty(hash) ? "" : hash[..Math.Min(7, hash.Length)];
 

@@ -16,6 +16,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     private const string StashRef = "refs/stash";
     private const string UndoPopRescue = "refs/graftui/rescue/undo-pop";
     private const string UndoStashRescue = "refs/graftui/rescue/undo-stash";
+    private const string UndoStashMergeRescue = "refs/graftui/rescue/undo-stash-merge";
 
     /// <summary>The copies that a failed pop or undo keeps. While one exists, nothing is undone: the user inspects or deletes it first.</summary>
     private static readonly (string Ref, string What)[] KeptCopies =
@@ -23,6 +24,8 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         (PopOperation.RescueRef, "the state from before an earlier pop"),
         (UndoPopRescue, "the state after a pop, from an undo of it that failed"),
         (UndoStashRescue, "the state from before a stash undo that failed"),
+        (StashMergeOperation.RescueRef, "your state from before a stash-merge-pop"),
+        (UndoStashMergeRescue, "the state after a stash-merge-pop, from an undo of it that failed"),
     ];
 
     private static readonly string[] StatusArgs = ["status", "--porcelain=v2", "-z", "--untracked-files=all"];
@@ -135,7 +138,12 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
             UndoKind.Discard => DiscardGuard(step, log),
             UndoKind.Stash => StashGuard(step, status, log),
             UndoKind.Pop => PopGuard(step, gitDir, log),
-            _ => UnstageGuard(step, log),
+            UndoKind.Unstage => UnstageGuard(step, log),
+            UndoKind.CreateBranch => CreateGuard(step, log),
+            UndoKind.RenameBranch => RenameGuard(step, log),
+            UndoKind.DeleteBranch => DeleteGuard(step, log),
+            UndoKind.StashMerge => StashMergeGuard(step, gitDir, log),
+            _ => "unknown undo step",
         };
         return guard is null ? null : ChangeRefusals.WithUndoHint(guard, entry.Ref);
     }
@@ -180,9 +188,19 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         UndoKind.Pop =>
             string.IsNullOrEmpty(s.StashCommit) || s.StashBelow is null || s.StashMessage is null
             || string.IsNullOrEmpty(s.StateBefore) || string.IsNullOrEmpty(s.StateAfter) || string.IsNullOrEmpty(s.Head),
-        _ =>
+        UndoKind.CreateBranch =>
+            string.IsNullOrEmpty(s.Branch) || string.IsNullOrEmpty(s.OtherBranch) || string.IsNullOrEmpty(s.Head),
+        UndoKind.RenameBranch =>
+            string.IsNullOrEmpty(s.Branch) || string.IsNullOrEmpty(s.OtherBranch) || string.IsNullOrEmpty(s.Head),
+        UndoKind.DeleteBranch =>
+            string.IsNullOrEmpty(s.Branch) || string.IsNullOrEmpty(s.Head),
+        UndoKind.StashMerge =>
+            s.Changes.Count != 1 || s.Branch is null || s.Changes[0].Ref != "refs/heads/" + s.Branch || s.Changes[0].After.Length == 0
+            || s.Changes[0].Before.Length == 0 || string.IsNullOrEmpty(s.StateBefore) || string.IsNullOrEmpty(s.StateAfter),
+        UndoKind.Unstage =>
             s.IndexBefore is null || s.IndexAfter is null || s.IndexBefore.Count == 0 || s.IndexAfter.Count == 0
             || s.IndexBefore.Any(e => e.Path.Length == 0) || s.IndexAfter.Any(e => e.Path.Length == 0),
+        _ => true,
     };
 
     /// <summary>Commit, amend and merge: the branch must be the one the step moved, and still at the commit the step left.</summary>
@@ -269,6 +287,81 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         return now is not null && now.SequenceEqual(s.IndexAfter!) ? null : ChangeRefusals.UndoChanged(s.IndexAfter![0].Path);
     }
 
+    /// <summary>
+    /// Create branch: the branch is still at the commit the step made it at, the branch it was made from still exists, and that
+    /// branch holds the new branch's commits, so removing the new branch loses nothing.
+    /// </summary>
+    private string? CreateGuard(UndoRecord s, List<GitResult> log)
+    {
+        var branch = s.Branch!;
+        var other = s.OtherBranch!;
+        var tip = RevParse(log, BranchRef(branch));
+        if (tip is null)
+            return "could not read the branch";
+        if (tip.Length == 0)
+            return BranchRefusals.UndoBranchGone(branch);
+        if (tip != s.Head)
+            return ChangeRefusals.UndoHeadMoved(branch);
+
+        var otherTip = RevParse(log, BranchRef(other));
+        if (otherTip is null)
+            return "could not read the branch";
+        if (otherTip.Length == 0)
+            return BranchRefusals.UndoBranchGone(other);
+        return BranchGit.IsAncestor(git, log, s.Head!, BranchRef(other)) ? null : BranchRefusals.UndoWouldLose(other, branch);
+    }
+
+    /// <summary>Rename: the renamed branch is still at the commit it had, and the old name is free.</summary>
+    private string? RenameGuard(UndoRecord s, List<GitResult> log)
+    {
+        var now = s.Branch!;
+        var old = s.OtherBranch!;
+        var tip = RevParse(log, BranchRef(now));
+        if (tip is null)
+            return "could not read the branch";
+        if (tip.Length == 0)
+            return BranchRefusals.UndoBranchGone(now);
+        if (tip != s.Head)
+            return ChangeRefusals.UndoHeadMoved(now);
+
+        var oldTip = RevParse(log, BranchRef(old));
+        if (oldTip is null)
+            return "could not read the branch";
+        return oldTip.Length == 0 ? null : BranchRefusals.UndoBranchExists(old);
+    }
+
+    /// <summary>Delete: the name is free, and the commit the branch had is still in the repo.</summary>
+    private string? DeleteGuard(UndoRecord s, List<GitResult> log)
+    {
+        var branch = s.Branch!;
+        var existing = RevParse(log, BranchRef(branch));
+        if (existing is null)
+            return "could not read the branch";
+        if (existing.Length > 0)
+            return BranchRefusals.UndoBranchExists(branch);
+
+        var commit = RevParse(log, s.Head + "^{commit}");
+        if (commit is null)
+            return "could not read the commit";
+        return commit.Length == 0 ? BranchRefusals.UndoCommitGone(branch, s.Head!) : null;
+    }
+
+    /// <summary>
+    /// Stash-merge-pop: the same guard as a merge (on the branch, at the commit the merge made), and the state is still the one
+    /// the operation left, so putting it back cannot overwrite a later edit.
+    /// </summary>
+    private string? StashMergeGuard(UndoRecord s, string gitDir, List<GitResult> log)
+    {
+        var branchProblem = BranchGuard(s, log);
+        if (branchProblem is not null)
+            return branchProblem;
+
+        var state = new WorkState(git, gitDir);
+        var now = state.Take(log);
+        var after = state.Load(s.StateAfter!, log);
+        return now is null || after is null || now != after ? BranchRefusals.UndoMergeStateChanged : null;
+    }
+
     /// <summary>Puts the state back for the step's kind. Returns the problem (null on success) and the caption for the screen.</summary>
     private (string? Problem, string Caption) Apply(UndoRecord s, string gitDir, List<GitResult> log) => s.Kind switch
     {
@@ -276,7 +369,12 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         UndoKind.Discard => BringBack(s, gitDir, log),
         UndoKind.Stash => UnstashAgain(s, gitDir, log),
         UndoKind.Pop => PutBack(s, gitDir, log),
-        _ => RestoreIndex(s, log),
+        UndoKind.Unstage => RestoreIndex(s, log),
+        UndoKind.CreateBranch => RemoveBranch(s, log),
+        UndoKind.RenameBranch => RenameBack(s, log),
+        UndoKind.DeleteBranch => RestoreBranch(s, log),
+        UndoKind.StashMerge => UndoStashMerge(s, gitDir, log),
+        _ => ("unknown undo step; nothing was undone", ""),
     };
 
     /// <summary>
@@ -479,6 +577,141 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         return (null, paths.Count == 1
             ? $"↶ Restored the hand-picked staged changes to {paths[0]}"
             : $"↶ Restored the hand-picked staged changes to {paths.Count} files");
+    }
+
+    /// <summary>
+    /// Create branch: the branch is removed. When HEAD is on it, HEAD goes back to the branch it was made from first (a switch,
+    /// so a change in the tree comes along). The branch's commits are on that branch, so `git branch -d` removes them from nothing.
+    /// </summary>
+    private (string? Problem, string Caption) RemoveBranch(UndoRecord s, List<GitResult> log)
+    {
+        var branch = s.Branch!;
+        var other = s.OtherBranch!;
+        var wasOn = CurrentRef(log) == BranchRef(branch);
+        if (wasOn)
+        {
+            var sw = Call(log, "switch", "--no-guess", other);
+            if (!sw.Success)
+                return ($"{GitClient.Describe(sw)}; nothing was undone", "");
+            if (CurrentRef(log) != BranchRef(other))
+                return ($"HEAD is not on {other} after the switch; check git status", "");
+        }
+
+        // The guard has shown that the branch's commits are on the base branch. `branch -d` would check them against HEAD instead,
+        // which may be a third branch that lacks them. update-ref -d with the old value deletes only if the branch is still at the
+        // commit the guard saw.
+        var del = Call(log, "update-ref", "-d", BranchRef(branch), s.Head!);
+        if (!del.Success)
+            return ($"git refused to delete {branch} ({FirstLine(del)})"
+                + (wasOn ? $"; HEAD was switched to {other} and {branch} is kept" : "; nothing was deleted"), "");
+        if (RevParse(log, BranchRef(branch)) != "")
+            return ($"{branch} is still there after the undo; check git branch", "");
+
+        return (null, wasOn ? $"↶ Removed {branch} and switched back to {other}" : $"↶ Removed {branch}");
+    }
+
+    /// <summary>Rename: the branch goes back to its old name. HEAD follows it when it was on it.</summary>
+    private (string? Problem, string Caption) RenameBack(UndoRecord s, List<GitResult> log)
+    {
+        var now = s.Branch!;
+        var old = s.OtherBranch!;
+        var wasOn = CurrentRef(log) == BranchRef(now);
+        var move = Call(log, "branch", "-m", now, old);
+        if (!move.Success)
+            return ($"{GitClient.Describe(move)}; nothing was undone", "");
+        if (RevParse(log, BranchRef(old)) != s.Head || RevParse(log, BranchRef(now)) != "")
+            return ("the rename is not as expected after the undo; check git branch", "");
+        if (wasOn && CurrentRef(log) != BranchRef(old))
+            return ("HEAD did not follow the branch back to its old name; check git status", "");
+
+        return (null, $"↶ Renamed {now} back to {old}");
+    }
+
+    /// <summary>Delete: the branch is made again at the commit it had.</summary>
+    private (string? Problem, string Caption) RestoreBranch(UndoRecord s, List<GitResult> log)
+    {
+        var branch = s.Branch!;
+        var tip = s.Head!;
+        var create = Call(log, "branch", branch, tip);
+        if (!create.Success)
+            return ($"{GitClient.Describe(create)}; nothing was undone", "");
+        if (RevParse(log, BranchRef(branch)) != tip)
+            return ($"{branch} was made again, but not at {Short(tip)}; check git branch", "");
+
+        return (null, $"↶ Restored {branch} at {Short(tip)}");
+    }
+
+    /// <summary>
+    /// Stash-merge-pop: the state from before the operation is put back, and HEAD and the branch go back to where they were. The
+    /// state being undone is kept under a ref first, and that ref is dropped only once the result has been verified. Only the
+    /// files that the operation left behind are removed (the untracked ones of the state after it).
+    /// </summary>
+    private (string? Problem, string Caption) UndoStashMerge(UndoRecord s, string gitDir, List<GitResult> log)
+    {
+        var state = new WorkState(git, gitDir);
+        var before = state.Load(s.StateBefore!, log);
+        var after = state.Load(s.StateAfter!, log);
+        if (before is null || after is null)
+            return ("the saved states are missing; nothing was undone", "");
+
+        var branch = s.Branch!;
+        var start = s.Changes[0].Before;
+        var afterCommit = s.StateAfter!;
+
+        // The state after the operation is kept, create-only, before anything moves.
+        var saved = Call(log, "update-ref", UndoStashMergeRescue, afterCommit, "");
+        if (!saved.Success)
+            return ($"could not save a safety copy ({GitClient.Describe(saved)}); nothing was undone", "");
+
+        var everything = ListFiles(after.AllTree, log);
+        var tracked = ListFiles(after.IndexTree, log);
+        if (everything is null || tracked is null)
+            return (KeptCopy("could not list the files of the saved state", afterCommit), "");
+        var untracked = everything.Where(p => !tracked.Contains(p)).ToHashSet();
+
+        var reset = Call(log, "reset", "-q", "--hard", start);
+        if (!reset.Success)
+            return (KeptCopy($"{GitClient.Describe(reset)}", afterCommit), "");
+        var problem = state.RestoreTo(before, s.StateBefore!, untracked, log);
+        if (problem is not null)
+            return (KeptCopy(problem, afterCommit), "");
+
+        // Verify: HEAD and the branch are where they were, the tree and index are the saved ones, and no merge is left.
+        if (RevParse(log, "HEAD") != start)
+            return (KeptCopy("HEAD is not where the undo should have put it", afterCommit), "");
+        if (CurrentRef(log) != BranchRef(branch))
+            return (KeptCopy($"{branch} is not checked out after the undo", afterCommit), "");
+        if (state.Take(log) != before)
+            return (KeptCopy("the working tree is not exactly as it was before the merge", afterCommit), "");
+        if (RevParse(log, "MERGE_HEAD") != "")
+            return (KeptCopy("a merge is still in progress after the undo", afterCommit), "");
+
+        var drop = Call(log, "update-ref", "-d", UndoStashMergeRescue, afterCommit);
+        if (!drop.Success)
+            return ($"the undo ran, but its copy could not be removed ({GitClient.Describe(drop)}); " +
+                $"{UndoStashMergeRescue} is kept: delete it with git update-ref -d {UndoStashMergeRescue}", "");
+
+        var what = s.What.EndsWith(StashMergeOperation.WhatSuffix, StringComparison.Ordinal)
+            ? s.What[..^StashMergeOperation.WhatSuffix.Length]
+            : s.What;
+        return (null, $"↶ Undid the {what}: {branch} is back at {Short(start)} with your changes as they were");
+    }
+
+    /// <summary>The message for a step whose undo failed after a copy was saved: where the copy is, and how to restore it. The step stays.</summary>
+    private static string KeptCopy(string problem, string commit) =>
+        $"{problem}; your state is saved in {UndoStashMergeRescue} (commit {commit}): restore it with git restore --source={commit} --worktree -- ., " +
+        $"then git update-ref -d {UndoStashMergeRescue}; the undo step is kept";
+
+    /// <summary>The full name of a branch: refs/heads/name.</summary>
+    private static string BranchRef(string name) => "refs/heads/" + name;
+
+    /// <summary>The full name HEAD points at, "" when HEAD is detached, or null when git fails.</summary>
+    private string? CurrentRef(List<GitResult> log)
+    {
+        var r = Call(log, "symbolic-ref", "-q", "HEAD");
+        if (r.Success)
+            return r.StdOut.Trim();
+        return r.ExitCode == 1 ? "" : null;
     }
 
     /// <summary>The paths of a stash's untracked files (its third parent), or an empty set when there are none. Null when git fails.</summary>
