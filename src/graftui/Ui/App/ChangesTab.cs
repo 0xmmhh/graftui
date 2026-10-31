@@ -19,8 +19,8 @@ internal enum ChangesMode { Browse, Input, Ask }
 internal sealed partial class ChangesTab
 {
     private static readonly Style Dim = new(Ink.Dim), Warn = new(Ink.Warn), WarnB = new(Ink.Warn, true);
-    private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true), BadB = new(Ink.Bad, true);
-    private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), CurB = new(Ink.Cur, true);
+    private static readonly Style OkB = new(Ink.Ok, true), BadB = new(Ink.Bad, true);
+    private static readonly Style FgB = new(Ink.Fg, true), CurB = new(Ink.Cur, true);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
     private readonly AppController _app;
@@ -86,8 +86,8 @@ internal sealed partial class ChangesTab
     {
         _refreshSeq++;
         _diffSeq++;
-        CancelAndDispose(ref _refreshCts);
-        CancelAndDispose(ref _diffCts);
+        Cancellation.CancelAndDispose(ref _refreshCts);
+        Cancellation.CancelAndDispose(ref _diffCts);
         _flash = null;
         _result = null;
         if (Mode != ChangesMode.Browse)
@@ -190,7 +190,7 @@ internal sealed partial class ChangesTab
     /// <summary>Reads the status on a worker. Its answer is applied on the UI thread, unless a newer read has started.</summary>
     internal void RequestRefresh()
     {
-        CancelAndDispose(ref _refreshCts);
+        Cancellation.CancelAndDispose(ref _refreshCts);
         _refreshCts = new CancellationTokenSource();
         var ct = _refreshCts.Token;
         var seq = ++_refreshSeq;
@@ -215,7 +215,7 @@ internal sealed partial class ChangesTab
                         _app.ShowGitError(ex);
                 });
             }
-        });
+        }, CancellationToken.None);
     }
 
     private bool Poll()
@@ -340,9 +340,9 @@ internal sealed partial class ChangesTab
         _result = null;
         // Any read still in flight is stale now: its answer must not overwrite what the change shows.
         _refreshSeq++;
-        CancelAndDispose(ref _refreshCts);
+        Cancellation.CancelAndDispose(ref _refreshCts);
         _diffSeq++;
-        CancelAndDispose(ref _diffCts);
+        Cancellation.CancelAndDispose(ref _diffCts);
     }
 
     private void EndBusy()
@@ -384,7 +384,7 @@ internal sealed partial class ChangesTab
     /// </summary>
     private void RequestDiff()
     {
-        CancelAndDispose(ref _diffCts);
+        Cancellation.CancelAndDispose(ref _diffCts);
         _diffCts = new CancellationTokenSource();
         var ct = _diffCts.Token;
         var seq = ++_diffSeq;
@@ -426,7 +426,7 @@ internal sealed partial class ChangesTab
                         _app.ShowGitError(ex);
                 });
             }
-        });
+        }, CancellationToken.None);
     }
 
     /// <summary>Draws the browse screen: the selected file's diff, its direction line, and the HEAD and stash line.</summary>
@@ -478,17 +478,6 @@ internal sealed partial class ChangesTab
             art.Scene = geo => new SceneFrame(AreasScenes.Diff(geo, diff).Grid, _flash);
         }
         art.SetNeedsDraw();
-    }
-
-    /// <summary>
-    /// Cancels a read still in flight and disposes its source. The worker keeps its token, which stays valid after disposal;
-    /// it only reads IsCancellationRequested.
-    /// </summary>
-    private static void CancelAndDispose(ref CancellationTokenSource? cts)
-    {
-        cts?.Cancel();
-        cts?.Dispose();
-        cts = null;
     }
 
     private static int IndexOfRow(IReadOnlyList<FileChange> rows, ChangeSide side, string path)

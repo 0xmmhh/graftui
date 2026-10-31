@@ -146,7 +146,7 @@ internal sealed partial class BranchesTab
                 });
                 return null;
             }
-        });
+        }, CancellationToken.None);
     }
 
     /// <summary>
@@ -176,7 +176,7 @@ internal sealed partial class BranchesTab
             return;
 
         // Any request still in flight is stale now, even when the answer is cached: its result must not overwrite this one.
-        _previewCts?.Cancel();
+        Cancellation.CancelAndDispose(ref _previewCts);
         _previewCts = new CancellationTokenSource();
         var ct = _previewCts.Token;
         var seq = ++_previewSeq;
@@ -220,7 +220,7 @@ internal sealed partial class BranchesTab
                         _app.ShowGitError(ex);
                 });
             }
-        });
+        }, CancellationToken.None);
     }
 
     /// <summary>A preview may replace the art only when nothing is running, no change's result is shown, and no question is open.</summary>

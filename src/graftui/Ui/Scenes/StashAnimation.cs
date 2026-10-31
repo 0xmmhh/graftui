@@ -23,8 +23,8 @@ public sealed class StashAnimation(StashOp op, AreasModel before, IReadOnlyList<
 
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
     private static readonly Style Warn = new(Ink.Warn), WarnB = new(Ink.Warn, true);
-    private static readonly Style Bad = new(Ink.Bad), BadB = new(Ink.Bad, true);
-    private static readonly Style Inc = new(Ink.Inc), IncB = new(Ink.Inc, true);
+    private static readonly Style BadB = new(Ink.Bad, true);
+    private static readonly Style IncB = new(Ink.Inc, true);
 
     private long _offset;
 

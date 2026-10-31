@@ -65,21 +65,31 @@ public static class Sandbox
     /// </summary>
     private static void DeleteOwnTree(string full)
     {
-        foreach (var entry in Directory.GetFileSystemEntries(full))
-            if (Path.GetFileName(entry) != ".git")
-                DeleteEntry(entry);
+        foreach (var entry in Directory.GetFileSystemEntries(full).Where(IsNotDotGit))
+            DeleteEntry(entry);
 
         var gitDir = Path.Combine(full, ".git");
         if (Directory.Exists(gitDir))
         {
-            foreach (var entry in Directory.GetFileSystemEntries(gitDir))
-                if (Path.GetFileName(entry) != MarkerFile)
-                    DeleteEntry(entry);
+            foreach (var entry in Directory.GetFileSystemEntries(gitDir).Where(IsNotMarker))
+                DeleteEntry(entry);
 
             File.Delete(Path.Combine(gitDir, MarkerFile));
         }
 
         Directory.Delete(full, recursive: true);
+    }
+
+    /// <summary>True for every top-level entry except the .git folder, which goes last.</summary>
+    private static bool IsNotDotGit(string path)
+    {
+        return Path.GetFileName(path) != ".git";
+    }
+
+    /// <summary>True for every entry in .git except the marker, which is deleted after the rest.</summary>
+    private static bool IsNotMarker(string path)
+    {
+        return Path.GetFileName(path) != MarkerFile;
     }
 
     /// <summary>Deletes a file, a link, or a folder. A link is removed itself and never followed.</summary>

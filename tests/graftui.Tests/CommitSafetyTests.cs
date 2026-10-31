@@ -39,7 +39,7 @@ public class CommitSafetyTests
         Assert.Equal(oldHead, repo.Run("rev-parse", "HEAD^"));
         Assert.Equal(outcome.NewHead, repo.Head);
         Assert.NotNull(outcome.Undo);
-        var change = Assert.Single(outcome.Undo!.Changes);
+        var change = Assert.Single(outcome.Undo.Changes);
         Assert.Equal("refs/heads/main", change.Ref);
         Assert.Equal(oldHead, change.Before);
         Assert.Equal(repo.Head, change.After);
@@ -316,7 +316,7 @@ public class CommitSafetyTests
         Assert.Equal("other.txt", repo.Run("show", "--name-only", "--format=", "HEAD").Trim());
         Assert.Equal(1, repo.Git.Run("merge-base", "--is-ancestor", oldHead, "HEAD").ExitCode);
         Assert.Equal("refs/heads/main", outcome.Undo!.Changes[0].Ref);
-        Assert.Equal(oldHead, outcome.Undo!.Changes[0].Before);
+        Assert.Equal(oldHead, outcome.Undo.Changes[0].Before);
     }
 
     [Fact]

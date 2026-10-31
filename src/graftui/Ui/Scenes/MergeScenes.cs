@@ -23,11 +23,10 @@ public static class MergeScenes
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
     private static readonly Style Cur = new(Ink.Cur), CurB = new(Ink.Cur, true);
     private static readonly Style Inc = new(Ink.Inc), IncB = new(Ink.Inc, true);
-    private static readonly Style Mrg = new(Ink.Mrg), MrgB = new(Ink.Mrg, true);
-    private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true);
+    private static readonly Style MrgB = new(Ink.Mrg, true);
+    private static readonly Style OkB = new(Ink.Ok, true);
     private static readonly Style Bad = new(Ink.Bad), BadB = new(Ink.Bad, true);
     private static readonly Style Warn = new(Ink.Warn), WarnB = new(Ink.Warn, true);
-    private static readonly Style Hash = new(Ink.Hash);
 
     private const string SpinFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
     internal const string WaitingText = "! git is still running (waiting for a password prompt or hook?)";

@@ -71,17 +71,14 @@ public sealed class BranchesView : PaneView
             var nameStyle = b.IsCurrent ? CurB : Fg;
             DrawText(nameX, row, b.Name, nameW, nameStyle, isSel);
 
-            if (showAb)
+            if (showAb && !b.IsCurrent && Counts.TryGetValue(b.Name, out var c))
             {
-                if (!b.IsCurrent && Counts.TryGetValue(b.Name, out var c))
+                var segs = new List<Seg>
                 {
-                    var segs = new List<Seg>
-                    {
-                        new($"↑{c.Ahead}", c.Ahead > 0 ? Inc : Dim),
-                        new($"↓{c.Behind}", c.Behind > 0 ? Warn : Dim),
-                    };
-                    Paint.Segs(this, nameX + nameW + 1, row, segs, abW, isSel);
-                }
+                    new($"↑{c.Ahead}", c.Ahead > 0 ? Inc : Dim),
+                    new($"↓{c.Behind}", c.Behind > 0 ? Warn : Dim),
+                };
+                Paint.Segs(this, nameX + nameW + 1, row, segs, abW, isSel);
             }
         }
         return true;

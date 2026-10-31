@@ -7,7 +7,7 @@ using Terminal.Gui.App;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
-// The three early exits print and return at once, so awaiting their writes never moves the UI below onto another thread.
+// Every error exit prints its message and returns at once, so awaiting the write never moves code below it onto another thread.
 var parsed = CliArgs.Parse(args);
 if (parsed.Options is not { } options)
 {
@@ -44,7 +44,7 @@ if (sandboxMode)
     }
     catch (Exception ex) when (ex is SandboxRefusedException or InvalidOperationException or GitNotFoundException or IOException or UnauthorizedAccessException)
     {
-        Console.Error.WriteLine($"graftui: {ex.Message}");
+        await Console.Error.WriteLineAsync($"graftui: {ex.Message}");
         return 1;
     }
 }
@@ -56,7 +56,7 @@ try
 {
     if (!git.IsRepository())
     {
-        Console.Error.WriteLine($"graftui: not a git repository: {git.RepoPath}");
+        await Console.Error.WriteLineAsync($"graftui: not a git repository: {git.RepoPath}");
         return 1;
     }
 
@@ -65,7 +65,7 @@ try
 }
 catch (Exception ex) when (ex is GitNotFoundException or DirectoryNotFoundException or InvalidOperationException)
 {
-    Console.Error.WriteLine($"graftui: {(ex is InvalidOperationException ? "git error: " : "")}{ex.Message}");
+    await Console.Error.WriteLineAsync($"graftui: {(ex is InvalidOperationException ? "git error: " : "")}{ex.Message}");
     return 1;
 }
 
@@ -107,7 +107,7 @@ var changeCode = WaitForChanges();
 
 if (uiError is not null)
 {
-    Console.Error.WriteLine($"graftui: UI error: {uiError}");
+    await Console.Error.WriteLineAsync($"graftui: UI error: {uiError}");
     return 1;
 }
 

@@ -13,8 +13,8 @@ public static class ChangesText
     private const string Arrow = "  ──▶  ";
 
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
-    private static readonly Style Ok = new(Ink.Ok), OkB = new(Ink.Ok, true), Inc = new(Ink.Inc);
-    private static readonly Style Cur = new(Ink.Cur), CurB = new(Ink.Cur, true), Hash = new(Ink.Hash);
+    private static readonly Style Ok = new(Ink.Ok), Inc = new(Ink.Inc);
+    private static readonly Style CurB = new(Ink.Cur, true), Hash = new(Ink.Hash);
 
     /// <summary>The line above the diff: the selected file and its state, or the clean-tree line when no row is selected.</summary>
     public static IReadOnlyList<Seg> BrowseDirection(FileChange? f, HeadLine h, int max)

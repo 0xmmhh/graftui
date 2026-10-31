@@ -21,16 +21,6 @@ public class BranchAnimationTests
     private static string Text(ArtGrid grid) =>
         string.Join('\n', Enumerable.Range(0, grid.Height).Select(y => Row(grid, y)));
 
-    // The row of the first cell that shows the glyph, or -1.
-    private static int RowOf(ArtGrid grid, char ch)
-    {
-        for (var y = 0; y < grid.Height; y++)
-            for (var x = 0; x < grid.Width; x++)
-                if (grid[x, y].Ch == ch)
-                    return y;
-        return -1;
-    }
-
     private static int CountOf(ArtGrid grid, char ch) =>
         Enumerable.Range(0, grid.Height).Sum(y => Enumerable.Range(0, grid.Width).Count(x => grid[x, y].Ch == ch));
 
@@ -140,7 +130,6 @@ public class BranchAnimationTests
     [Fact]
     public void Switch_final_frame_is_what_the_screen_keeps_and_it_still_shows_the_pre_switch_graph()
     {
-        var before = Layouts.Diverged();
         var anim = Switch();
         anim.SetResult(SwitchedOk(), 0);
 

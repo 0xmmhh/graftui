@@ -65,7 +65,7 @@ internal sealed partial class ChangesTab
                     EndBusy();
                 });
             }
-        });
+        }, CancellationToken.None);
     }
 
     /// <summary>Keys while the message box is open: Esc cancels, Tab moves between the fields, Enter or Ctrl+Enter saves.</summary>
@@ -361,7 +361,7 @@ internal sealed partial class ChangesTab
                 _app.Ui(() => FailUnexpectedly(ex, request.Amend ? "Amend" : "Commit"));
                 return $"graftui: {(request.Amend ? "amend" : "commit")} failed: {ex.Message}";
             }
-        });
+        }, CancellationToken.None);
     }
 
     /// <summary>The line printed after exit for a commit: what happened, and where HEAD is now.</summary>

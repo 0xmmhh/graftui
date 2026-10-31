@@ -161,6 +161,11 @@ public static class CommitPanels
         return lines;
     }
 
+    private static bool HasRows(CommitGroup group)
+    {
+        return group.Rows.Count > 0;
+    }
+
     // Each group has a header line (or, when the rows are too few for headers, only its first row), then the footer.
     private static IReadOnlyList<IReadOnlyList<Seg>> Stacked(CommitPanel p, int width, int rows)
     {
@@ -171,9 +176,10 @@ public static class CommitPanels
         {
             var footer = Math.Min(p.Footer.Count, Math.Max(0, rows - groups.Length));
             var body = rows - footer;
-            foreach (var group in groups)
-                if (lines.Count < body && group.Rows.Count > 0)
-                    lines.Add(Cell(RowSegs(group.Rows[0]), width));
+            // lines is still empty here, so taking the first `body` groups that have a row
+            // adds the same rows as a "while there is room" check would.
+            foreach (var group in groups.Where(HasRows).Take(body))
+                lines.Add(Cell(RowSegs(group.Rows[0]), width));
             lines.AddRange(p.Footer.Take(footer).Select(row => Cell(RowSegs(row), width)));
             return lines;
         }
