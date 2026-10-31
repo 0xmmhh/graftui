@@ -1,4 +1,5 @@
 using graftui.Model;
+using graftui.Ui.Text;
 using graftui.Ui.Views;
 
 namespace graftui.Tests;
@@ -91,5 +92,33 @@ public class BranchesViewTests
         Assert.True(BranchesView.HasCounts(branches, new Dictionary<string, (int Ahead, int Behind)> { ["feature/x"] = (1, 0) }));
         Assert.False(BranchesView.HasCounts(branches, new Dictionary<string, (int Ahead, int Behind)> { ["main"] = (0, 0) }));
         Assert.False(BranchesView.HasCounts(branches, new Dictionary<string, (int Ahead, int Behind)>()));
+    }
+
+    [Fact]
+    public void The_current_branch_is_bold_in_its_lane_and_the_others_are_plain_in_theirs()
+    {
+        Assert.Equal(new Style(Ink.Lane2, true), BranchesView.NameStyle(new Branch("feature/merge-commit", "h", "h", true), 2));
+        Assert.Equal(new Style(Ink.Lane4), BranchesView.NameStyle(new Branch("feature/picks", "h", "h", false), 4));
+    }
+
+    [Fact]
+    public void A_branch_without_a_lane_is_the_plain_foreground()
+    {
+        Assert.Equal(new Style(Ink.Fg), BranchesView.NameStyle(new Branch("topic", "h", "h", false), BranchLanes.None));
+    }
+
+    [Fact]
+    public void Each_branch_keeps_its_colour_when_the_current_branch_moves()
+    {
+        var names = new[] { "feature/conflict", "main" };
+        var first = new[] { new Branch(names[0], "h", "h", true), new Branch(names[1], "h", "h", false) };
+        var moved = new[] { new Branch(names[0], "h", "h", false), new Branch(names[1], "h", "h", true) };
+
+        var lanesFirst = BranchLanes.Assign(first);
+        var lanesMoved = BranchLanes.Assign(moved);
+
+        Assert.Equal(lanesFirst, lanesMoved);
+        Assert.Equal(new Style(Ink.Lane3, true), BranchesView.NameStyle(first[0], lanesFirst[0]));
+        Assert.Equal(new Style(Ink.Lane3), BranchesView.NameStyle(moved[0], lanesMoved[0]));
     }
 }

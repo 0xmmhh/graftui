@@ -7,7 +7,7 @@ namespace graftui.Ui.Views;
 /// <summary>The branch list: mark, name and ahead/behind. The ahead/behind column is dropped when the pane is too narrow for it.</summary>
 public sealed class BranchesView : PaneView
 {
-    private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim), CurB = new(Ink.Cur, true);
+    private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim);
     private static readonly Style Inc = new(Ink.Inc), Warn = new(Ink.Warn);
 
     // The narrowest header worth drawing: "vs" and one name letter, with the "…" that cuts it.
@@ -58,22 +58,23 @@ public sealed class BranchesView : PaneView
 
         var sel = Math.Clamp(Selected, 0, Branches.Count - 1);
         _top = ScrollTop(sel, _top, Branches.Count, listH);
+        var lanes = BranchLanes.Assign(Branches);
 
         for (var i = _top; i < Branches.Count && i < _top + listH; i++)
         {
             var b = Branches[i];
             var row = firstRow + (i - _top);
             var isSel = i == sel;
+            var style = NameStyle(b, lanes[i]);
 
             Paint.Fill(this, 1, row, innerW, Palette.Get(Fg, isSel));
 
             // mark
-            DrawText(1, row, b.IsCurrent ? "*" : " ", 1, CurB, isSel);
+            DrawText(1, row, b.IsCurrent ? "*" : " ", 1, style, isSel);
 
             // name
             var nameX = 3;
-            var nameStyle = b.IsCurrent ? CurB : Fg;
-            DrawText(nameX, row, b.Name, nameW, nameStyle, isSel);
+            DrawText(nameX, row, b.Name, nameW, style, isSel);
 
             if (showAb && !b.IsCurrent && Counts.TryGetValue(b.Name, out var c))
             {
@@ -95,6 +96,11 @@ public sealed class BranchesView : PaneView
         }
         return true;
     }
+
+    /// <summary>
+    /// A branch's name and mark: its lane colour, bold for the current branch. The colour never depends on the selection.
+    /// </summary>
+    internal static Style NameStyle(Branch b, int lane) => new(BranchInks.Of(lane), b.IsCurrent);
 
     /// <summary>The ab column's header: "vs main", or "" when there is no room for even a short one.</summary>
     internal static string AbHeader(string current, int maxCols)
