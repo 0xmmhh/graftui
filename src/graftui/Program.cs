@@ -28,6 +28,10 @@ if (options.Version)
     return 0;
 }
 
+// Hidden developer flag (see CONTRIBUTING.md): edits the practice repo and exits without opening the screen.
+if (options.MakeEdits)
+    return SandboxEdits.RunFromCommandLine(options.RepoPath, Console.Out, Console.Error);
+
 // Colours are global and read by every view, so they are set before any view or Application exists.
 // The theme was checked by CliArgs, so TryGet finds it; the default is used when no --theme was given.
 Themes.TryGet(options.Theme ?? Themes.Default.Name, out var theme);
