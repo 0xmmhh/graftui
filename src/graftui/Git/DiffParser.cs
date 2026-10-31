@@ -64,13 +64,21 @@ internal static class DiffParser
                 continue;
             }
 
-            var kind = raw.Length > 0 && raw[0] == '+' ? DiffLineKind.Added
-                : raw.Length > 0 && raw[0] == '-' ? DiffLineKind.Removed
-                : DiffLineKind.Context;
+            var kind = KindOf(raw);
             lines.Add(new DiffLine(kind, line));
         }
 
         return lines.Count > 0 ? lines : [new DiffLine(DiffLineKind.Note, NoChanges)];
+    }
+
+    /// <summary>The kind of a diff line from its first character: '+' is added, '-' is removed, anything else is context.</summary>
+    private static DiffLineKind KindOf(string raw)
+    {
+        if (raw.Length > 0 && raw[0] == '+')
+            return DiffLineKind.Added;
+        if (raw.Length > 0 && raw[0] == '-')
+            return DiffLineKind.Removed;
+        return DiffLineKind.Context;
     }
 
     /// <summary>

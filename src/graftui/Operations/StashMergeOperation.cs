@@ -54,7 +54,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
     private StashMergeCheck CheckCore(string branch, List<GitResult> log)
     {
         // 0. The copy from an earlier stash-merge-pop is kept until the user deals with it.
-        var rescue = Call(log, "rev-parse", "-q", "--verify", RescueRef);
+        var rescue = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, RescueRef);
         if (rescue.Success)
             return Refused(ChangeRefusals.RescueSaved("your state from before an earlier stash-merge-pop", RescueRef), log);
         if (rescue.ExitCode != 1)
@@ -117,7 +117,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         var copy = state.Save(before, head, log);
         if (copy is null)
             return Done(StashMergeKind.Failed, null, [], "could not save the working tree; nothing changed", log);
-        var saved = Call(log, "update-ref", RescueRef, copy, "");
+        var saved = Call(log, GitArgs.UpdateRef, RescueRef, copy, "");
         if (!saved.Success)
             return Done(StashMergeKind.Failed, null, [], $"could not save a safety copy ({GitClient.Describe(saved)}); nothing changed", log);
 
@@ -128,7 +128,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         {
             if (state.Take(log) == before)
             {
-                Call(log, "update-ref", "-d", RescueRef, copy);
+                Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
                 return Done(StashMergeKind.Failed, null, [], message, log);
             }
             return Done(StashMergeKind.Failed, null, [], Keep(message), log);
@@ -138,7 +138,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         var below = RevParse(log, StashRef);
         if (below is null)
             return Untouched("could not read the stash; nothing was stashed");
-        var push = Call(log, "stash", "push", "-u", "-m", $"{MessageStart}{branch} into {into}");
+        var push = Call(log, GitArgs.Stash, "push", "-u", "-m", $"{MessageStart}{branch} into {into}");
         var top = RevParse(log, StashRef);
         if (top is null)
             return Done(StashMergeKind.Failed, null, [],
@@ -171,17 +171,17 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         // 6b. The merge did not move the branch. If it left the tree as it was, the pop puts the changes back, with their index.
         var headNow = RevParse(log, "HEAD");
         var statusNow = Call(log, StatusArgs);
-        var mergeHeadAbsent = Call(log, "rev-parse", "-q", "--verify", "MERGE_HEAD").ExitCode == 1;
+        var mergeHeadAbsent = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "MERGE_HEAD").ExitCode == 1;
         var clean = statusNow.Success && StatusParser.Parse(statusNow.StdOut).Rows.Count == 0;
         if (headNow != head || !clean || !mergeHeadAbsent)
             return Done(StashMergeKind.Failed, merge, [], Keep($"{merged.Message}; your changes are in stash@{{0}}"), log);
 
-        var pop = Call(log, "stash", "pop", "--index");
+        var pop = Call(log, GitArgs.Stash, "pop", "--index");
         var nowState = state.Take(log);
         var stashAfter = RevParse(log, StashRef);
         if (pop.Success && nowState == before && stashAfter == below)
         {
-            Call(log, "update-ref", "-d", RescueRef, copy);
+            Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
             return BackOutcome(merged, merge, log);
         }
 
@@ -202,19 +202,19 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         {
             if (state.Take(log) != before)
                 return Done(StashMergeKind.Failed, merge, [], Keep("the pop took the stash entry, and the state is not as it was before the merge; check git status"), log);
-            Call(log, "update-ref", "-d", RescueRef, copy);
+            Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
             return BackOutcome(merged, merge, log);
         }
         if (stashNow != top)
             return Done(StashMergeKind.Failed, merge, [], Keep("the stash entry moved, so it was left alone; your changes are in the stash"), log);
-        var drop = Call(log, "stash", "drop", "-q", "stash@{0}");
+        var drop = Call(log, GitArgs.Stash, "drop", "-q", "stash@{0}");
         if (!drop.Success)
             return Done(StashMergeKind.Failed, merge, [],
                 Keep($"the state is back, but the stash entry could not be dropped ({GitClient.Describe(drop)})"), log);
         if (state.Take(log) != before || RevParse(log, StashRef) != below)
             return Done(StashMergeKind.Failed, merge, [], Keep("the state is not as it was before the merge; check git status"), log);
 
-        Call(log, "update-ref", "-d", RescueRef, copy);
+        Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
         return BackOutcome(merged, merge, log);
     }
 
@@ -224,11 +224,11 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
     {
         string Keep(string message) => $"{message}; your state from before is saved as {RescueRef}";
 
-        var pop = Call(log, "stash", "pop", "--index");
+        var pop = Call(log, GitArgs.Stash, "pop", "--index");
         if (pop.Success)
         {
             var st = Call(log, StatusArgs);
-            var listed = Call(log, "stash", "list", "--format=%H");
+            var listed = Call(log, GitArgs.Stash, "list", "--format=%H");
             if (!st.Success || !listed.Success)
                 return Done(StashMergeKind.Failed, merge, [], Keep("the merge stands and the pop ran, but its result could not be read"), log);
             if (StatusParser.Parse(st.StdOut).HasConflicts || listed.StdOut.Split('\n').Any(h => h.Trim() == top))
@@ -248,7 +248,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
                 return Done(StashMergeKind.Merged, merge, [],
                     Keep($"merged {branch} into {into}; your changes are back, but the undo step could not be saved ({problem})"), log);
 
-            Call(log, "update-ref", "-d", RescueRef, copy);
+            Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
             return Done(StashMergeKind.Merged, merge, [], $"merged {branch} into {into} ({merged.Message}); your changes are back", log, undo);
         }
 
@@ -280,7 +280,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
             return Done(StashMergeKind.PopConflict, merge, conflicts,
                 Keep($"merged, but the pop did not apply and its undo step could not be saved ({saved}); your changes are in stash@{{0}}"), log);
 
-        Call(log, "update-ref", "-d", RescueRef, copy);
+        Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
         var message = conflicts.Length > 0
             ? $"merged, but the pop conflicted in {conflicts[0]}: changes kept in the stash"
             : $"merged, but the pop could not be applied ({FirstLine(pop)}): changes kept in the stash";
@@ -310,7 +310,7 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
     /// <summary>The full hash that a name resolves to, "" when it does not exist (exit 1), or null when git fails.</summary>
     private string? RevParse(List<GitResult> log, string name)
     {
-        var r = Call(log, "rev-parse", "-q", "--verify", name);
+        var r = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, name);
         if (r.Success)
             return r.StdOut.Trim();
         return r.ExitCode == 1 ? "" : null;

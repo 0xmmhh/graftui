@@ -9,6 +9,8 @@ namespace graftui.Ui.App;
 /// <summary>The Changes tab's stage and unstage operations: which rows move, the selection afterwards, and the run.</summary>
 internal sealed partial class ChangesTab
 {
+    private const string UnstageVerb = "Unstage";
+
     // ---------- stage, unstage ----------
 
     private void StageSelected()
@@ -34,11 +36,20 @@ internal sealed partial class ChangesTab
             var position = Selected;
             Func<IReadOnlyList<FileChange>, int> after = rows => AfterUnstage(rows, row.Path, position);
             if (StageOperation.IsHandPicked(snap.Status, row.Path))
-                AskHandPicked([row.Path], () => StartStage(new StageRequest(StageAction.Unstage, row, HandPickedConfirmed: true), "Unstage",
+                AskHandPicked([row.Path], () => StartStage(new StageRequest(StageAction.Unstage, row, HandPickedConfirmed: true), UnstageVerb,
                     all: false, after));
             else
-                StartStage(new StageRequest(StageAction.Unstage, row), "Unstage", all: false, after);
+                StartStage(new StageRequest(StageAction.Unstage, row), UnstageVerb, all: false, after);
         }
+    }
+
+    /// <summary>The result of a stage or an unstage that worked: the caption says what moved and where it is now.</summary>
+    private static AreasResult MovedResult(bool staging, string moved, AreasModel after)
+    {
+        var text = staging
+            ? $"✔ Staged {moved}: it goes into the next commit"
+            : $"✔ Unstaged {moved}: the edit is still in your working tree";
+        return new AreasResult(true, after, new Caption(text, OkB), staging ? "Staged" : "Unstaged");
     }
 
     private void StageAll() =>
@@ -54,10 +65,10 @@ internal sealed partial class ChangesTab
         var handPicked = snap.Status.Staged.Where(f => StageOperation.IsHandPicked(snap.Status, f.Path)).Select(f => f.Path).ToList();
         if (handPicked.Count == 0)
         {
-            StartStage(new StageRequest(StageAction.UnstageAll, null), "Unstage", all: true, _ => 0);
+            StartStage(new StageRequest(StageAction.UnstageAll, null), UnstageVerb, all: true, _ => 0);
             return;
         }
-        AskHandPicked(handPicked, () => StartStage(new StageRequest(StageAction.UnstageAll, null, HandPickedConfirmed: true), "Unstage",
+        AskHandPicked(handPicked, () => StartStage(new StageRequest(StageAction.UnstageAll, null, HandPickedConfirmed: true), UnstageVerb,
             all: true, _ => 0));
     }
 
@@ -121,11 +132,7 @@ internal sealed partial class ChangesTab
                 var moved = ChangesText.What(o.Moved, all);
                 var after = o.Success && o.After is { } s ? new AreasModel(s.Unstaged, s.Staged, snap.Head, snap.Stash) : before;
                 var result = o.Success
-                    ? new AreasResult(true, after,
-                        new Caption(staging
-                            ? $"✔ Staged {moved}: it goes into the next commit"
-                            : $"✔ Unstaged {moved}: the edit is still in your working tree", OkB),
-                        staging ? "Staged" : "Unstaged")
+                    ? MovedResult(staging, moved, after)
                     : new AreasResult(false, before, new Caption($"✕ {verb} failed: {o.Message}", BadB), "Failed", o.Message);
                 var failureLog = o.Success ? null : $"{verb} failed: {o.Message}";
                 _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,

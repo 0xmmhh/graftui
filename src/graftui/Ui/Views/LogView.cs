@@ -80,9 +80,13 @@ public sealed class LogView : PaneView
     /// <summary>The key hint on the bottom border: "v all commands" on the simplified list, "v simplified" on the exact one.</summary>
     private void UpdateFooter()
     {
-        FooterSegs = _entries.Count == 0
-            ? null
-            : [new Seg(" ", Fg), new Seg("v", FgB), new Seg(ShowExact ? " simplified" : " all commands", Dim), new Seg(" ", Fg)];
+        if (_entries.Count == 0)
+        {
+            FooterSegs = null;
+            return;
+        }
+        var hint = ShowExact ? " simplified" : " all commands";
+        FooterSegs = [new Seg(" ", Fg), new Seg("v", FgB), new Seg(hint, Dim), new Seg(" ", Fg)];
     }
 
     protected override bool OnDrawingContent(DrawContext? context)

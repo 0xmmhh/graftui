@@ -15,6 +15,12 @@ namespace graftui.Ui.App;
 /// </summary>
 internal sealed partial class ChangesTab
 {
+    // The words the screen shows for the two operations: capitalised as titles, lower case in the direction line and the log.
+    private const string AmendTitle = "Amend";
+    private const string CommitTitle = "Commit";
+    private const string AmendVerb = "amend";
+    private const string CommitVerb = "commit";
+
     // ---------- commit and amend: the message box ----------
 
     /// <summary>
@@ -88,7 +94,7 @@ internal sealed partial class ChangesTab
         {
             e.Handled = true;
             CloseForm();
-            _flash = new Caption((_formAmend ? "Amend" : "Commit") + " cancelled: nothing changed", Dim);
+            _flash = new Caption((_formAmend ? AmendTitle : CommitTitle) + " cancelled: nothing changed", Dim);
             ShowBrowse();
             return;
         }
@@ -254,10 +260,10 @@ internal sealed partial class ChangesTab
         _app.SubjectField.InsertionPoint = subject.Length;
         _app.BodyField.Text = body;
 
-        art.Title = amend ? "Amend" : "Commit";
+        art.Title = amend ? AmendTitle : CommitTitle;
         var staged = Snapshot?.Status.Staged.Count ?? check.Staged.Count;
         var branch = check.Branch.Length == 0 ? "HEAD" : check.Branch;
-        art.Direction = cols => ChangesText.OpDirection(amend ? "amend" : "commit", MergeScenes.Plural(staged, "staged file"),
+        art.Direction = cols => ChangesText.OpDirection(amend ? AmendVerb : CommitVerb, MergeScenes.Plural(staged, "staged file"),
             [new Seg(branch, CurB), new Seg(" (current)", Dim)], cols);
         art.Below = HeadBelow();
         art.Panel = null;
@@ -342,7 +348,7 @@ internal sealed partial class ChangesTab
                         var branch = check.Branch;
                         var count = check.Staged.Count;
                         anim = new ChangesAnimation(areaOp, before, check.Staged, request.Amend ? "Amending…" : "Committing…");
-                        direction = cols => ChangesText.OpDirection(request.Amend ? "amend" : "commit", MergeScenes.Plural(count, "staged file"),
+                        direction = cols => ChangesText.OpDirection(request.Amend ? AmendVerb : CommitVerb, MergeScenes.Plural(count, "staged file"),
                             [new Seg(branch, CurB), new Seg(" (current)", Dim)], cols);
                         animator.Begin(anim, direction, below);
                     }));
@@ -350,7 +356,9 @@ internal sealed partial class ChangesTab
                     return null;
 
                 var result = CommitResult(o, before, request);
-                var failureLog = o.Kind == CommitKind.Failed ? $"{(request.Amend ? "Amend" : "Commit")} failed: {o.Message}" : null;
+                string? failureLog = null;
+                if (o.Kind == CommitKind.Failed)
+                    failureLog = $"{(request.Amend ? AmendTitle : CommitTitle)} failed: {o.Message}";
                 _app.Ui(() => animator.SetPending(result, o.Commands, failureLog,
                     () => AfterChange(o.Kind != CommitKind.Failed, _ => 0, anim, direction),
                     new CommandHints(request.Subject, request.Body)));
@@ -358,8 +366,8 @@ internal sealed partial class ChangesTab
             }
             catch (Exception ex)
             {
-                _app.Ui(() => FailUnexpectedly(ex, request.Amend ? "Amend" : "Commit"));
-                return $"graftui: {(request.Amend ? "amend" : "commit")} failed: {ex.Message}";
+                _app.Ui(() => FailUnexpectedly(ex, request.Amend ? AmendTitle : CommitTitle));
+                return $"graftui: {(request.Amend ? AmendVerb : CommitVerb)} failed: {ex.Message}";
             }
         }, CancellationToken.None);
     }
@@ -367,7 +375,7 @@ internal sealed partial class ChangesTab
     /// <summary>The line printed after exit for a commit: what happened, and where HEAD is now.</summary>
     private static string CommitSummary(CommitOutcome o, CommitRequest request)
     {
-        var verb = request.Amend ? "amend" : "commit";
+        var verb = request.Amend ? AmendVerb : CommitVerb;
         if (o.Kind == CommitKind.Failed)
             return $"graftui: {verb} failed: {o.Message}; HEAD unchanged at {HeadText(o.OldHead)}";
         if (request.Amend)
@@ -380,7 +388,7 @@ internal sealed partial class ChangesTab
     {
         if (o.Kind == CommitKind.Failed)
         {
-            var verb = request.Amend ? "Amend" : "Commit";
+            var verb = request.Amend ? AmendTitle : CommitTitle;
             return new AreasResult(false, before, new Caption($"✕ {verb} failed: {o.Message}", BadB), "Failed", o.Message);
         }
 

@@ -14,6 +14,8 @@ namespace graftui.Ui.App;
 internal sealed partial class BranchesTab
 {
     private const string DeleteCancelled = "Delete cancelled: nothing changed";
+    private const string DeleteTitle = "Delete";
+    private const string DeleteVerb = "Delete";
 
     /// <summary>
     /// s: switches to the selected branch. Uncommitted changes come along when git can carry them; git's refusal is explained.
@@ -121,7 +123,7 @@ internal sealed partial class BranchesTab
         if (check.Merged)
         {
             BeginQuestion(new BranchQuestion(
-                Title: "Delete",
+                Title: DeleteTitle,
                 Text: $"Delete {name}? Everything on it is already in {into}, so nothing is lost; u brings it back.",
                 YesKey: 'y', YesLabel: " delete", NoLabel: " keep", CancelText: DeleteCancelled,
                 Direction: direction, Layout: loaded,
@@ -131,7 +133,7 @@ internal sealed partial class BranchesTab
 
         var commits = MergeScenes.Plural(check.Ahead, "commit");
         BeginQuestion(new BranchQuestion(
-            Title: "Delete",
+            Title: DeleteTitle,
             Text: $"{name} has {commits} that {into} doesn't have. Deleting it needs git branch -D; "
                 + "graftui records where it pointed, so u can bring it back.",
             YesKey: 'y', YesLabel: " continue", NoLabel: " keep", CancelText: DeleteCancelled,
@@ -166,7 +168,7 @@ internal sealed partial class BranchesTab
         var index = _selected;
         var lost = force ? check.Lost : 0;
         Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.Delete(name, cols);
-        StartBranchChange(_app.DeleteBranchOp, new DeleteBranchRequest(name, check.Tip, force), "Delete",
+        StartBranchChange(_app.DeleteBranchOp, new DeleteBranchRequest(name, check.Tip, force), DeleteVerb,
             c => c.Refusal, c => c.Commands,
             () => loaded,
             (before, _) =>
@@ -182,15 +184,15 @@ internal sealed partial class BranchesTab
     {
         var name = check.Name;
         if (o.Kind == BranchChangeKind.Failed)
-            return FailedFinish("Delete", o.Message, o.Commands, after, name);
+            return FailedFinish(DeleteVerb, o.Message, o.Commands, after, name);
 
         // The branch that takes the deleted one's row (clamped), so the art shows where the selection lands.
         var next = after is { Branches.Count: > 0 } ? after.Branches[Math.Clamp(index, 0, after.Branches.Count - 1)] : null;
         var layout = next is null ? null : LayoutFor(after, next.Name);
         var tip = BranchGit.Short(o.Tip);
-        var caption = !check.Merged && o.Lost > 0
-            ? $"✔ Deleted {name} (was {tip}): {MergeScenes.Plural(o.Lost, "commit")} {(o.Lost == 1 ? "is" : "are")} on no branch now, u brings it back"
-            : $"✔ Deleted {name} (was {tip}), u brings it back";
+        var caption = $"✔ Deleted {name} (was {tip}), u brings it back";
+        if (!check.Merged && o.Lost > 0)
+            caption = $"✔ Deleted {name} (was {tip}): {MergeScenes.Plural(o.Lost, "commit")} {(o.Lost == 1 ? "is" : "are")} on no branch now, u brings it back";
         return new BranchFinish(new BranchResult(true, "Deleted", new Caption(caption, OkB), layout), o.Commands, [],
             $"graftui: {o.Message}", after, next?.Name);
     }
@@ -366,9 +368,9 @@ internal sealed partial class BranchesTab
                 // Without an undo step the overlay and the log do not offer u: the message says what was saved instead.
                 var conflicts = o.ConflictFiles;
                 var undoable = o.Undo is not null;
-                var caption = o.Undo is null
-                    ? o.Message
-                    : conflicts.Count > 0
+                var caption = o.Message;
+                if (undoable)
+                    caption = conflicts.Count > 0
                         ? $"✕ Merged, but the pop conflicted in {conflicts[0]}: changes kept in the stash"
                         : "✕ Merged, but the pop failed: changes kept in the stash";
                 var tail = undoable ? "  Z tries again · u undoes the merge" : "  Z tries again";
@@ -378,8 +380,9 @@ internal sealed partial class BranchesTab
                 IReadOnlyList<(string Text, Style Style)> log = undoable
                     ? [(caption, BadB), (overlay, BadB)]
                     : [(o.Message, WarnB)];
+                var popOutcome = conflicts.Count > 0 ? $"conflicted in {conflicts[0]}" : "failed";
                 var exit = undoable
-                    ? $"graftui: merged {branch} into {into}; the pop {(conflicts.Count > 0 ? $"conflicted in {conflicts[0]}" : "failed")}, your changes are in stash@{{0}}"
+                    ? $"graftui: merged {branch} into {into}; the pop {popOutcome}, your changes are in stash@{{0}}"
                     : $"graftui: {o.Message}";
                 return new BranchFinish(
                     new BranchResult(true, "Pop conflict", new Caption(caption, undoable ? BadB : Warn), layout, "Pop conflict", overlay, o.Merge),

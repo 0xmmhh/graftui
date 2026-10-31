@@ -49,7 +49,7 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
     private StashCheck CheckCore(List<GitResult> log)
     {
         // 1. A commit must exist: the stash is made on top of HEAD.
-        var head = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+        var head = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         if (!head.Success)
             return Refused(head.ExitCode == 1 ? ChangeRefusals.NoCommitYet : GitClient.Describe(head), log);
 
@@ -76,7 +76,7 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
     private StashOutcome RunCore(StashRequest request, StashCheck check, List<GitResult> log)
     {
         // 1. HEAD is still the commit the check saw, and the tree still has something to stash.
-        var head = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+        var head = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         if (!head.Success || head.StdOut.Trim() != check.Head)
             return Done(StashKind.Failed, [], null, "HEAD moved since the check; nothing was stashed", log);
 
@@ -94,8 +94,8 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
             return Done(StashKind.Failed, [], null, "could not read the stash; nothing was stashed", log);
         var message = request.Message?.Trim();
         var args = string.IsNullOrEmpty(message)
-            ? new[] { "stash", "push", "-u" }
-            : new[] { "stash", "push", "-u", "-m", message };
+            ? new[] { GitArgs.Stash, "push", "-u" }
+            : new[] { GitArgs.Stash, "push", "-u", "-m", message };
         var push = Call(log, args);
 
         var top = RevParse(log, StashRef);
@@ -106,7 +106,7 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
         }
 
         // 3. Verify from the stash commit and the tree. The entry must sit on HEAD, and the tree must now be clean.
-        var parent = Call(log, "rev-parse", "-q", "--verify", top + "^1");
+        var parent = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, top + "^1");
         if (!parent.Success || parent.StdOut.Trim() != check.Head)
             return Done(StashKind.Failed, [], null,
                 "the stash entry was made, but it is not on top of HEAD; check git stash list", log);
@@ -121,7 +121,7 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
 
         // 4. The undo step, saved only now. The stash stands even when its step cannot be saved.
         var label = StashLabel(log);
-        var undo = new UndoRecord(UndoKind.Stash, "stash", [], Head: check.Head, StashCommit: top, StashBelow: below);
+        var undo = new UndoRecord(UndoKind.Stash, GitArgs.Stash, [], Head: check.Head, StashCommit: top, StashBelow: below);
         var undoProblem = new UndoLog(git).Push(undo, log);
         var count = before.ChangedPaths;
         var stashed = $"stashed {count} {(count == 1 ? "file" : "files")} as stash@{{0}}";
@@ -151,7 +151,7 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
     /// <summary>The stash's own subject, such as "On main: wip", or null when git cannot say.</summary>
     private string? StashLabel(List<GitResult> log)
     {
-        var r = Call(log, "stash", "list", "-n", "1", "--format=%gs");
+        var r = Call(log, GitArgs.Stash, "list", "-n", "1", "--format=%gs");
         if (!r.Success)
             return null;
         var line = r.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
@@ -161,7 +161,7 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
     /// <summary>The hash of a ref, "" when the ref does not exist, or null when git fails.</summary>
     private string? RevParse(List<GitResult> log, string name)
     {
-        var r = Call(log, "rev-parse", "-q", "--verify", name);
+        var r = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, name);
         if (r.Success)
             return r.StdOut.Trim();
         return r.ExitCode == 1 ? "" : null;

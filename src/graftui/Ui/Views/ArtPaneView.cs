@@ -133,9 +133,13 @@ public sealed class ArtPaneView : PaneView
         var caption = area is null
             ? new Caption("art needs a wider pane", Dim)
             : frame?.Caption ?? FallbackCaption;
-        (string First, string? Second) split = caption is null ? ("", null)
-            : CaptionKeepsBelowRows && !TwoLineCaption(caption.Text, pw, ph, keepsBelowRows: true) ? (TextFit.Fit(caption.Text, cw), null)
-            : TextFit.Wrap2(caption.Text, cw);
+        (string First, string? Second) split;
+        if (caption is null)
+            split = ("", null);
+        else if (CaptionKeepsBelowRows && !TwoLineCaption(caption.Text, pw, ph, keepsBelowRows: true))
+            split = (TextFit.Fit(caption.Text, cw), null);
+        else
+            split = TextFit.Wrap2(caption.Text, cw);
         var (first, second) = split;
         var layout = CaptionLayout(ph, second is not null);
         if (caption is not null)

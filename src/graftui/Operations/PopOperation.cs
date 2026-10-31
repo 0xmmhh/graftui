@@ -60,14 +60,14 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
     private PopCheck CheckCore(PopRequest request, List<GitResult> log)
     {
         // 0. The copy from an earlier pop that failed is kept until the user deals with it. A new copy never replaces it.
-        var rescue = Call(log, "rev-parse", "-q", "--verify", RescueRef);
+        var rescue = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, RescueRef);
         if (rescue.Success)
             return Refused(ChangeRefusals.RescueSaved("your state from before an earlier pop", RescueRef), log);
         if (rescue.ExitCode != 1)
             return Refused(GitClient.Describe(rescue), log);
 
         // 1. A stash entry must exist, and it must be the one the user saw.
-        var top = Call(log, "rev-parse", "-q", "--verify", StashRef);
+        var top = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, StashRef);
         if (!top.Success)
             return Refused(top.ExitCode == 1 ? ChangeRefusals.StashEmpty : GitClient.Describe(top), log);
         var topHash = top.StdOut.Trim();
@@ -75,7 +75,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
             return Refused(ChangeRefusals.StashMoved, log);
 
         // 2. A commit must exist, and no other operation may own the index.
-        var head = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+        var head = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         if (!head.Success)
             return Refused(head.ExitCode == 1 ? ChangeRefusals.NoCommitYet : GitClient.Describe(head), log);
         var gitDir = RepoState.GitDir(git, log);
@@ -101,7 +101,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
             return Refused(ChangeRefusals.IntentToAddStash(intent.Path), log);
 
         // 4. The entry's message, as the stash list shows it. It is stored back if the undo step runs.
-        var message = Call(log, "stash", "list", "-n", "1", "--format=%gs");
+        var message = Call(log, GitArgs.Stash, "list", "-n", "1", "--format=%gs");
         var topMessage = message.Success
             ? message.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? ""
             : "";
@@ -116,10 +116,10 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         var state = new WorkState(git, check.GitDir);
 
         // 1. Still the same stash entry and the same HEAD.
-        var now = Call(log, "rev-parse", "-q", "--verify", StashRef);
+        var now = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, StashRef);
         if (!now.Success || now.StdOut.Trim() != top || (request.ExpectedTop is not null && request.ExpectedTop != top))
             return Done(PopKind.Failed, check.TopMessage, [], null, "the stash changed since the check; nothing was popped", log);
-        var headNow = Call(log, "rev-parse", "-q", "--verify", "HEAD");
+        var headNow = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         if (!headNow.Success || headNow.StdOut.Trim() != head)
             return Done(PopKind.Failed, check.TopMessage, [], null, "HEAD moved since the check; nothing was popped", log);
 
@@ -131,7 +131,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         if (copy is null)
             return Done(PopKind.Failed, check.TopMessage, [], null, "could not save the working tree; nothing was popped", log);
         // Create-only (the empty old value): if the ref exists, the copy it holds is the only one, so it is not overwritten.
-        var saved = Call(log, "update-ref", RescueRef, copy, "");
+        var saved = Call(log, GitArgs.UpdateRef, RescueRef, copy, "");
         if (!saved.Success)
             return Done(PopKind.Failed, check.TopMessage, [], null,
                 $"could not save a safety copy ({GitClient.Describe(saved)}); nothing was popped", log);
@@ -140,11 +140,11 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         // when the staged part cannot apply; then the plain pop runs, and the staged changes come back unstaged.
         if (!IsStashMergeEntry(check.TopMessage))
         {
-            var plain = Call(log, "stash", "pop");
+            var plain = Call(log, GitArgs.Stash, "pop");
             return plain.Success ? Popped(state, check, copy, log) : Conflicted(state, check, before, copy, plain, log);
         }
 
-        var indexed = Call(log, "stash", "pop", "--index");
+        var indexed = Call(log, GitArgs.Stash, "pop", "--index");
         if (indexed.Success)
             return Popped(state, check, copy, log);
         if (!IndexRefused(indexed) || state.Take(log) != before)
@@ -158,7 +158,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         if (differing.Count > 0)
             return Unchanged(check, copy, ChangeRefusals.StagedWouldBeLost(differing), log);
 
-        var fallback = Call(log, "stash", "pop");
+        var fallback = Call(log, GitArgs.Stash, "pop");
         if (!fallback.Success)
             return Conflicted(state, check, before, copy, fallback, log);
         var popped = Popped(state, check, copy, log);
@@ -189,8 +189,8 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
     /// </summary>
     private IReadOnlyList<string>? StagedDifferences(string top, List<GitResult> log)
     {
-        var staged = Call(log, "rev-parse", "-q", "--verify", top + "^2^{tree}");
-        var tree = Call(log, "rev-parse", "-q", "--verify", top + "^{tree}");
+        var staged = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, top + "^2^{tree}");
+        var tree = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, top + "^{tree}");
         if (!staged.Success || !tree.Success)
             return null;
         var diff = Call(log, "diff-tree", "-r", "-z", "--no-renames", "--name-only", staged.StdOut.Trim(), tree.StdOut.Trim());
@@ -202,7 +202,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
     /// <summary>git refused before it changed anything, and the pop is not run: the copy is dropped and the entry is kept.</summary>
     private PopOutcome Unchanged(PopCheck check, string copy, string message, List<GitResult> log)
     {
-        Call(log, "update-ref", "-d", RescueRef, copy);
+        Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
         return Done(PopKind.Refused, check.TopMessage, [], null, message, log);
     }
 
@@ -213,7 +213,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         var head = check.Head;
 
         var st = Call(log, StatusArgs);
-        var stillListed = Call(log, "stash", "list", "--format=%H");
+        var stillListed = Call(log, GitArgs.Stash, "list", "--format=%H");
         if (!st.Success || !stillListed.Success)
             return Done(PopKind.Failed, check.TopMessage, [], null,
                 $"the pop ran, but the result could not be read; your state before the pop is kept as {RescueRef}", log);
@@ -228,7 +228,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
             return Done(PopKind.Popped, check.TopMessage, [], after,
                 $"popped, but could not save the undo step: your state before the pop is kept as {RescueRef}", log);
 
-        var below = Call(log, "rev-parse", "-q", "--verify", StashRef);
+        var below = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, StashRef);
         var undo = new UndoRecord(UndoKind.Pop, "stash pop", [], Head: head, StashCommit: top, StashMessage: check.TopMessage,
             StashBelow: below.Success ? below.StdOut.Trim() : "", StateBefore: copy, StateAfter: afterCommit);
         var problem = new UndoLog(git).Push(undo, log);
@@ -236,7 +236,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
             return Done(PopKind.Popped, check.TopMessage, [], after,
                 $"popped, but could not save the undo step ({problem}); your state before the pop is kept as {RescueRef}", log);
 
-        Call(log, "update-ref", "-d", RescueRef, copy);
+        Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
         return Done(PopKind.Popped, check.TopMessage, [], after, $"popped \"{check.TopMessage}\"", log, undo);
     }
 
@@ -255,7 +255,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         // Nothing changed: git refused up front. The copy is not needed any more.
         if (state.Take(log) == before)
         {
-            Call(log, "update-ref", "-d", RescueRef, copy);
+            Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
             return Done(PopKind.Refused, check.TopMessage, [], null,
                 $"git refused the pop ({FirstLine(pop)}); nothing changed, the stash entry is kept", log);
         }
@@ -263,10 +263,10 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         // Something changed: the files that the pop could have written are removed, then the state is compared.
         var removable = RemovableFromStash(top, log);
         var problem = state.RestoreTo(before, copy, removable, log);
-        var stashKept = Call(log, "rev-parse", "-q", "--verify", StashRef);
+        var stashKept = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, StashRef);
         if (problem is null && stashKept.Success && stashKept.StdOut.Trim() == top)
         {
-            Call(log, "update-ref", "-d", RescueRef, copy);
+            Call(log, GitArgs.UpdateRef, "-d", RescueRef, copy);
             var restored = Call(log, StatusArgs);
             var status = restored.Success ? StatusParser.Parse(restored.StdOut) : null;
             if (conflictFiles.Count == 0)
@@ -284,7 +284,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
     /// <summary>The untracked paths the stash carried (its third parent), which git may have written during the pop.</summary>
     private HashSet<string> RemovableFromStash(string top, List<GitResult> log)
     {
-        var untracked = Call(log, "rev-parse", "-q", "--verify", top + "^3");
+        var untracked = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, top + "^3");
         if (!untracked.Success)
             return [];
         var listed = Call(log, "ls-tree", "-r", "-z", "--name-only", untracked.StdOut.Trim());

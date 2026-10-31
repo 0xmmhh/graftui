@@ -38,7 +38,7 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
             return new MergeCheck(name, $"cannot merge {name} into itself", log);
 
         // Never abort a merge graftui didn't start.
-        if (Run("rev-parse", "-q", "--verify", "MERGE_HEAD").Success)
+        if (Run(GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead).Success)
             return new MergeCheck(name, "a merge is already in progress", log);
 
         // Dirty only when git read the status and it lists changes: a failed status is not a known dirty tree.
@@ -86,19 +86,19 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
             new(UndoKind.Merge, $"merge of {branch}", [new RefChange("refs/heads/" + into, oldHead, head)], Branch: into, Head: head);
         try
         {
-            var headResult = Run("rev-parse", "-q", "--verify", "HEAD");
+            var headResult = Run(GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
             oldHead = headResult.Success ? headResult.StdOut.Trim() : "";
             if (oldHead.Length == 0)
                 return Done(MergeKind.Failed, null, NoFiles, "HEAD has no commits yet");
 
-            var tipResult = Run("rev-parse", "--verify", "refs/heads/" + branch + "^{commit}");
+            var tipResult = Run(GitArgs.RevParse, GitArgs.Verify, "refs/heads/" + branch + "^{commit}");
             var branchTip = tipResult.StdOut.Trim();
             if (!tipResult.Success || branchTip.Length == 0)
                 return Done(MergeKind.Failed, null, NoFiles, $"could not resolve branch {branch}");
 
             // `git merge refs/heads/x` would record "Merge branch 'refs/heads/x'", so merge by plain name,
             // but refuse if that name resolves to something else (e.g. a tag shadowing the branch).
-            var plainTip = Run("rev-parse", "--verify", branch + "^{commit}").StdOut.Trim();
+            var plainTip = Run(GitArgs.RevParse, GitArgs.Verify, branch + "^{commit}").StdOut.Trim();
             if (plainTip != branchTip)
                 return Done(MergeKind.Failed, null, NoFiles,
                     $"'{branch}' is ambiguous (a tag or other ref shadows the branch); refusing to merge");
@@ -146,7 +146,7 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
             // The repo is clean and not mid-merge. If the merge had started and HEAD still moved, it did complete
             // even though git exited non-zero (e.g. interrupted just after the commit). If it never started, a
             // moved HEAD came from elsewhere and is not ours to classify.
-            var now = Run("rev-parse", "-q", "--verify", "HEAD");
+            var now = Run(GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
             if (mergeStarted && now.Success && now.StdOut.Trim() != oldHead)
                 return Verify($" (git exited {merge.ExitCode} after completing the merge)");
 
@@ -182,7 +182,7 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
     {
         // The merge only counts as started if git left MERGE_HEAD behind or was killed mid-run. A normal
         // non-zero exit without MERGE_HEAD is a refusal before anything was touched.
-        var mergeStarted = interrupted || run(["rev-parse", "-q", "--verify", "MERGE_HEAD"]).Success;
+        var mergeStarted = interrupted || run([GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead]).Success;
         AbortIfMerging(run);
 
         var (dirty, merging) = Inspect(run);
@@ -200,7 +200,7 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
         // something else editing the repo during those few moments.
         if (oldHead.Length == 0)
             return ("starting HEAD unknown; not rolling back, inspect with git status", true);
-        var head = run(["rev-parse", "HEAD"]).StdOut.Trim();
+        var head = run([GitArgs.RevParse, "HEAD"]).StdOut.Trim();
         if (head != oldHead)
             return ($"HEAD moved during an interrupted merge ({Short(oldHead)} to {Short(head)}); not rolling back, inspect with git status", true);
 
@@ -213,20 +213,28 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
         return (null, true);
     }
 
-    private static string Short(string hash) => hash.Length > 7 ? hash[..7] : hash.Length == 0 ? "unknown" : hash;
+    /// <summary>The short form of a hash for messages; "unknown" when there is no hash.</summary>
+    private static string Short(string hash)
+    {
+        if (hash.Length == 0)
+            return "unknown";
+        if (hash.Length > 7)
+            return hash[..7];
+        return hash;
+    }
 
     private static (bool Dirty, bool Merging) Inspect(Func<string[], GitResult> run)
     {
         // A failed status means the state is unknown, which is treated as dirty.
         var status = run(["status", "--porcelain"]);
         var dirty = !status.Success || !string.IsNullOrWhiteSpace(status.StdOut);
-        var merging = run(["rev-parse", "-q", "--verify", "MERGE_HEAD"]).Success;
+        var merging = run([GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead]).Success;
         return (dirty, merging);
     }
 
     private static void AbortIfMerging(Func<string[], GitResult> run)
     {
-        if (!run(["rev-parse", "-q", "--verify", "MERGE_HEAD"]).Success)
+        if (!run([GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead]).Success)
             return;
         if (!run(["merge", "--abort"]).Success)
             run(["reset", "--merge"]);

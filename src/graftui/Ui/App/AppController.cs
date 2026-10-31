@@ -250,6 +250,30 @@ public sealed class AppController
         return window;
     }
 
+    /// <summary>The subject line's row: the name box's row while the branch name is being typed, else the subject row of the art.</summary>
+    private int SubjectY()
+    {
+        if (FieldPlacement == FieldSpot.BranchName)
+            return NameBoxOrZero().Y;
+        var area = FieldArea();
+        if (area is null)
+            return 0;
+        return area.Value.Y + AreasLayout.For(area.Value.W, area.Value.H).SubjectRow;
+    }
+
+    /// <summary>The subject line's width: nothing when the screen is too small, the name box's width while the branch name is typed, else the art's width less the form's gutter.</summary>
+    private int SubjectWidth()
+    {
+        if (CurrentLayout().TooSmall)
+            return 0;
+        if (FieldPlacement == FieldSpot.BranchName)
+            return NameBoxOrZero().W;
+        var area = FieldArea();
+        if (area is null)
+            return 0;
+        return area.Value.W - AreasLayout.FieldX - 7;
+    }
+
     /// <summary>
     /// The message box: a one-line subject and a body, laid over the art pane's form area. Hidden and not focusable until a
     /// message is typed (the art pane itself is not focusable, so it becomes focusable only while the form is open).
@@ -261,11 +285,8 @@ public sealed class AppController
             Visible = false,
             CanFocus = false,
             X = Pos.Func(_ => FieldPlacement == FieldSpot.BranchName ? NameBoxOrZero().X : FieldX()),
-            Y = Pos.Func(_ => FieldPlacement == FieldSpot.BranchName ? NameBoxOrZero().Y
-                : FieldArea() is { } a ? a.Y + AreasLayout.For(a.W, a.H).SubjectRow : 0),
-            Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0
-                : FieldPlacement == FieldSpot.BranchName ? NameBoxOrZero().W
-                : FieldArea() is { } a ? a.W - AreasLayout.FieldX - 7 : 0),
+            Y = Pos.Func(_ => SubjectY()),
+            Width = Dim.Func(_ => SubjectWidth()),
             Height = 1,
         };
         BodyField = new BodyTextView

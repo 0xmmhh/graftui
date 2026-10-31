@@ -39,7 +39,7 @@ public static class CommandDisplay
     // Flags that add nothing a reader needs. Dropping them only changes what is shown.
     private static readonly HashSet<string> DroppedFlags =
     [
-        "-q", "--quiet", "--no-gpg-sign", "--no-show-signature", "--no-color", "--no-ext-diff", "--no-edit", "--no-guess",
+        "-q", GitArgs.Quiet, "--no-gpg-sign", "--no-show-signature", "--no-color", "--no-ext-diff", "--no-edit", "--no-guess",
     ];
 
     /// <summary>
@@ -199,8 +199,8 @@ public static class CommandDisplay
         if (IsHash(a))
             return a[..7];
 
-        if (a.StartsWith("--source=", StringComparison.Ordinal) && IsHash(a["--source=".Length..]))
-            return "--source=" + a["--source=".Length..][..7];
+        if (a.StartsWith(GitArgs.SourcePrefix, StringComparison.Ordinal) && IsHash(a[GitArgs.SourcePrefix.Length..]))
+            return GitArgs.SourcePrefix + a[GitArgs.SourcePrefix.Length..][..7];
 
         return a;
     }
@@ -215,9 +215,9 @@ public static class CommandDisplay
 
         return a[0] switch
         {
-            "rev-parse" => a.Any(x => x is "-q" or "--quiet" or "--verify"),
-            "symbolic-ref" => a.Any(x => x is "-q" or "--quiet"),
-            "diff" => a.Contains("--quiet"),
+            "rev-parse" => a.Any(x => x is "-q" or GitArgs.Quiet or "--verify"),
+            "symbolic-ref" => a.Any(x => x is "-q" or GitArgs.Quiet),
+            "diff" => a.Contains(GitArgs.Quiet),
             "merge-base" => true,
             _ => false,
         };

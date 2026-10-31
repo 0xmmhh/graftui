@@ -14,6 +14,11 @@ namespace graftui.Ui.App;
 /// </summary>
 internal sealed partial class ChangesTab
 {
+    // The stash words of a direction line: the verb of the operation, and the place the change goes to or from.
+    private const string StashVerb = "stash";
+    private const string StashPlace = "stash";
+    private const string FailedTitle = "Failed";
+
     /// <summary>What a change shows when it starts: its animation and its direction line.</summary>
     private sealed record ChangeStart(IAreasAnimation Anim, Func<int, IReadOnlyList<Seg>> Direction);
 
@@ -54,9 +59,11 @@ internal sealed partial class ChangesTab
         {
             var untracked = row.Kind == ChangeKind.Untracked;
             var partlyStaged = snap.Status.Staged.Any(f => f.Path == path);
-            var question = untracked ? $"Delete the new file {path}?"
-                : partlyStaged ? $"Discard the unstaged changes to {path}? Its staged changes stay."
-                : $"Discard your changes to {path}?";
+            var question = $"Discard your changes to {path}?";
+            if (untracked)
+                question = $"Delete the new file {path}?";
+            else if (partlyStaged)
+                question = $"Discard the unstaged changes to {path}? Its staged changes stay.";
             BeginYesNo(new YesNo(
                 Title: "Discard",
                 Question: question,
@@ -65,7 +72,7 @@ internal sealed partial class ChangesTab
                 YesLabel: " discard",
                 NoLabel: " keep",
                 CancelText: "Discard cancelled: nothing changed",
-                Direction: cols => ChangesText.OpDirection("discard", path, [new Seg("stash", Dim)], cols),
+                Direction: cols => ChangesText.OpDirection("discard", path, [new Seg(StashPlace, Dim)], cols),
                 OnYes: () => StartDiscard(row)));
         }
     }
@@ -82,14 +89,14 @@ internal sealed partial class ChangesTab
         StartChange(_app.DiscardOp, new DiscardRequest(row), "Discard",
             c => c.Refusal, c => c.Commands,
             c => new ChangeStart(new StashAnimation(StashOp.Discard, before, [c.Row ?? row], $"Discarding {path}…"),
-                cols => ChangesText.OpDirection("discard", path, [new Seg("stash", Dim)], cols)),
+                cols => ChangesText.OpDirection("discard", path, [new Seg(StashPlace, Dim)], cols)),
             o => o.Kind == DiscardKind.Discarded
                 ? new ChangeFinish(
                     new AreasResult(true, AreasAfter(before), new Caption(DiscardedCaption(path, o.Undo is not null), OkB), "Discarded"),
                     o.Commands, null, true,
                     $"graftui: discarded {path} (saved as stash \"graftui: discarded {path}\"); HEAD unchanged at {head}")
                 : new ChangeFinish(
-                    new AreasResult(false, before, new Caption($"✕ Discard failed: {o.Message}", BadB), "Failed", o.Message),
+                    new AreasResult(false, before, new Caption($"✕ Discard failed: {o.Message}", BadB), FailedTitle, o.Message),
                     o.Commands, $"Discard failed: {o.Message}", false, $"graftui: discard failed: {o.Message}; HEAD unchanged at {head}"));
     }
 
@@ -161,7 +168,7 @@ internal sealed partial class ChangesTab
         _app.BodyField.CanFocus = false;
 
         art.Title = "Stash";
-        art.Direction = cols => ChangesText.OpDirection("stash", MergeScenes.Plural(count, "changed file"), [new Seg("stash", Dim)], cols);
+        art.Direction = cols => ChangesText.OpDirection(StashVerb, MergeScenes.Plural(count, "changed file"), [new Seg(StashPlace, Dim)], cols);
         art.Below = HeadBelow();
         art.Panel = null;
         art.FallbackCaption = null;
@@ -213,7 +220,7 @@ internal sealed partial class ChangesTab
             c => c.Refusal, c => c.Commands,
             c => new ChangeStart(
                 new StashAnimation(StashOp.Stash, before, c.Moving, $"Stashing {MergeScenes.Plural(c.Moving.Count, "file")}…"),
-                cols => ChangesText.OpDirection("stash", MergeScenes.Plural(c.Moving.Count, "changed file"), [new Seg("stash", Dim)], cols)),
+                cols => ChangesText.OpDirection(StashVerb, MergeScenes.Plural(c.Moving.Count, "changed file"), [new Seg(StashPlace, Dim)], cols)),
             o => o.Kind == StashKind.Stashed
                 ? new ChangeFinish(
                     new AreasResult(true, AreasAfter(before),
@@ -222,7 +229,7 @@ internal sealed partial class ChangesTab
                     o.Commands, null, true,
                     $"graftui: stashed {MergeScenes.Plural(o.Moved.Count, "file")} as stash@{{0}}")
                 : new ChangeFinish(
-                    new AreasResult(false, before, new Caption($"✕ Stash failed: {o.Message}", BadB), "Failed", o.Message),
+                    new AreasResult(false, before, new Caption($"✕ Stash failed: {o.Message}", BadB), FailedTitle, o.Message),
                     o.Commands, $"Stash failed: {o.Message}", false, $"graftui: stash failed: {o.Message}; HEAD unchanged at {head}"));
     }
 
@@ -274,7 +281,7 @@ internal sealed partial class ChangesTab
                     o.Commands, null, false, $"graftui: pop refused: {o.Message}");
             default:
                 return new ChangeFinish(
-                    new AreasResult(false, before, new Caption($"✕ Pop failed: {o.Message}", BadB), "Failed", o.Message),
+                    new AreasResult(false, before, new Caption($"✕ Pop failed: {o.Message}", BadB), FailedTitle, o.Message),
                     o.Commands, $"Pop failed: {o.Message}", false, $"graftui: pop failed: {o.Message}");
         }
     }
@@ -306,7 +313,7 @@ internal sealed partial class ChangesTab
             o => o.Kind == UndoOutcomeKind.Undone
                 ? new ChangeFinish(new AreasResult(true, AreasAfter(before), new Caption(o.Caption, OkB), "Undone"),
                     o.Commands, null, true, $"graftui: undid the {o.Step?.What}")
-                : new ChangeFinish(new AreasResult(false, before, new Caption($"✕ Undo failed: {o.Message}", BadB), "Failed", o.Message),
+                : new ChangeFinish(new AreasResult(false, before, new Caption($"✕ Undo failed: {o.Message}", BadB), FailedTitle, o.Message),
                     o.Commands, $"Undo failed: {o.Message}", false, $"graftui: undo failed: {o.Message}"),
             refused: check => _app.Ui(() => UndoRefused(check)));
     }

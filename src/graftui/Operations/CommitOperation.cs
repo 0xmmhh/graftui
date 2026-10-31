@@ -40,12 +40,33 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
         if (!c.CanRun)
             return c;
 
-        var refusal =
-            request.Subject.Trim().Length == 0 ? ChangeRefusals.EmptySubject
-            : request.ExpectedHead is not null && request.ExpectedHead != c.OldHead ? ChangeRefusals.HeadMoved
-            : request.Amend && c.PushedTo.Count > 0 && !request.PushedConfirmed ? ChangeRefusals.PushedNotConfirmed(c.PushedTo[0])
-            : null;
+        var refusal = RefusalFor(request, c);
         return refusal is null ? c : c with { Refusal = refusal };
+    }
+
+    /// <summary>The first reason the commit must not run, in the order the screen reports them; null when it may run.</summary>
+    private static string? RefusalFor(CommitRequest request, CommitCheck c)
+    {
+        if (request.Subject.Trim().Length == 0)
+            return ChangeRefusals.EmptySubject;
+        if (request.ExpectedHead is not null && request.ExpectedHead != c.OldHead)
+            return ChangeRefusals.HeadMoved;
+        if (request.Amend && c.PushedTo.Count > 0 && !request.PushedConfirmed)
+            return ChangeRefusals.PushedNotConfirmed(c.PushedTo[0]);
+        return null;
+    }
+
+    /// <summary>
+    /// Whether the new commit has the parents it should. An amend keeps the old commit's parents. A new commit has the old
+    /// HEAD as its only parent, or no parent when the branch had no commits yet.
+    /// </summary>
+    private static bool ParentsAsExpected(CommitRequest request, CommitCheck check, string[] newParents)
+    {
+        if (request.Amend)
+            return newParents.SequenceEqual(check.OldParents);
+        if (check.OldHead is null)
+            return newParents.Length == 0;
+        return newParents.Length > 0 && newParents[0] == check.OldHead;
     }
 
     public CommitOutcome Run(CommitRequest request, CommitCheck check)
@@ -114,9 +135,7 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             var newHead = tokens[0];
             var newParents = tokens.Skip(1).ToArray();
             var moved = newHead != check.OldHead;
-            var shapeOk = moved && (request.Amend
-                ? newParents.SequenceEqual(check.OldParents)
-                : check.OldHead is null ? newParents.Length == 0 : newParents.Length > 0 && newParents[0] == check.OldHead);
+            var shapeOk = moved && ParentsAsExpected(request, check, newParents);
             var kind = request.Amend ? CommitKind.Amended : CommitKind.Committed;
 
             if (commit.Success)
