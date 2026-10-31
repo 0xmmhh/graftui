@@ -4,7 +4,7 @@ using graftui.Model;
 namespace graftui.Tests;
 
 /// <summary>What the screen reads from the sandbox: branch counts and preview layouts.</summary>
-public class RepoReaderSandboxTests : IDisposable
+public sealed class RepoReaderSandboxTests : IDisposable
 {
     private readonly string _dir = TempRepo.NewSandboxDir();
     private readonly GitClient _git;

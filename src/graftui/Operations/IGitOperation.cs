@@ -9,7 +9,7 @@ namespace graftui.Operations;
 /// Run never throws. Its outcome lists every command that ran, and an UndoRecord when refs moved.
 /// Run is only called with a check that allowed the operation.
 /// </remarks>
-public interface IGitOperation<TRequest, TCheck, TOutcome>
+public interface IGitOperation<in TRequest, TCheck, out TOutcome>
 {
     TCheck Check(TRequest request);
     TOutcome Run(TRequest request, TCheck check);

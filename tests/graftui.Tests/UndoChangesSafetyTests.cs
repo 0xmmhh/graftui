@@ -66,13 +66,13 @@ public class UndoChangesSafetyTests
         return op.Run(request, check);
     }
 
-    private static StageOutcome Unstage(TempRepo repo, StageAction action, FileChange? file, bool confirmed = false)
+    private static void Unstage(TempRepo repo, StageAction action, FileChange? file, bool confirmed = false)
     {
         var op = new StageOperation(repo.Git);
         var request = new StageRequest(action, file, confirmed);
         var check = op.Check(request);
         Assert.True(check.CanRun, check.Refusal);
-        return op.Run(request, check);
+        op.Run(request, check);
     }
 
     private static List<string> UndoRefs(TempRepo repo) =>

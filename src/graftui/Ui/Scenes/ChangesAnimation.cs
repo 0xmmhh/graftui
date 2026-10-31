@@ -79,7 +79,7 @@ public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyLis
             return Done(g);
 
         var te = TimeOf(elapsedMs);
-        var grid = IsCommit ? RenderCommit(g, elapsedMs, te) : RenderMove(g, elapsedMs, te);
+        var grid = IsCommit ? RenderCommit(g, elapsedMs, te) : RenderMove(g, te);
         return new SceneFrame(grid, Running(elapsedMs));
     }
 
@@ -106,7 +106,7 @@ public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyLis
     }
 
     // Stage and unstage: each moving file flies across the boxes, four at most, 90 ms apart.
-    private ArtGrid RenderMove(ArtGeometry g, long e, long te)
+    private ArtGrid RenderMove(ArtGeometry g, long te)
     {
         var L = AreasLayout.For(g.Width, g.Height);
         var hide = moving.Select(f => f.Path).ToHashSet();
