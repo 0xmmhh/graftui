@@ -3,8 +3,11 @@ using graftui.Ui.Scenes;
 
 namespace graftui.Ui.Text;
 
-/// <summary>One row of the commit list: a dot, a short hash and a subject, each in its own style.</summary>
-public sealed record CommitRow(char Dot, Style DotStyle, string Hash, Style HashStyle, string Subject, Style SubjectStyle);
+/// <summary>
+/// One row of the commit list: a dot, a short hash and a subject, each in its own style. Date is the commit's date, when it has one
+/// (the age is drawn at the end of the row).
+/// </summary>
+public sealed record CommitRow(char Dot, Style DotStyle, string Hash, Style HashStyle, string Subject, Style SubjectStyle, DateTimeOffset? Date = null);
 
 /// <summary>
 /// One branch's part of the commit list: its header (name and count), its rows newest first, and how many commits it has in all.
@@ -35,7 +38,7 @@ public static class CommitLists
 
         var left = new CommitGroup(
             [new Seg(L.Selected, IncB), new Seg($"  {L.Ahead} new", Dim)],
-            OwnRows(L.SelectedOwn, IncB),
+            NewRows(L.SelectedNew, L.SelectedOwn, IncB),
             L.Ahead);
         return new CommitPanel(left, MainGroup(L), []);
     }
@@ -49,14 +52,14 @@ public static class CommitLists
             {
                 List<CommitRow> rows =
                 [
-                    new CommitRow('◉', MrgB, MergeScenes.Short(o.NewHead), new Style(Ink.Hash), mergeCommit?.Subject ?? "", MrgB),
-                    .. OwnRows(L.SelectedOwn, IncB),
+                    new CommitRow('◉', MrgB, MergeScenes.Short(o.NewHead), new Style(Ink.Hash), mergeCommit?.Subject ?? "", MrgB, mergeCommit?.Date),
+                    .. NewRows(L.SelectedNew, L.SelectedOwn, IncB),
                 ];
                 return new CommitPanel(new CommitGroup(CurHeader(L, $"  {L.Ahead + 1} new"), rows, L.Ahead + 1), null, []);
             }
 
             case MergeKind.FastForward:
-                return new CommitPanel(new CommitGroup(CurHeader(L, $"  {L.Ahead} new"), OwnRows(L.SelectedOwn, CurB), L.Ahead), null, []);
+                return new CommitPanel(new CommitGroup(CurHeader(L, $"  {L.Ahead} new"), NewRows(L.SelectedNew, L.SelectedOwn, CurB), L.Ahead), null, []);
 
             case MergeKind.Conflict:
                 var files = o.ConflictFiles
@@ -80,10 +83,10 @@ public static class CommitLists
         if (L.Kind is GraphKind.Same or GraphKind.UpToDate)
             return new CommitPanel(new CommitGroup(NowHeader(now, "  tip"), [R(L.SelectedTipCommit, CurB)], 1), null, []);
 
-        var left = new CommitGroup(NowHeader(now, $"  {L.Ahead} new"), OwnRows(L.SelectedOwn, CurB), L.Ahead);
+        var left = new CommitGroup(NowHeader(now, $"  {L.Ahead} new"), NewRows(L.SelectedNew, L.SelectedOwn, CurB), L.Ahead);
         var right = L.Behind == 0
             ? new CommitGroup(WasHeader(was, "  tip"), [R(L.CurrentTipCommit, IncB)], 1)
-            : new CommitGroup(WasHeader(was, $"  {L.Behind} new"), OwnRows(L.CurrentOwn, IncB), L.Behind);
+            : new CommitGroup(WasHeader(was, $"  {L.Behind} new"), NewRows(L.CurrentNew, L.CurrentOwn, IncB), L.Behind);
         return new CommitPanel(left, right, []);
     }
 
@@ -108,14 +111,23 @@ public static class CommitLists
     private static CommitGroup MainGroup(GraphLayout L) =>
         L.Behind == 0
             ? TipGroup(L)
-            : new CommitGroup(CurHeader(L, $"  {L.Behind} new"), OwnRows(L.CurrentOwn, CurB), L.Behind);
+            : new CommitGroup(CurHeader(L, $"  {L.Behind} new"), NewRows(L.CurrentNew, L.CurrentOwn, CurB), L.Behind);
 
     // The stored lists run oldest first; the commit list shows the newest first.
     private static List<CommitRow> OwnRows(IEnumerable<CommitInfo> oldestFirst, Style ink) =>
         oldestFirst.Reverse().Select(c => R(c, ink)).ToList();
 
+    // The rows of a group: the commits its header counts, newest first, from the layout's full list (up to 50). When the layout has
+    // no full list, the few commits the graph keeps (oldest first) stand in.
+    private static List<CommitRow> NewRows(IReadOnlyList<CommitInfo> newestFirst, IEnumerable<CommitInfo> graphOldestFirst, Style ink)
+    {
+        if (newestFirst.Count == 0)
+            return OwnRows(graphOldestFirst, ink);
+        return newestFirst.Select(c => R(c, ink)).ToList();
+    }
+
     private static CommitRow R(CommitInfo c, Style ink) =>
-        new(MergeScenes.Dot(c), ink, c.ShortHash, new Style(Ink.Hash), c.Subject, Fg);
+        new(MergeScenes.Dot(c), ink, c.ShortHash, new Style(Ink.Hash), c.Subject, Fg, c.Date);
 }
 
 /// <summary>
@@ -127,37 +139,41 @@ public static class CommitPanels
     /// <summary>Screens at least this wide list the two groups side by side; narrower screens stack them.</summary>
     public const int SideBySideMinCols = 70;
 
+    // The fewest columns a subject keeps when its age is drawn after it. Narrower rows leave the age out.
+    private const int MinSubjectCols = 4;
+
     private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim), Frame = new(Ink.Frame);
 
-    public static IReadOnlyList<IReadOnlyList<Seg>> Render(CommitPanel p, int width, int rows, bool sideBySide)
+    /// <summary>The lines of the commit area. <paramref name="now"/> is the time the commit ages are counted from.</summary>
+    public static IReadOnlyList<IReadOnlyList<Seg>> Render(CommitPanel p, int width, int rows, bool sideBySide, DateTimeOffset now)
     {
         if (width <= 0 || rows <= 0)
             return [];
 
         return p.Right is { } right && sideBySide
-            ? SideBySide(p, right, width, rows)
-            : Stacked(p, width, rows);
+            ? SideBySide(p, right, width, rows, now)
+            : Stacked(p, width, rows, now);
     }
 
     // One header row, then the body of both groups side by side, then the footer rows across the full width.
-    private static IReadOnlyList<IReadOnlyList<Seg>> SideBySide(CommitPanel p, CommitGroup right, int width, int rows)
+    private static IReadOnlyList<IReadOnlyList<Seg>> SideBySide(CommitPanel p, CommitGroup right, int width, int rows, DateTimeOffset now)
     {
         var leftW = (width - 3) / 2;
         var rightW = width - 3 - leftW;
 
         if (rows == 1)
-            return [Join(Cell(FirstRow(p.Left), leftW), Cell(FirstRow(right), rightW))];
+            return [Join(FirstCell(p.Left, leftW, now), FirstCell(right, rightW, now))];
 
         var footer = Math.Min(p.Footer.Count, Math.Max(0, rows - 2));
         var budget = rows - 1 - footer;
 
         List<IReadOnlyList<Seg>> lines = [Join(Header(p.Left.Header, leftW), Header(right.Header, rightW))];
-        var leftBody = Body(p.Left, budget, leftW);
-        var rightBody = Body(right, budget, rightW);
+        var leftBody = Body(p.Left, budget, leftW, now);
+        var rightBody = Body(right, budget, rightW, now);
         for (var i = 0; i < Math.Max(leftBody.Count, rightBody.Count); i++)
             lines.Add(Join(i < leftBody.Count ? leftBody[i] : Cell([], leftW), i < rightBody.Count ? rightBody[i] : Cell([], rightW)));
 
-        lines.AddRange(p.Footer.Take(footer).Select(row => Cell(RowSegs(row), width)));
+        lines.AddRange(p.Footer.Take(footer).Select(row => RowCell(row, width, now)));
         return lines;
     }
 
@@ -167,7 +183,7 @@ public static class CommitPanels
     }
 
     // Each group has a header line (or, when the rows are too few for headers, only its first row), then the footer.
-    private static IReadOnlyList<IReadOnlyList<Seg>> Stacked(CommitPanel p, int width, int rows)
+    private static IReadOnlyList<IReadOnlyList<Seg>> Stacked(CommitPanel p, int width, int rows, DateTimeOffset now)
     {
         var groups = p.Right is { } right ? new[] { p.Left, right } : new[] { p.Left };
         List<IReadOnlyList<Seg>> lines = [];
@@ -179,8 +195,8 @@ public static class CommitPanels
             // lines is still empty here, so taking the first `body` groups that have a row
             // adds the same rows as a "while there is room" check would.
             foreach (var group in groups.Where(HasRows).Take(body))
-                lines.Add(Cell(RowSegs(group.Rows[0]), width));
-            lines.AddRange(p.Footer.Take(footer).Select(row => Cell(RowSegs(row), width)));
+                lines.Add(RowCell(group.Rows[0], width, now));
+            lines.AddRange(p.Footer.Take(footer).Select(row => RowCell(row, width, now)));
             return lines;
         }
 
@@ -189,9 +205,9 @@ public static class CommitPanels
         for (var i = 0; i < groups.Length; i++)
         {
             lines.Add(Header(groups[i].Header, width));
-            lines.AddRange(Body(groups[i], budgets[i], width));
+            lines.AddRange(Body(groups[i], budgets[i], width, now));
         }
-        lines.AddRange(p.Footer.Take(footerRows).Select(row => Cell(RowSegs(row), width)));
+        lines.AddRange(p.Footer.Take(footerRows).Select(row => RowCell(row, width, now)));
         return lines;
     }
 
@@ -210,7 +226,7 @@ public static class CommitPanels
 
     // A group's rows within a budget of lines. When the rows do not all fit, the newest rows come first and a last line says how many
     // are left. With one line, only the newest row shows.
-    private static List<IReadOnlyList<Seg>> Body(CommitGroup g, int budget, int width)
+    private static List<IReadOnlyList<Seg>> Body(CommitGroup g, int budget, int width, DateTimeOffset now)
     {
         List<IReadOnlyList<Seg>> lines = [];
         if (budget <= 0)
@@ -219,18 +235,18 @@ public static class CommitPanels
         var known = g.Rows.Count;
         if (g.Total <= budget && known >= g.Total)
         {
-            lines.AddRange(g.Rows.Select(row => Cell(RowSegs(row), width)));
+            lines.AddRange(g.Rows.Select(row => RowCell(row, width, now)));
             return lines;
         }
 
         if (budget == 1 && known > 0)
         {
-            lines.Add(Cell(RowSegs(g.Rows[0]), width));
+            lines.Add(RowCell(g.Rows[0], width, now));
             return lines;
         }
 
         var shown = Math.Min(known, budget - 1);
-        lines.AddRange(g.Rows.Take(shown).Select(row => Cell(RowSegs(row), width)));
+        lines.AddRange(g.Rows.Take(shown).Select(row => RowCell(row, width, now)));
         var more = g.Total - shown;
         if (more > 0)
             lines.Add(Cell([new Seg($"+{more} more", Dim)], width));
@@ -252,8 +268,37 @@ public static class CommitPanels
         return [.. Cell(header.Take(header.Count - 1).ToList(), width - tailCols), tail];
     }
 
-    private static IReadOnlyList<Seg> FirstRow(CommitGroup g) =>
-        g.Rows.Count > 0 ? RowSegs(g.Rows[0]) : [];
+    // The first row of a group, or blank when the group has none.
+    private static IReadOnlyList<Seg> FirstCell(CommitGroup g, int width, DateTimeOffset now) =>
+        g.Rows.Count > 0 ? RowCell(g.Rows[0], width, now) : Cell([], width);
+
+    // One commit row, exactly `width` columns: dot, hash and subject, then the age in dim at the end. The subject is cut first.
+    // When fewer than MinSubjectCols would be left for it, the age is left out and the row is drawn as dot, hash and subject only.
+    private static IReadOnlyList<Seg> RowCell(CommitRow r, int width, DateTimeOffset now)
+    {
+        if (r.Date is null)
+            return Cell(RowSegs(r), width);
+
+        var age = CommitAge.Short(r.Date.Value, now);
+        var hash = r.Hash.PadRight(7);
+        var prefixCols = 1 + 1 + TextFit.Columns(hash) + 1; // dot, space, hash, space
+        var subjectCols = width - prefixCols - 1 - age.Length; // one space, then the age
+        if (subjectCols < MinSubjectCols)
+            return Cell(RowSegs(r), width);
+
+        var subject = TextFit.Fit(TextFit.Sanitize(r.Subject), subjectCols);
+        subject += new string(' ', subjectCols - TextFit.Columns(subject));
+        return
+        [
+            new Seg(r.Dot.ToString(), r.DotStyle),
+            new Seg(" ", Fg),
+            new Seg(hash, r.HashStyle),
+            new Seg(" ", Fg),
+            new Seg(subject, r.SubjectStyle),
+            new Seg(" ", Fg),
+            new Seg(age, Dim),
+        ];
+    }
 
     private static IReadOnlyList<Seg> RowSegs(CommitRow r) =>
     [

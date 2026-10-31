@@ -164,7 +164,7 @@ public sealed class ArtPaneView : PaneView
 
         if (Panel is { } panel)
         {
-            var lines = CommitPanels.Render(panel, cw - 2, layout.BelowRows, ScreenCols >= CommitPanels.SideBySideMinCols);
+            var lines = CommitPanels.Render(panel, cw - 2, layout.BelowRows, ScreenCols >= CommitPanels.SideBySideMinCols, DateTimeOffset.Now);
             for (var k = 0; k < lines.Count; k++)
                 DrawSegs(4, layout.BelowTop + k, lines[k], cw - 2);
         }
