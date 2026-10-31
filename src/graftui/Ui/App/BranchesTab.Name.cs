@@ -290,13 +290,13 @@ internal sealed partial class BranchesTab
 
     /// <summary>The name box's place in the art pane, or null when no commit row is free for it (the window is too small).</summary>
     private (int X, int Y, int W, bool LabelRow)? NameBox() =>
-        ArtPaneView.NameField(_app.Art.Viewport.Width, _app.Art.Viewport.Height, NameCaptionTwoLines(_app.Art.Viewport.Width, _app.Art.Viewport.Height));
+        ArtPaneView.NameField(_app.Art.Viewport.Width, _app.Art.Viewport.Height, NameCaptionTwoLines(_app.Art.Viewport.Width, _app.Art.Viewport.Height), _app.Art.CompactArt);
 
     /// <summary>
     /// Whether the name box's caption (the refusal, or the hint) takes two lines in a pane of this size. The box moves down a row then.
     /// </summary>
     internal bool NameCaptionTwoLines(int paneW, int paneH) =>
-        ArtPaneView.TwoLineCaption(_nameNote?.Text ?? (_nameRename ? RenameHint : NewHint), paneW, paneH, keepsBelowRows: true);
+        ArtPaneView.TwoLineCaption(_nameNote?.Text ?? (_nameRename ? RenameHint : NewHint), paneW, paneH, keepsBelowRows: true, compact: _app.Art.CompactArt);
 
     /// <summary>The direction line while the name is checked or refused: the typed name in the change's own line.</summary>
     private static Func<int, IReadOnlyList<Seg>> NameDirection(bool rename, string old, string name, string tip) =>

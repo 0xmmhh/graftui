@@ -51,6 +51,13 @@ public class ScreenLayoutTests
     }
 
     [Fact]
+    public void Compact_art_on_the_branches_tab_is_nine_rows_and_the_changes_art_stays_eleven()
+    {
+        Assert.Equal((5, 3, 70, 9), ArtPaneView.ArtArea(80, 22, compact: true));
+        Assert.Equal((5, 3, 70, 11), ArtPaneView.ArtArea(80, 22));
+    }
+
+    [Fact]
     public void No_art_area_when_the_pane_is_too_narrow_for_any_art()
     {
         Assert.Null(ArtPaneView.ArtArea(20, 15));

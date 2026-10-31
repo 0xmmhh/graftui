@@ -9,19 +9,33 @@ public sealed record ArtGeometry(int Width, int Height, int Step, int A, int B, 
     public int TipX(int n) => XB + Step * n;
 
     /// <summary>
-    /// Geometry for a grid of the given size, or null when the size is not one the scenes support.
+    /// Geometry for a grid of the given size, or null when the size is not one the scenes support: 11 rows (the Changes tab),
+    /// 9 rows (the Branches tab, without the two empty rows of 11) or 8 rows (a short pane).
     /// The widest step that fits is used (6, 4 or 3 columns between commits).
     /// </summary>
     public static ArtGeometry? For(int width, int height)
     {
-        var (a, b) = height switch
+        int a;
+        int b;
+        if (height == 11)
         {
-            11 => (3, 7),
-            8 => (2, 5),
-            _ => (-1, -1),
-        };
-        if (a < 0)
+            a = 3;
+            b = 7;
+        }
+        else if (height == 9)
+        {
+            a = 2;
+            b = 6;
+        }
+        else if (height == 8)
+        {
+            a = 2;
+            b = 5;
+        }
+        else
+        {
             return null;
+        }
 
         foreach (var step in new[] { 6, 4, 3 })
         {

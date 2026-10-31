@@ -11,9 +11,15 @@ public class ArtGeometryTests
     }
 
     [Fact]
+    public void Nine_rows_is_the_branches_art_without_the_two_empty_rows()
+    {
+        Assert.Equal(new ArtGeometry(80, 9, 6, 2, 6, 16), ArtGeometry.For(80, 9));
+    }
+
+    [Fact]
     public void Unsupported_height_has_no_geometry()
     {
-        Assert.Null(ArtGeometry.For(80, 9));
+        Assert.Null(ArtGeometry.For(80, 10));
     }
 
     [Fact]
