@@ -1,0 +1,20 @@
+name: Question
+description: Ask how something in graftui works.
+labels: ["question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you've tried
+      description: What you read or did so far, and what happened.
+  - type: input
+    id: version
+    attributes:
+      label: graftui version
+      description: Output of `graftui --version`, if it matters for the question.
