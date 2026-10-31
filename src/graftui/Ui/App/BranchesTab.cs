@@ -257,7 +257,8 @@ internal sealed partial class BranchesTab
         _app.Art.Direction = cols => DirectionLine.Browse(layout, cols);
         _app.Art.Panel = CommitLists.Idle(layout);
         _app.Art.FallbackCaption = null;
-        _app.Art.Scene = geo =>
+        // A straight graph's preview is drawn in the single-line art (see IsStraight).
+        _app.Art.ShowScene(geo =>
         {
             var frame = MergeScenes.Preview(geo, layout);
             var grid = frame.Grid;
@@ -278,9 +279,7 @@ internal sealed partial class BranchesTab
             else if (layout.Kind == GraphKind.Unrelated)
                 caption = new Caption($"{layout.Selected} and {layout.Current} have no common history", Muted);
             return new SceneFrame(grid, caption);
-        };
-        // Set after the scene, which clears the flag: a straight graph's preview is drawn in the single-line art.
-        _app.Art.SingleLine = IsStraight(layout);
+        }, IsStraight(layout));
         _app.Art.SetNeedsDraw();
     }
 

@@ -52,6 +52,41 @@ public class CaptionLayoutTests
     }
 
     [Fact]
+    public void At_pane_height_15_the_single_line_art_leaves_four_commit_rows_and_the_caption_on_row_8()
+    {
+        // 64x22 terminal: the Branches pane is 15 rows tall. Single-line: 5 art rows, so the caption is on row 8 and 4 commit rows follow.
+        var single = ArtPaneView.Rows(15, twoLines: false, compact: true, singleLine: true);
+
+        Assert.Equal(5, single.ArtRows);
+        Assert.Equal(8, single.CaptionRow);
+        Assert.Equal(9, single.RuleRow);
+        Assert.Equal(10, single.BelowTop);
+        Assert.Equal(4, single.BelowRows);
+    }
+
+    [Fact]
+    public void At_pane_height_15_the_normal_art_leaves_one_commit_row_and_the_caption_on_row_11()
+    {
+        var normal = ArtPaneView.Rows(15, twoLines: false, compact: true, singleLine: false);
+
+        Assert.Equal(8, normal.ArtRows);
+        Assert.Equal(11, normal.CaptionRow);
+        Assert.Equal(12, normal.RuleRow);
+        Assert.Equal(13, normal.BelowTop);
+        Assert.Equal(1, normal.BelowRows);
+    }
+
+    [Fact]
+    public void A_two_line_caption_moves_the_second_caption_row_down_and_takes_one_commit_row()
+    {
+        var two = ArtPaneView.Rows(22, twoLines: true, compact: true);
+
+        Assert.Equal(2, two.CaptionRows);
+        Assert.Equal(12, two.CaptionRow);
+        Assert.Equal(6, two.BelowRows);
+    }
+
+    [Fact]
     public void Single_line_art_only_applies_on_the_branches_tab()
     {
         Assert.Equal(ArtPaneView.CaptionLayout(22, twoLines: false), ArtPaneView.CaptionLayout(22, twoLines: false, singleLine: true));

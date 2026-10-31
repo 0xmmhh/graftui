@@ -106,7 +106,9 @@ internal sealed partial class BranchesTab
         art.Below = null;
         art.Panel = Panel(layout);
         art.FallbackCaption = null;
-        art.Scene = geo => new SceneFrame(layout is null ? new ArtGrid(geo.Width, geo.Height) : MergeScenes.Preview(geo, layout).Grid, caption);
+        // A flash over a straight graph keeps the single-line art, like the preview it stands in for.
+        art.ShowScene(geo => new SceneFrame(layout is null ? new ArtGrid(geo.Width, geo.Height) : MergeScenes.Preview(geo, layout).Grid, caption),
+            layout != null && IsStraight(layout));
         art.SetNeedsDraw();
     }
 }

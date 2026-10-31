@@ -41,7 +41,7 @@ public class ArtGeometryTests
     [Fact]
     public void Five_rows_is_the_single_line_art_with_its_line_on_row_two()
     {
-        // Row B (4) is never drawn on in the single-line art; it only keeps the record valid.
+        // B is 4 only so the record is valid: no row-B line is drawn in the single-line art, but row 4 holds the lower label's name.
         Assert.Equal(new ArtGeometry(80, 5, 6, 2, 4, 16), ArtGeometry.For(80, 5));
     }
 }

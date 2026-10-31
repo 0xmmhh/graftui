@@ -40,6 +40,20 @@ public class StraightPreviewTests
     }
 
     [Fact]
+    public void Show_scene_sets_the_height_with_the_scene_in_one_call()
+    {
+        var pane = new ArtPaneView();
+        Func<ArtGeometry, SceneFrame> scene = _ => new SceneFrame(new ArtGrid(1, 1), null);
+
+        pane.ShowScene(scene, singleLine: true);
+        Assert.True(pane.SingleLine);
+        Assert.Same(scene, pane.Scene);
+
+        pane.ShowScene(scene);
+        Assert.False(pane.SingleLine);
+    }
+
+    [Fact]
     public void The_single_line_flag_stays_until_the_next_scene_is_set()
     {
         var pane = new ArtPaneView { Scene = _ => new SceneFrame(new ArtGrid(1, 1), null) };
