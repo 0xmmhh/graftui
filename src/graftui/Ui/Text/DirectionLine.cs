@@ -12,8 +12,12 @@ public static class DirectionLine
     private static readonly Style BadB = new(Ink.Bad, true);
     private static readonly Style Hash = new(Ink.Hash);
 
+    // When fewer columns than this are left for the names beside the long wording, Browse uses the narrow form.
+    private const int NarrowNamesBudget = 16;
+
     /// <summary>
-    /// "feature/x  is 1 ahead, 1 behind  main": the selected branch, the counts, then the current branch. Only a detached HEAD
+    /// "feature/x  is 1 ahead of, 1 behind  main": the selected branch, the counts, then the current branch. When the names
+    /// do not fit beside the long wording, the narrow "feature/x  ↑1↓1 vs  main" is used. Only a detached HEAD
     /// is labelled; the art already marks the current branch.
     /// </summary>
     public static IReadOnlyList<Seg> Browse(GraphLayout L, int maxCols)
@@ -24,8 +28,16 @@ public static class DirectionLine
         if (L.Kind == GraphKind.Same && L.Selected == L.Current)
             return [new Seg(TextFit.Fit(cur, maxCols), CurB)];
 
-        var middle = $"  is {L.Ahead} ahead, {L.Behind} behind  ";
-        var (sel, curName) = TextFit.FitPair(L.Selected, cur, maxCols - TextFit.Columns(middle) - TextFit.Columns(extra));
+        var middle = $"  is {L.Ahead} ahead of, {L.Behind} behind  ";
+        var budget = maxCols - TextFit.Columns(middle) - TextFit.Columns(extra);
+        var namesCols = TextFit.Columns(L.Selected) + TextFit.Columns(cur);
+        if (namesCols > budget && budget < NarrowNamesBudget)
+        {
+            middle = $"  ↑{L.Ahead}↓{L.Behind} vs  ";
+            budget = maxCols - TextFit.Columns(middle) - TextFit.Columns(extra);
+        }
+
+        var (sel, curName) = TextFit.FitPair(L.Selected, cur, budget);
         List<Seg> segs = [new Seg(sel, IncB), new Seg(middle, Dim), new Seg(curName, CurB)];
         if (extra.Length > 0)
             segs.Add(new Seg(extra, Dim));

@@ -10,7 +10,7 @@ public class DirectionLineTests
     [Fact]
     public void Browse_names_both_branches_with_their_distance_and_no_current_label()
     {
-        Assert.Equal("feature  is 1 ahead, 1 behind  main", Text(DirectionLine.Browse(Layouts.Diverged(), 80)));
+        Assert.Equal("feature  is 1 ahead of, 1 behind  main", Text(DirectionLine.Browse(Layouts.Diverged(), 80)));
     }
 
     [Fact]
@@ -20,7 +20,7 @@ public class DirectionLineTests
 
         var text = Text(DirectionLine.Browse(layout, 66));
 
-        Assert.Equal("feature/conflict  is 1 ahead, 1 behind  main", text);
+        Assert.Equal("feature/conflict  is 1 ahead of, 1 behind  main", text);
         Assert.DoesNotContain("…", text);
     }
 
@@ -39,13 +39,32 @@ public class DirectionLineTests
     }
 
     [Fact]
+    public void Browse_keeps_the_long_wording_when_both_names_fit()
+    {
+        var layout = Layouts.Diverged() with { Selected = "feature/ff-to-merge", Current = "feature/conflict", Ahead = 4, Behind = 5 };
+
+        Assert.Equal("feature/ff-to-merge  is 4 ahead of, 5 behind  feature/conflict", Text(DirectionLine.Browse(layout, 80)));
+    }
+
+    [Fact]
+    public void Browse_uses_the_narrow_form_when_the_names_do_not_fit_beside_the_long_wording()
+    {
+        var layout = Layouts.Diverged() with { Selected = "feature/ff-to-merge", Current = "feature/conflict", Ahead = 4, Behind = 5 };
+
+        var text = Text(DirectionLine.Browse(layout, 36));
+
+        Assert.Equal("feature/…  ↑4↓5 vs  feature/conflict", text);
+        Assert.True(TextFit.Columns(text) <= 36);
+    }
+
+    [Fact]
     public void Browse_labels_a_detached_head_and_keeps_the_label()
     {
         var layout = Layouts.Diverged() with { Current = "", Detached = true };
 
         var text = Text(DirectionLine.Browse(layout, 80));
 
-        Assert.Equal("feature  is 1 ahead, 1 behind  HEAD (detached)", text);
+        Assert.Equal("feature  is 1 ahead of, 1 behind  HEAD (detached)", text);
         Assert.DoesNotContain("(current)", text);
     }
 
