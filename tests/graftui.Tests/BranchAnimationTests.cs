@@ -102,6 +102,27 @@ public class BranchAnimationTests
     }
 
     [Fact]
+    public void After_a_switch_each_label_is_in_the_colour_of_its_own_line()
+    {
+        // The reported bug: after a switch the labels and the lines disagreed. Once "(current)" has moved (2 * 250 ms), the old label
+        // must match the current branch's row-A line and the new label the selected branch's row-B line.
+        var anim = Switch();
+        anim.SetResult(SwitchedOk(), 0);
+        var grid = anim.Render(Geo, 2 * 250).Grid;
+        var x = Geo.TipX(1);
+
+        var currentLine = grid[x, Geo.A].Style.Ink;
+        var selectedLine = grid[x, Geo.B].Style.Ink;
+        Assert.NotEqual(currentLine, selectedLine);
+        Assert.Equal('m', grid[x, Geo.A - 2].Ch);
+        Assert.Equal(currentLine, grid[x, Geo.A - 2].Style.Ink);
+        Assert.Equal(currentLine, grid[x, Geo.A - 1].Style.Ink);
+        Assert.Equal('f', grid[x, Geo.B + 2].Ch);
+        Assert.Equal(selectedLine, grid[x, Geo.B + 2].Style.Ink);
+        Assert.Equal(selectedLine, grid[x, Geo.B + 1].Style.Ink);
+    }
+
+    [Fact]
     public void Switch_frame_at_0_ms_is_the_browse_preview_cell_for_cell()
     {
         var before = Stamped();

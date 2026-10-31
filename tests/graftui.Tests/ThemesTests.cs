@@ -142,7 +142,7 @@ public class ThemesTests
         foreach (var lane in t.Lanes)
         {
             Assert.True(Contrast(lane, t.Term) >= 4.5, $"{name}: {lane.R:x2}{lane.G:x2}{lane.B:x2} on the background");
-            Assert.True(Contrast(lane, t.SelRow) >= 3.5, $"{name}: {lane.R:x2}{lane.G:x2}{lane.B:x2} on the selected row");
+            Assert.True(Contrast(lane, t.SelRow) >= 3.9, $"{name}: {lane.R:x2}{lane.G:x2}{lane.B:x2} on the selected row");
         }
     }
 
