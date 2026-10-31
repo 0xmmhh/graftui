@@ -20,6 +20,16 @@ public static class Palette
     public static Color Warn { get; private set; } = new(0xf0, 0xa3, 0x5e);
     public static Color Hash { get; private set; } = new(0xb3, 0x9b, 0x62);
 
+    // The branch colours, lane 0 first (the trunk's). Six, to match BranchLanes.Count.
+    private static Color[] _lanes =
+    [
+        new(0x5b, 0x9d, 0xff), new(0xc3, 0x9b, 0xff), new(0x4f, 0xd1, 0xc5),
+        new(0xf7, 0x8f, 0xb3), new(0xb5, 0xe3, 0x6b), new(0x7d, 0xcf, 0xff),
+    ];
+
+    /// <summary>The colour of a branch lane (0..BranchLanes.Count-1).</summary>
+    public static Color Lane(int lane) => _lanes[lane];
+
     /// <summary>
     /// Makes <paramref name="t"/> the active colours. Call once at startup, before <c>Application.Create()</c>;
     /// views read these values when they draw. Tests must not call it (it is global state).
@@ -39,6 +49,7 @@ public static class Palette
         Bad = t.Bad;
         Warn = t.Warn;
         Hash = t.Hash;
+        _lanes = t.Lanes.ToArray();
     }
 
     /// <summary>Attribute for a semantic style. Background is the selection colour for selected rows, otherwise the terminal background.</summary>
@@ -64,18 +75,25 @@ public static class Palette
         return new Scheme(attr) { Focus = attr, Editable = attr };
     }
 
-    private static Color ForeColor(Ink ink) => ink switch
+    private static Color ForeColor(Ink ink)
     {
-        Ink.Fg => Fg,
-        Ink.Dim => Dim,
-        Ink.Cur => Cur,
-        Ink.Inc => Inc,
-        Ink.Mrg => Mrg,
-        Ink.Ok => Ok,
-        Ink.Bad => Bad,
-        Ink.Warn => Warn,
-        Ink.Hash => Hash,
-        Ink.Frame => Frame,
-        _ => Fg,
-    };
+        // A branch lane is one of the six lane colours; the role inks below are unchanged.
+        if (ink >= Ink.Lane0)
+            return _lanes[(int)ink - (int)Ink.Lane0];
+
+        return ink switch
+        {
+            Ink.Fg => Fg,
+            Ink.Dim => Dim,
+            Ink.Cur => Cur,
+            Ink.Inc => Inc,
+            Ink.Mrg => Mrg,
+            Ink.Ok => Ok,
+            Ink.Bad => Bad,
+            Ink.Warn => Warn,
+            Ink.Hash => Hash,
+            Ink.Frame => Frame,
+            _ => Fg,
+        };
+    }
 }
