@@ -57,7 +57,7 @@ public class BranchAnimationTests
         (y == g.A - 2 || y == g.A - 1 || y == g.B + 1 || y == g.B + 2) && x >= g.TipX(1) && x < g.TipX(1) + 20;
 
     [Fact]
-    public void Switch_timeline_at_0_250_500_750_and_1200_ms_moves_current_between_the_labels()
+    public void Switch_timeline_at_0_125_250_375_and_600_ms_moves_current_between_the_labels()
     {
         var anim = Switch();
         anim.SetResult(SwitchedOk(), 0);
@@ -76,36 +76,36 @@ public class BranchAnimationTests
         Assert.Equal(new Cell('▴', new Style(Ink.Inc)), t0[x, newMarker]);
         Assert.Equal(' ', t0[x + 8, newName].Ch);
 
-        // 250 ms: " (current)" is fading off the old label, which is moving from the current style to the normal one.
+        // 125 ms: " (current)" is fading off the old label, which is moving from the current style to the normal one.
+        var t125 = anim.Render(Geo, 125).Grid;
+        Assert.Equal(new Cell('m', new Style(Ink.Fg, true)), t125[x, oldName]);
+        Assert.Equal(new Cell('▾', new Style(Ink.Fg)), t125[x, oldMarker]);
+        Assert.Equal(new Cell('(', new Style(Ink.Frame)), t125[x + 5, oldName]);
+        Assert.Equal(new Cell('f', new Style(Ink.Inc, true)), t125[x, newName]);
+        Assert.Equal(' ', t125[x + 8, newName].Ch);
+
+        // 250 ms: the old label is normal and " (current)" is gone; the new label has not started.
         var t250 = anim.Render(Geo, 250).Grid;
-        Assert.Equal(new Cell('m', new Style(Ink.Fg, true)), t250[x, oldName]);
-        Assert.Equal(new Cell('▾', new Style(Ink.Fg)), t250[x, oldMarker]);
-        Assert.Equal(new Cell('(', new Style(Ink.Frame)), t250[x + 5, oldName]);
+        Assert.Equal(new Cell('m', new Style(Ink.Inc, true)), t250[x, oldName]);
+        Assert.Equal(new Cell('▾', new Style(Ink.Inc)), t250[x, oldMarker]);
+        Assert.Equal(' ', t250[x + 5, oldName].Ch);
         Assert.Equal(new Cell('f', new Style(Ink.Inc, true)), t250[x, newName]);
         Assert.Equal(' ', t250[x + 8, newName].Ch);
 
-        // 500 ms: the old label is normal and " (current)" is gone; the new label has not started.
-        var t500 = anim.Render(Geo, 500).Grid;
-        Assert.Equal(new Cell('m', new Style(Ink.Inc, true)), t500[x, oldName]);
-        Assert.Equal(new Cell('▾', new Style(Ink.Inc)), t500[x, oldMarker]);
-        Assert.Equal(' ', t500[x + 5, oldName].Ch);
-        Assert.Equal(new Cell('f', new Style(Ink.Inc, true)), t500[x, newName]);
-        Assert.Equal(' ', t500[x + 8, newName].Ch);
+        // 375 ms: " (current)" is fading onto the new label, which is moving to the current style.
+        var t375 = anim.Render(Geo, 375).Grid;
+        Assert.Equal(new Cell('f', new Style(Ink.Fg, true)), t375[x, newName]);
+        Assert.Equal(new Cell('▴', new Style(Ink.Fg)), t375[x, newMarker]);
+        Assert.Equal(new Cell('(', new Style(Ink.Frame)), t375[x + 8, newName]);
+        Assert.Equal(' ', t375[x + 5, oldName].Ch);
 
-        // 750 ms: " (current)" is fading onto the new label, which is moving to the current style.
-        var t750 = anim.Render(Geo, 750).Grid;
-        Assert.Equal(new Cell('f', new Style(Ink.Fg, true)), t750[x, newName]);
-        Assert.Equal(new Cell('▴', new Style(Ink.Fg)), t750[x, newMarker]);
-        Assert.Equal(new Cell('(', new Style(Ink.Frame)), t750[x + 8, newName]);
-        Assert.Equal(' ', t750[x + 5, oldName].Ch);
-
-        // 1200 ms: the new label is current with " (current)" in the preview's dim; the old one is normal.
-        var t1200 = anim.Render(Geo, 1200).Grid;
-        Assert.Equal(new Cell('f', new Style(Ink.Cur, true)), t1200[x, newName]);
-        Assert.Equal(new Cell('▴', new Style(Ink.Cur)), t1200[x, newMarker]);
-        Assert.Equal(new Cell('(', new Style(Ink.Dim)), t1200[x + 8, newName]);
-        Assert.Equal(new Cell('m', new Style(Ink.Inc, true)), t1200[x, oldName]);
-        Assert.Equal(' ', t1200[x + 5, oldName].Ch);
+        // 600 ms: the new label is current with " (current)" in the preview's dim; the old one is normal.
+        var t600 = anim.Render(Geo, 600).Grid;
+        Assert.Equal(new Cell('f', new Style(Ink.Cur, true)), t600[x, newName]);
+        Assert.Equal(new Cell('▴', new Style(Ink.Cur)), t600[x, newMarker]);
+        Assert.Equal(new Cell('(', new Style(Ink.Dim)), t600[x + 8, newName]);
+        Assert.Equal(new Cell('m', new Style(Ink.Inc, true)), t600[x, oldName]);
+        Assert.Equal(' ', t600[x + 5, oldName].Ch);
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class BranchAnimationTests
         anim.SetResult(SwitchedOk(), 0);
         var rest = MergeScenes.Preview(Geo, before).Grid;
 
-        foreach (var t in new long[] { 0, 100, 250, 333, 499, 500, 600, 750, 900, 999, 1000, 1100, 1199, 1200, 2000 })
+        foreach (var t in new long[] { 0, 100, 125, 166, 249, 250, 300, 375, 450, 499, 500, 550, 599, 600, 2000 })
         {
             var grid = anim.Render(Geo, t).Grid;
             Assert.DoesNotContain('◆', Text(grid));
@@ -144,10 +144,10 @@ public class BranchAnimationTests
         var anim = Switch();
         anim.SetResult(SwitchedOk(), 0);
 
-        var last = anim.Render(Geo, 1200);
+        var last = anim.Render(Geo, 600);
         var later = anim.Render(Geo, 3_000);
 
-        Assert.True(anim.IsDone(1200));
+        Assert.True(anim.IsDone(600));
         Assert.True(SameCells(last.Grid, later.Grid));
         Assert.Equal(last.Caption, later.Caption);
         Assert.Equal("Switched", anim.Title(3_000));
@@ -157,26 +157,26 @@ public class BranchAnimationTests
     }
 
     [Fact]
-    public void Switch_title_changes_with_the_caption_at_1000_ms()
+    public void Switch_title_changes_with_the_caption_at_500_ms()
     {
         var anim = Switch();
         anim.SetResult(SwitchedOk(), 0);
 
-        Assert.Equal("Switching", anim.Title(999));
-        Assert.Equal("Switched", anim.Title(1000));
-        Assert.Equal("Switched", anim.Title(1200));
+        Assert.Equal("Switching", anim.Title(499));
+        Assert.Equal("Switched", anim.Title(500));
+        Assert.Equal("Switched", anim.Title(600));
     }
 
     [Fact]
-    public void Switch_caption_appears_at_1000_ms_and_not_before()
+    public void Switch_caption_appears_at_500_ms_and_not_before()
     {
         var anim = Switch();
         anim.SetResult(SwitchedOk(), 0);
 
         Assert.Equal("⠋ Switching to feature…", anim.Render(Geo, 0).Caption?.Text);
         Assert.EndsWith("Switching to feature…", anim.Render(Geo, 100).Caption?.Text);
-        Assert.NotEqual("✔ Switched to feature", anim.Render(Geo, 999).Caption?.Text);
-        Assert.Equal("✔ Switched to feature", anim.Render(Geo, 1000).Caption?.Text);
+        Assert.NotEqual("✔ Switched to feature", anim.Render(Geo, 499).Caption?.Text);
+        Assert.Equal("✔ Switched to feature", anim.Render(Geo, 500).Caption?.Text);
     }
 
     [Fact]
@@ -189,9 +189,9 @@ public class BranchAnimationTests
 
         var x = Geo.TipX(1);
         Assert.Equal('▾', anim.Render(Geo, 2_000).Grid[x, Geo.A - 1].Ch);
-        Assert.Equal(new Cell('f', new Style(Ink.Fg, true)), anim.Render(Geo, 2_750).Grid[x, Geo.B + 2]);
-        Assert.False(anim.IsDone(2_999));
-        Assert.True(anim.IsDone(3_200));
+        Assert.Equal(new Cell('f', new Style(Ink.Fg, true)), anim.Render(Geo, 2_375).Grid[x, Geo.B + 2]);
+        Assert.False(anim.IsDone(2_599));
+        Assert.True(anim.IsDone(2_600));
     }
 
     [Fact]
@@ -254,13 +254,13 @@ public class BranchAnimationTests
         anim.SetResult(SwitchedOk(), 0);
 
         Assert.True(SameCells(MergeScenes.Preview(Geo, before).Grid, anim.Render(Geo, 0).Grid));
-        var last = anim.Render(Geo, 1200).Grid;
+        var last = anim.Render(Geo, 600).Grid;
         Assert.Equal("main", Row(last, Geo.A - 2).Trim());
         Assert.Equal("feature (current)", Row(last, Geo.A + 2).Trim());
         Assert.Equal(new Cell('(', new Style(Ink.Dim)), last[Geo.XB + 8, Geo.A + 2]);
 
         var rest = MergeScenes.Preview(Geo, before).Grid;
-        foreach (var t in new long[] { 0, 250, 500, 750, 1200 })
+        foreach (var t in new long[] { 0, 125, 250, 375, 600 })
         {
             var grid = anim.Render(Geo, t).Grid;
             for (var y = 0; y < Geo.Height; y++)
@@ -287,12 +287,12 @@ public class BranchAnimationTests
         Assert.Equal(new Cell('(', new Style(Ink.Dim)), t0[x + 5, Geo.A - 2]);
 
         // The extra fades out in the first half; the name is then normal, and it is never cut or moved.
-        Assert.Equal(new Cell('(', new Style(Ink.Frame)), anim.Render(Geo, 250).Grid[x + 5, Geo.A - 2]);
-        var mid = anim.Render(Geo, 500).Grid;
+        Assert.Equal(new Cell('(', new Style(Ink.Frame)), anim.Render(Geo, 125).Grid[x + 5, Geo.A - 2]);
+        var mid = anim.Render(Geo, 250).Grid;
         Assert.Equal("HEAD", Row(mid, Geo.A - 2).Trim());
         Assert.Equal(new Cell('H', new Style(Ink.Inc, true)), mid[x, Geo.A - 2]);
 
-        var end = anim.Render(Geo, 1200).Grid;
+        var end = anim.Render(Geo, 600).Grid;
         Assert.Equal("HEAD", Row(end, Geo.A - 2).Trim());
         Assert.Equal("feature (current)", Row(end, Geo.B + 2).Trim());
     }
@@ -308,12 +308,12 @@ public class BranchAnimationTests
         Assert.Equal(19, Row(anim.Render(narrow, 5_000).Grid, narrow.B + 2).IndexOf("feature"));
 
         anim.SetResult(SwitchedOk(), 0);
-        foreach (var t in new long[] { 0, 250, 500 })
+        foreach (var t in new long[] { 0, 125, 250 })
             Assert.Equal(19, Row(anim.Render(narrow, t).Grid, narrow.B + 2).IndexOf("feature"));
 
-        // The fade-in starts after 500 ms: the name moves left to make room for the extra, and the whole " (current)" is shown.
-        Assert.Equal(9, Row(anim.Render(narrow, 750).Grid, narrow.B + 2).IndexOf("feature"));
-        Assert.Equal("feature (current)", Row(anim.Render(narrow, 1200).Grid, narrow.B + 2).Substring(9, 17));
+        // The fade-in starts after 250 ms: the name moves left to make room for the extra, and the whole " (current)" is shown.
+        Assert.Equal(9, Row(anim.Render(narrow, 375).Grid, narrow.B + 2).IndexOf("feature"));
+        Assert.Equal("feature (current)", Row(anim.Render(narrow, 600).Grid, narrow.B + 2).Substring(9, 17));
 
         var failing = new BranchAnimation(BranchOp.Switch, Layouts.Diverged(), "feature", null, 0, "Switching to feature…");
         failing.SetResult(new BranchResult(false, "Failed", new Caption("✕ Switch failed", new Style(Ink.Bad, true)), null), 0);

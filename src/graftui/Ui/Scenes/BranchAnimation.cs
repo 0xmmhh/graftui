@@ -16,7 +16,7 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
 {
     // Switch: the timeline starts when git answers (hold 0), so a failed switch never moves the marker. "(current)" fades off the old
     // label over SwitchFade ms and onto the new one over the next SwitchFade ms; the result's caption appears at SwitchCaptionAt.
-    private const long SwitchHold = 0, SwitchTotal = 1200, SwitchFade = 500, SwitchCaptionAt = 1000;
+    private const long SwitchHold = 0, SwitchTotal = 600, SwitchFade = 250, SwitchCaptionAt = 500;
     private const long CreateHold = 700, CreateTotal = 900;
     private const long RenameHold = 700, RenameTotal = 900;
     private const long DeleteHold = 300, DeleteTotal = 1000;
