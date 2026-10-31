@@ -23,7 +23,8 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
     private const string StashRef = "refs/stash";
     public const string RescueRef = "refs/graftui/rescue/pop";
     private static readonly Regex StashMergeSubject = new(
-        "^(?:On|WIP on) [^:]+: " + Regex.Escape(StashMergeOperation.MessageStart) + ".+ into .+$", RegexOptions.CultureInvariant);
+        "^(?:On|WIP on) [^:]+: " + Regex.Escape(StashMergeOperation.MessageStart) + ".+ into .+$", RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
     private static readonly string[] StatusArgs = ["status", "--porcelain=v2", "-z", "--untracked-files=all"];
 
     public PopCheck Check(PopRequest request)
@@ -165,7 +166,18 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
     }
 
     /// <summary>True for graftui's stash-merge entry, the one whose message names the merge ("On main: graftui: before merging B into I").</summary>
-    internal static bool IsStashMergeEntry(string subject) => StashMergeSubject.IsMatch(subject);
+    // A subject that takes too long to match is treated as any other entry: a plain pop.
+    internal static bool IsStashMergeEntry(string subject)
+    {
+        try
+        {
+            return StashMergeSubject.IsMatch(subject);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>git's refusal of `pop --index` when the staged part cannot apply. The tree is untouched when git says so.</summary>
     private static bool IndexRefused(GitResult r) =>
