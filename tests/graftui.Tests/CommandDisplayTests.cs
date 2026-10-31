@@ -33,7 +33,7 @@ public class CommandDisplayTests
     {
         var line = Simplify(r, h);
         Assert.NotNull(line);
-        Assert.Equal(DisplayKind.Command, line!.Kind);
+        Assert.Equal(DisplayKind.Command, line.Kind);
         return line.Text;
     }
 
@@ -416,7 +416,7 @@ public class CommandDisplayTests
     [Fact]
     public void Shown_text_equal_to_the_exact_command_is_marked_exact()
     {
-        Assert.True(Simplify(L("reset -q --hard HEAD"))!.Exact is false);
+        Assert.False(Simplify(L("reset -q --hard HEAD"))!.Exact);
         Assert.True(Simplify(L("reset --hard HEAD"))!.Exact);
     }
 

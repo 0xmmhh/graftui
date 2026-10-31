@@ -464,7 +464,7 @@ public class StageSafetyTests
 
         Assert.True(outcome.Success, outcome.Message);
         Assert.NotNull(outcome.Undo);
-        Assert.Equal("app.txt", outcome.Undo!.IndexBefore![0].Path);
+        Assert.Equal("app.txt", outcome.Undo.IndexBefore![0].Path);
         Assert.Equal(" M app.txt", repo.Status());
     }
 }

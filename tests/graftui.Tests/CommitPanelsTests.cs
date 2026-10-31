@@ -28,7 +28,7 @@ public class CommitPanelsTests
         Assert.Equal(["pick three", "pick two", "pick one"], panel.Left.Rows.Select(r => r.Subject));
         Assert.Equal(3, panel.Left.Total);
         Assert.NotNull(panel.Right);
-        Assert.Equal("main (current)  1 new", string.Concat(panel.Right!.Header.Select(s => s.Text)));
+        Assert.Equal("main (current)  1 new", string.Concat(panel.Right.Header.Select(s => s.Text)));
         Assert.Equal(["main work"], panel.Right.Rows.Select(r => r.Subject));
         Assert.Equal(1, panel.Right.Total);
         Assert.Empty(panel.Footer);

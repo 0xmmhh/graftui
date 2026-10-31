@@ -308,7 +308,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
             return "could not read the branch";
         if (otherTip.Length == 0)
             return BranchRefusals.UndoBranchGone(other);
-        return BranchGit.IsAncestor(git, log, s.Head!, BranchRef(other)) ? null : BranchRefusals.UndoWouldLose(other, branch);
+        return BranchGit.IsAncestor(git, log, s.Head, BranchRef(other)) ? null : BranchRefusals.UndoWouldLose(other, branch);
     }
 
     /// <summary>Rename: the renamed branch is still at the commit it had, and the old name is free.</summary>
@@ -569,11 +569,11 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         // Exit 1 means some entries still need a refresh; the comparison below decides whether the index is right.
         Call(log, "update-index", "-q", "--refresh");
 
-        var now = RepoState.IndexEntries(git, s.IndexBefore!.Select(e => e.Path), log);
-        if (now is null || !now.SequenceEqual(s.IndexBefore!))
+        var now = RepoState.IndexEntries(git, s.IndexBefore.Select(e => e.Path), log);
+        if (now is null || !now.SequenceEqual(s.IndexBefore))
             return ("the index is not what it was before the unstage; check git status", "");
 
-        var paths = s.IndexBefore!.Select(e => e.Path).Distinct().ToList();
+        var paths = s.IndexBefore.Select(e => e.Path).Distinct().ToList();
         return (null, paths.Count == 1
             ? $"↶ Restored the hand-picked staged changes to {paths[0]}"
             : $"↶ Restored the hand-picked staged changes to {paths.Count} files");
