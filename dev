@@ -10,6 +10,8 @@ APP_DIR="$HOME/.local/share/graftui"
 BIN_DIR="$HOME/.local/bin"
 SANDBOX="$HOME/.graftui/sandbox"
 WRAPPER_MARK="# installed by graftui ./dev install"
+# Written into the app folder, so a later install knows ./dev made it and may replace it.
+APP_MARK=".installed-by-dev"
 
 usage() {
   cat <<'EOF'
@@ -38,18 +40,26 @@ install() {
     fi
   fi
 
+  # The app folder is replaced below, so refuse before publishing when ./dev did not make it.
+  if [ -e "$APP_DIR" ] || [ -L "$APP_DIR" ]; then
+    if [ ! -f "$APP_DIR/$APP_MARK" ]; then
+      echo "dev: $APP_DIR exists and was not installed by ./dev; move it away first" >&2
+      exit 1
+    fi
+  fi
+
   # Publish into a new folder first, so a failed publish leaves the previous install in place.
   rm -rf "$APP_DIR.new"
   dotnet publish "$PROJECT" -c Release -o "$APP_DIR.new" --nologo
+  printf 'created by graftui ./dev install\n' > "$APP_DIR.new/$APP_MARK"
   rm -rf "$APP_DIR"
   mv "$APP_DIR.new" "$APP_DIR"
 
+  # %q quotes the path for sh, so a HOME with quotes, $ or backticks can't change what the launcher runs.
+  local launch
+  launch=$(printf '%q' "$APP_DIR/graftui")
   mkdir -p "$BIN_DIR"
-  cat > "$BIN_DIR/graftui" <<EOF
-#!/bin/sh
-$WRAPPER_MARK
-exec "$APP_DIR/graftui" "\$@"
-EOF
+  printf '#!/bin/sh\n%s\nexec %s "$@"\n' "$WRAPPER_MARK" "$launch" > "$BIN_DIR/graftui"
   chmod +x "$BIN_DIR/graftui"
 
   echo "dev: installed $("$BIN_DIR/graftui" --version)"

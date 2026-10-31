@@ -17,6 +17,10 @@ internal static class SandboxEdits
     public const string AppendedLine = "Edited by graftui --make-edits.";
     public const string NewFileText = "Notes made by graftui --make-edits.\n";
 
+    // Every line this flag prints starts with the program name; the refusals about the flag itself start with its name.
+    private const string Prefix = "graftui: ";
+    private const string FlagPrefix = "--make-edits: ";
+
     // Plain UTF-8 without a byte-order mark, as Sandbox writes its files.
     private static readonly Encoding NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
@@ -25,23 +29,25 @@ internal static class SandboxEdits
     {
         var root = Sandbox.DefaultPath;
         var target = path ?? root;
-        var refusal = CheckTarget(target, root);
-        if (refusal != null)
-        {
-            error.WriteLine("graftui: " + refusal);
-            return 1;
-        }
 
+        // Inside the try: CheckTarget runs git, and a missing git binary must end in the same one-line error as the rest.
         try
         {
-            var result = Make(new GitClient(root));
-            if (!result.Success)
+            var refusal = CheckTarget(target, root);
+            if (refusal != null)
             {
-                error.WriteLine("graftui: " + result.Message);
+                error.WriteLine(Prefix + refusal);
                 return 1;
             }
 
-            output.WriteLine($"graftui: made 3 unstaged changes in ~/.graftui/sandbox (on {result.Message})");
+            var result = Make(new GitClient(root));
+            if (!result.Success)
+            {
+                error.WriteLine(Prefix + result.Message);
+                return 1;
+            }
+
+            output.WriteLine(Prefix + $"made 3 unstaged changes in ~/.graftui/sandbox (on {result.Message})");
             output.WriteLine($"  modified   {ModifiedFile}");
             output.WriteLine($"  deleted    {DeletedFile}");
             output.WriteLine($"  untracked  {NewFile}");
@@ -50,7 +56,7 @@ internal static class SandboxEdits
         }
         catch (Exception ex) when (ex is GitNotFoundException or IOException or UnauthorizedAccessException)
         {
-            error.WriteLine("graftui: " + ex.Message);
+            error.WriteLine(Prefix + ex.Message);
             return 1;
         }
     }
@@ -66,16 +72,16 @@ internal static class SandboxEdits
             return "HOME is not set; cannot find ~/.graftui";
 
         if (!Directory.Exists(sandboxRoot))
-            return "--make-edits: there is no practice repo at ~/.graftui/sandbox yet; build it first with 'graftui --sandbox'";
+            return FlagPrefix + "there is no practice repo at ~/.graftui/sandbox yet; build it first with 'graftui --sandbox'";
 
         // The sandbox must be a repo of its own, not a folder inside another repo, and must carry the marker that Sandbox writes.
         var sandbox = new GitClient(sandboxRoot);
         var top = sandbox.GetTopLevel();
         if (top == null || !IsOwnRepoRoot(sandbox) || !File.Exists(Path.Combine(sandboxRoot, ".git", Sandbox.MarkerFile)))
-            return "--make-edits: ~/.graftui/sandbox was not created by 'graftui --sandbox'; it was left alone";
+            return FlagPrefix + "~/.graftui/sandbox was not created by 'graftui --sandbox'; it was left alone";
 
         if (!Directory.Exists(target))
-            return "--make-edits: no such folder: " + target;
+            return FlagPrefix + "no such folder: " + target;
 
         var targetTop = new GitClient(target).GetTopLevel();
         if (targetTop == null || !string.Equals(targetTop, top, StringComparison.Ordinal))
@@ -91,17 +97,17 @@ internal static class SandboxEdits
     public static MakeEditsResult Make(GitClient git)
     {
         if (!git.IsWorkingTreeClean())
-            return new MakeEditsResult(false, "--make-edits: the sandbox already has changes; commit, stash or discard them in graftui, or rebuild it with 'graftui --sandbox'");
+            return new MakeEditsResult(false, FlagPrefix + "the sandbox already has changes; commit, stash or discard them in graftui, or rebuild it with 'graftui --sandbox'");
 
         // Literal pathspecs, so the names are matched exactly and not as globs.
         var tracked = git.RunLiteral("ls-files", "--error-unmatch", "--", ModifiedFile, DeletedFile);
         if (!tracked.Success)
-            return new MakeEditsResult(false, "--make-edits: README.md and app.txt must be tracked on the checked-out branch; rebuild the sandbox with 'graftui --sandbox'");
+            return new MakeEditsResult(false, FlagPrefix + "README.md and app.txt must be tracked on the checked-out branch; rebuild the sandbox with 'graftui --sandbox'");
 
         var root = git.RepoPath;
         var newPath = Path.Combine(root, NewFile);
         if (File.Exists(newPath) || Directory.Exists(newPath))
-            return new MakeEditsResult(false, "--make-edits: notes.txt already exists");
+            return new MakeEditsResult(false, FlagPrefix + "notes.txt already exists");
 
         File.AppendAllText(Path.Combine(root, ModifiedFile), AppendedLine + "\n", NoBom);
         File.Delete(Path.Combine(root, DeletedFile));
