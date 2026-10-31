@@ -26,6 +26,26 @@ dotnet run --project src/graftui -- --sandbox            # rebuild and open ~/.g
 dotnet run --project src/graftui -- ~/.graftui/sandbox   # reopen without rebuilding
 ```
 
+### Developer shortcuts
+
+`./dev` wraps these commands. It needs bash, so it works on macOS and Linux. Run `./dev` on its own to list them.
+
+| Command | What it does |
+|---|---|
+| `./dev install` | publish a Release build to `~/.local/share/graftui` and put a `graftui` launcher in `~/.local/bin` |
+| `./dev sandbox` | rebuild the practice repo at `~/.graftui/sandbox` and open it |
+| `./dev open` | reopen the practice repo without rebuilding it |
+| `./dev edits` | make unstaged changes in the practice repo (see below) |
+| `./dev test` | run the tests |
+
+If `~/.local/bin` is not on your `PATH`, `./dev install` prints the line to add to your shell profile. On Windows, use the `dotnet` commands above, or Git Bash or WSL.
+
+### Test edits (hidden flag)
+
+`graftui --make-edits` (or `./dev edits`) makes three unstaged changes in `~/.graftui/sandbox`: it modifies `README.md`, deletes `app.txt` and creates an untracked `notes.txt`. It changes nothing else, prints what it did and exits. Open the sandbox with `./dev open` to see the changes on the Changes tab.
+
+It refuses any other repository, a missing sandbox, and a sandbox that already has changes. The flag is left out of `--help` on purpose.
+
 ## The safety rules
 
 Every change must keep these. A pull request that weakens one won't be merged, however nice the feature.
