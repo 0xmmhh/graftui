@@ -11,10 +11,12 @@ public static class CommitAge
     private const int DaysPerWeek = 7;
     private const int DaysPerMonth = 30;
     private const int DaysPerYear = 365;
+    private const int MonthsPerYear = 12;
 
     /// <summary>
     /// The short age of a commit at <paramref name="now"/>. Under a minute, and any commit in the future, is "now".
-    /// Days, weeks, months and years are whole counts (30-day months, 365-day years).
+    /// Days, weeks, months and years are whole counts (30-day months, 365-day years). Months stop at 11, so a commit of
+    /// 360 to 364 days old reads "1y", not "12mo".
     /// </summary>
     public static string Short(DateTimeOffset when, DateTimeOffset now)
     {
@@ -31,8 +33,8 @@ public static class CommitAge
             return $"{days}d";
         if (days < DaysPerMonth)
             return $"{days / DaysPerWeek}w";
-        if (days < DaysPerYear)
+        if (days < MonthsPerYear * DaysPerMonth)
             return $"{days / DaysPerMonth}mo";
-        return $"{days / DaysPerYear}y";
+        return $"{Math.Max(1, days / DaysPerYear)}y";
     }
 }

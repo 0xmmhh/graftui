@@ -86,7 +86,7 @@ public sealed class ArtPaneView : PaneView
     public static (int X, int Y, int W, bool LabelRow)? NameField(int paneW, int paneH, bool captionTwoLines = false, bool compact = false)
     {
         var l = CaptionLayout(paneH, captionTwoLines, compact);
-        if (l.BelowRows == 0 || ArtArea(paneW, paneH, compact) is null)
+        if (l.BelowRows == 0 || ArtArea(paneW, paneH, compact) == null)
             return null;
         var label = l.BelowRows >= 2;
         // The rows under the caption are drawn at x=4; "name     " is 9 columns wide, so the field starts at 13.
@@ -163,7 +163,7 @@ public sealed class ArtPaneView : PaneView
         else
             split = TextFit.Wrap2(caption.Text, cw);
         var (first, second) = split;
-        var layout = CaptionLayout(ph, second is not null, CompactArt);
+        var layout = CaptionLayout(ph, second != null, CompactArt);
         if (caption is not null)
         {
             if (layout.CaptionRows == 2)
@@ -186,7 +186,7 @@ public sealed class ArtPaneView : PaneView
 
         if (Panel is { } panel)
         {
-            var lines = CommitPanels.Render(panel, cw - 2, layout.BelowRows, ScreenCols >= CommitPanels.SideBySideMinCols, DateTimeOffset.Now);
+            var lines = CommitPanels.Render(panel, cw - 2, layout.BelowRows, ScreenCols >= CommitPanels.SideBySideMinCols, DateTimeOffset.UtcNow);
             for (var k = 0; k < lines.Count; k++)
                 DrawSegs(4, layout.BelowTop + k, lines[k], cw - 2);
         }

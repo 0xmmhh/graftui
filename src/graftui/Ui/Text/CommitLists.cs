@@ -142,6 +142,9 @@ public static class CommitPanels
     // The fewest columns a subject keeps when its age is drawn after it. Narrower rows leave the age out.
     private const int MinSubjectCols = 4;
 
+    // The columns a short hash is padded to.
+    private const int HashCols = 7;
+
     private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim), Frame = new(Ink.Frame);
 
     /// <summary>The lines of the commit area. <paramref name="now"/> is the time the commit ages are counted from.</summary>
@@ -276,11 +279,11 @@ public static class CommitPanels
     // When fewer than MinSubjectCols would be left for it, the age is left out and the row is drawn as dot, hash and subject only.
     private static IReadOnlyList<Seg> RowCell(CommitRow r, int width, DateTimeOffset now)
     {
-        if (r.Date is null)
+        if (!r.Date.HasValue)
             return Cell(RowSegs(r), width);
 
         var age = CommitAge.Short(r.Date.Value, now);
-        var hash = r.Hash.PadRight(7);
+        var hash = r.Hash.PadRight(HashCols);
         var prefixCols = 1 + 1 + TextFit.Columns(hash) + 1; // dot, space, hash, space
         var subjectCols = width - prefixCols - 1 - age.Length; // one space, then the age
         if (subjectCols < MinSubjectCols)
@@ -304,7 +307,7 @@ public static class CommitPanels
     [
         new Seg(r.Dot.ToString(), r.DotStyle),
         new Seg(" ", Fg),
-        new Seg(r.Hash.PadRight(7), r.HashStyle),
+        new Seg(r.Hash.PadRight(HashCols), r.HashStyle),
         new Seg(" ", Fg),
         new Seg(r.Subject, r.SubjectStyle),
     ];

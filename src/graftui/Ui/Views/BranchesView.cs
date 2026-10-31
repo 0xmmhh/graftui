@@ -57,11 +57,7 @@ public sealed class BranchesView : PaneView
         var listH = showHeader ? innerH - 1 : innerH;
 
         var sel = Math.Clamp(Selected, 0, Branches.Count - 1);
-        if (sel < _top)
-            _top = sel;
-        if (sel >= _top + listH)
-            _top = sel - listH + 1;
-        _top = Math.Clamp(_top, 0, Math.Max(0, Branches.Count - listH));
+        _top = ScrollTop(sel, _top, Branches.Count, listH);
 
         for (var i = _top; i < Branches.Count && i < _top + listH; i++)
         {
@@ -95,7 +91,7 @@ public sealed class BranchesView : PaneView
             // Ends over the last column of the ab column, so the header reads as the column's title.
             var header = AbHeader(CurrentName(Branches), innerW - 2);
             var cols = TextFit.Columns(header);
-            DrawText(innerW - cols, 1, header, cols, Dim);
+            DrawText(HeaderX(innerW, cols), 1, header, cols, Dim);
         }
         return true;
     }
@@ -117,8 +113,24 @@ public sealed class BranchesView : PaneView
         return "HEAD";
     }
 
-    // True when at least one branch other than the current one has counts, so the ab column has something to show.
-    private static bool HasCounts(IReadOnlyList<Branch> branches, IReadOnlyDictionary<string, (int Ahead, int Behind)> counts)
+    /// <summary>
+    /// The first branch shown, so the selected one is in view. The list scrolls only as far as it must, and never leaves
+    /// blank rows at the end when there are more rows than branches.
+    /// </summary>
+    internal static int ScrollTop(int sel, int top, int count, int listH)
+    {
+        if (sel < top)
+            top = sel;
+        if (sel >= top + listH)
+            top = sel - listH + 1;
+        return Math.Clamp(top, 0, Math.Max(0, count - listH));
+    }
+
+    /// <summary>The x of the header: it ends on the last inner column, which is the last column of the ab column.</summary>
+    internal static int HeaderX(int innerW, int headerCols) => innerW - headerCols;
+
+    /// <summary>True when at least one branch other than the current one has counts, so the ab column has something to show.</summary>
+    internal static bool HasCounts(IReadOnlyList<Branch> branches, IReadOnlyDictionary<string, (int Ahead, int Behind)> counts)
     {
         foreach (var b in branches)
             if (!b.IsCurrent && counts.ContainsKey(b.Name))

@@ -35,10 +35,17 @@ public class CommitAgeTests
     }
 
     [Fact]
-    public void Months_use_thirty_day_months_up_to_a_year()
+    public void Months_use_thirty_day_months_and_stop_at_eleven()
     {
         Assert.Equal("1mo", AgeOf(TimeSpan.FromDays(30)));
-        Assert.Equal("12mo", AgeOf(TimeSpan.FromDays(364)));
+        Assert.Equal("11mo", AgeOf(TimeSpan.FromDays(359)));
+    }
+
+    [Fact]
+    public void From_360_days_the_age_is_one_year_not_twelve_months()
+    {
+        Assert.Equal("1y", AgeOf(TimeSpan.FromDays(360)));
+        Assert.Equal("1y", AgeOf(TimeSpan.FromDays(364)));
     }
 
     [Fact]

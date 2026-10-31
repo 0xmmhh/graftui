@@ -164,9 +164,11 @@ public sealed class AppController
     internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _listWidth.Width);
 
     /// <summary>True when the whole art, and so the message box's fields, fits inside the art pane at this size.</summary>
-    internal bool ArtFits() =>
-        ArtPaneView.ArtArea(Art.Viewport.Width, Art.Viewport.Height, Art.CompactArt) is { } area
-        && area.Y + area.H <= Art.Viewport.Height;
+    internal bool ArtFits()
+    {
+        var area = ArtPaneView.ArtArea(Art.Viewport.Width, Art.Viewport.Height, Art.CompactArt);
+        return area != null && area.Value.Y + area.Value.H <= Art.Viewport.Height;
+    }
 
     internal void MarkOutcomeShown() => _outcomeShown = true;
 

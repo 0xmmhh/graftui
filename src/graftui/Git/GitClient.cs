@@ -194,11 +194,7 @@ public sealed class GitClient(string repoPath)
         if (!result.Success)
             throw new InvalidOperationException(Describe(result));
 
-        return result.StdOut
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(ParseCommit)
-            .OfType<CommitInfo>()
-            .ToList();
+        return ParseCommits(result.StdOut);
     }
 
     /// <summary>
@@ -211,11 +207,7 @@ public sealed class GitClient(string repoPath)
         if (!result.Success)
             throw new InvalidOperationException(Describe(result));
 
-        return result.StdOut
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(ParseCommit)
-            .OfType<CommitInfo>()
-            .ToList();
+        return ParseCommits(result.StdOut);
     }
 
     /// <summary>One commit by hash, or null if git cannot read it.</summary>
@@ -224,6 +216,14 @@ public sealed class GitClient(string repoPath)
         var result = Run("log", "--no-show-signature", "-n", "1", CommitFormat, hash, "--");
         return result.Success ? ParseCommit(result.StdOut.Trim()) : null;
     }
+
+    // One commit per line of git's --format output. Lines that do not have every field are skipped.
+    private static List<CommitInfo> ParseCommits(string stdout) =>
+        stdout
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(ParseCommit)
+            .OfType<CommitInfo>()
+            .ToList();
 
     private static CommitInfo? ParseCommit(string line)
     {
