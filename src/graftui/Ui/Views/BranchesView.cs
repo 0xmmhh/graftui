@@ -144,7 +144,7 @@ public sealed class BranchesView : PaneView
     }
 
     /// <summary>The x of the header: it ends on the last inner column, which is the last column of the ab column.</summary>
-    internal static int HeaderX(int innerW, int headerCols) => innerW - headerCols;
+    internal static int HeaderX(int innerW, int headerCols) => innerW - headerCols + 1;
 
     /// <summary>True when at least one branch other than the current one has counts, so the ab column has something to show.</summary>
     internal static bool HasCounts(IReadOnlyList<Branch> branches, IReadOnlyDictionary<string, (int Ahead, int Behind)> counts)

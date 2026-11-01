@@ -99,12 +99,16 @@ public class BranchesViewTests
     }
 
     [Fact]
-    public void The_header_ends_on_the_last_inner_column()
+    public void The_header_ends_on_the_last_inner_column_where_the_ab_column_ends()
     {
-        var x = BranchesView.HeaderX(innerW: 20, headerCols: 6);
+        const int innerW = 20;
+        const int abW = 4;
+        var abEnd = BranchesView.NameX + BranchesView.NameWidth(innerW, abW) + 1 + abW - 1;
+        var x = BranchesView.HeaderX(innerW, headerCols: 6);
 
-        Assert.Equal(14, x);
-        Assert.Equal(19, x + 6 - 1);
+        Assert.Equal(innerW, abEnd);
+        Assert.Equal(15, x);
+        Assert.Equal(abEnd, x + 6 - 1);
     }
 
     [Fact]
