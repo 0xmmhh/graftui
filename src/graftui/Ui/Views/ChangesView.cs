@@ -14,6 +14,11 @@ public sealed class ChangesView : PaneView
 {
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
 
+    // Columns of a file line: 1 the selection arrow; the letter sits under the branch names (BranchesView.NameX),
+    // and the path one column after it.
+    internal const int LetterX = BranchesView.NameX;
+    internal const int PathX = LetterX + 2;
+
     private int _top;
 
     public ChangesView()
@@ -31,6 +36,9 @@ public sealed class ChangesView : PaneView
     public int Selected { get; set; }
 
     public bool Loading { get; set; }
+
+    /// <summary>The path's width: it runs to the last inner column, as it did before the letter moved.</summary>
+    internal static int PathWidth(int innerW) => innerW - PathX + 1;
 
     protected override bool OnDrawingContent(DrawContext? context)
     {
@@ -73,8 +81,8 @@ public sealed class ChangesView : PaneView
             {
                 case ChangesLineKind.File:
                     DrawText(1, row, isSel ? "▸" : " ", 1, FgB, isSel);
-                    DrawText(3, row, line.File!.Letter.ToString(), 1, line.Style, isSel);
-                    DrawText(5, row, line.Text, innerW - 4, Fg, isSel);
+                    DrawText(LetterX, row, line.File!.Letter.ToString(), 1, line.Style, isSel);
+                    DrawText(PathX, row, line.Text, PathWidth(innerW), Fg, isSel);
                     break;
                 default:
                     DrawText(1, row, line.Text, innerW, line.Style);

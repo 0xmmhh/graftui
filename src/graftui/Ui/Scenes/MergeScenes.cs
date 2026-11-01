@@ -21,8 +21,6 @@ public sealed record PreviewOptions(bool NoCurrentExtra = false, bool NoCurName 
 public static class MergeScenes
 {
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
-    private static readonly Style Cur = new(Ink.Cur), CurB = new(Ink.Cur, true);
-    private static readonly Style Inc = new(Ink.Inc), IncB = new(Ink.Inc, true);
     private static readonly Style MrgB = new(Ink.Mrg, true);
     private static readonly Style OkB = new(Ink.Ok, true);
     private static readonly Style Bad = new(Ink.Bad), BadB = new(Ink.Bad, true);
@@ -41,22 +39,24 @@ public static class MergeScenes
         var grid = new ArtGrid(g.Width, g.Height);
         DrawShared(grid, g, L);
         var s = LabelSpots(g, L);
+        var cur = new Style(BranchInks.Current(L));
+        var sel = new Style(BranchInks.Selected(L));
         switch (L.Kind)
         {
             case GraphKind.Diverged:
             case GraphKind.Unrelated:
-                DrawRowA(grid, g, L.CurrentOwn, Cur, L.CurrentOwnMore);
-                DrawRowB(grid, g, L.SelectedOwn, Inc, L.SelectedOwnMore, connect: L.Kind != GraphKind.Unrelated, ghost: o.GhostTail);
+                DrawRowA(grid, g, L.CurrentOwn, cur, L.CurrentOwnMore);
+                DrawRowB(grid, g, L.SelectedOwn, sel, L.SelectedOwnMore, connect: L.Kind != GraphKind.Unrelated, ghost: o.GhostTail);
                 CurLabel(grid, g, s.CurX, s.CurRow, L, o);
                 SelLabel(grid, g, s.SelX, s.SelRow, L, o);
                 break;
             case GraphKind.FastForward:
-                DrawRowA(grid, g, L.SelectedOwn, Inc, L.SelectedOwnMore, ghost: o.GhostTail);
+                DrawRowA(grid, g, L.SelectedOwn, sel, L.SelectedOwnMore, ghost: o.GhostTail);
                 CurLabel(grid, g, s.CurX, s.CurRow, L, o);
                 SelLabel(grid, g, s.SelX, s.SelRow, L, o);
                 break;
             case GraphKind.UpToDate:
-                DrawRowA(grid, g, L.CurrentOwn, Cur, L.CurrentOwnMore);
+                DrawRowA(grid, g, L.CurrentOwn, cur, L.CurrentOwnMore);
                 CurLabel(grid, g, s.CurX, s.CurRow, L, o);
                 SelLabel(grid, g, s.SelX, s.SelRow, L, o);
                 break;
@@ -147,10 +147,14 @@ public static class MergeScenes
         var tx = g.TipX(L.CurrentOwn.Count);
         var sx = g.TipX(L.SelectedOwn.Count);
         var mx = Math.Max(tx, sx) + s;
+        var cur = new Style(BranchInks.Current(L));
+        var curB = new Style(BranchInks.Current(L), true);
+        var sel = new Style(BranchInks.Selected(L));
+        var selB = new Style(BranchInks.Selected(L), true);
 
         DrawShared(grid, g, L);
-        DrawRowA(grid, g, L.CurrentOwn, Cur, L.CurrentOwnMore);
-        DrawRowB(grid, g, L.SelectedOwn, Inc, L.SelectedOwnMore, connect: L.Kind != GraphKind.Unrelated);
+        DrawRowA(grid, g, L.CurrentOwn, cur, L.CurrentOwnMore);
+        DrawRowB(grid, g, L.SelectedOwn, sel, L.SelectedOwnMore, connect: L.Kind != GraphKind.Unrelated);
         SelLabel(grid, g, sx, g.B, L);
 
         // Paths the two lines follow to the join: the current line goes right along row A; the selected line goes along row B and up.
@@ -169,8 +173,8 @@ public static class MergeScenes
         if (o is null || te < MergeAnimation.MergeGrow)
         {
             var k = Ease(Math.Min(te, MergeAnimation.MergeGrow) / (double)MergeAnimation.MergeGrow);
-            DrawPath(grid, mp, Round(k * mp.Count), CurB, heavy: true);
-            DrawPath(grid, fp, Round(k * fp.Count), IncB, heavy: true);
+            DrawPath(grid, mp, Round(k * mp.Count), curB, heavy: true);
+            DrawPath(grid, fp, Round(k * fp.Count), selB, heavy: true);
             grid.Put(mx, g.A, '◌', Dim);
             CurLabel(grid, g, tx, g.A, L);
             return new SceneFrame(grid, running);
@@ -221,8 +225,8 @@ public static class MergeScenes
             return new SceneFrame(grid, running);
         }
 
-        DrawPath(grid, mp, mp.Count, Cur, heavy: false);
-        DrawPath(grid, fp, fp.Count, Inc, heavy: false);
+        DrawPath(grid, mp, mp.Count, cur, heavy: false);
+        DrawPath(grid, fp, fp.Count, sel, heavy: false);
         grid.Put(mx, g.A, '◉', MrgB);
         CurLabel(grid, g, mx, g.A, L);
         return new SceneFrame(grid, new Caption($"✔ Merge commit {Short(o.NewHead)} created on {L.Current}", OkB));
@@ -232,6 +236,8 @@ public static class MergeScenes
     public static SceneFrame FastForward(ArtGeometry g, GraphLayout L, long te, long t, MergeOutcome? o, bool waiting)
     {
         var grid = new ArtGrid(g.Width, g.Height);
+        var cur = new Style(BranchInks.Current(L));
+        var sel = new Style(BranchInks.Selected(L));
         DrawShared(grid, g, L);
 
         var tip = g.TipX(L.SelectedOwn.Count);
@@ -245,8 +251,8 @@ public static class MergeScenes
             var commit = L.SelectedOwn[i];
             var x = g.XB + g.Step * (i + 1);
             for (var xx = p + 1; xx < x; xx++)
-                grid.Put(xx, g.A, i == 0 && L.SelectedOwnMore ? '┄' : '─', xx <= px ? Cur : Inc);
-            grid.Put(x, g.A, Dot(commit), x <= px ? Cur : Inc);
+                grid.Put(xx, g.A, i == 0 && L.SelectedOwnMore ? '┄' : '─', xx <= px ? cur : sel);
+            grid.Put(x, g.A, Dot(commit), x <= px ? cur : sel);
             p = x;
         }
 
@@ -273,15 +279,18 @@ public static class MergeScenes
     public static SceneFrame UpToDate(ArtGeometry g, GraphLayout L, long te, long t, MergeOutcome? o, bool waiting)
     {
         var grid = new ArtGrid(g.Width, g.Height);
+        var cur = new Style(BranchInks.Current(L));
+        var curB = new Style(BranchInks.Current(L), true);
+        var selB = new Style(BranchInks.Selected(L), true);
         DrawShared(grid, g, L);
-        DrawRowA(grid, g, L.CurrentOwn, Cur, L.CurrentOwnMore);
+        DrawRowA(grid, g, L.CurrentOwn, cur, L.CurrentOwnMore);
         CurLabel(grid, g, g.TipX(L.CurrentOwn.Count), g.A, L);
         SelLabel(grid, g, g.XB, g.A, L);
 
         if (o is null || te < MergeAnimation.UtdPulse)
         {
             var baseCommit = L.Kind == GraphKind.Same ? L.CurrentTipCommit : L.SelectedTipCommit;
-            grid.Put(g.XB, g.A, Dot(baseCommit), Blink(t, IncB, CurB, 150));
+            grid.Put(g.XB, g.A, Dot(baseCommit), Blink(t, selB, curB, 150));
             return new SceneFrame(grid, Running(waiting, $"{Spin(t)} Merging {L.Selected} into {L.Current}…"));
         }
 
@@ -333,16 +342,17 @@ public static class MergeScenes
 
     private static void DrawShared(ArtGrid grid, ArtGeometry g, GraphLayout L)
     {
+        var shared = new Style(BranchInks.Current(L));
         var s = g.Step;
         var n = L.Shared.Count;
         for (var i = 0; i < n; i++)
         {
             var x = g.XB - s * (n - 1 - i);
             if (i > 0)
-                grid.HLine(x - s + 1, x - 1, g.A, Cur);
+                grid.HLine(x - s + 1, x - 1, g.A, shared);
             else if (L.SharedMore)
                 grid.HLine(x - s + 2, x - 1, g.A, Dim, '┄');
-            grid.Put(x, g.A, Dot(L.Shared[i]), Cur);
+            grid.Put(x, g.A, Dot(L.Shared[i]), shared);
         }
     }
 
@@ -425,7 +435,7 @@ public static class MergeScenes
         string? extra = L.Detached ? " (detached)" : " (current)";
         if (o?.NoCurrentExtra == true)
             extra = null;
-        Label(grid, g, x, row, up: true, name, extra, Ink.Cur, showName: o?.NoCurName != true);
+        Label(grid, g, x, row, up: true, name, extra, BranchInks.Current(L), showName: o?.NoCurName != true);
     }
 
     private static void SelLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L, PreviewOptions? o = null)
@@ -433,7 +443,7 @@ public static class MergeScenes
         // The selected branch is the current one: its label is the current label already. Another branch at the same commit gets its own.
         if (L.Kind == GraphKind.Same && L.Selected == L.Current)
             return;
-        Label(grid, g, x, row, up: false, L.Selected, extra: null, Ink.Inc, showName: o?.NoSelName != true);
+        Label(grid, g, x, row, up: false, L.Selected, extra: null, BranchInks.Selected(L), showName: o?.NoSelName != true);
     }
 
     private static string Pad(string s, int cols) => s + new string(' ', Math.Max(0, cols - TextFit.Columns(s)));

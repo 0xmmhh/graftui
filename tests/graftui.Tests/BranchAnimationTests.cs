@@ -27,8 +27,11 @@ public class BranchAnimationTests
     // ----- switch -----
 
     // The diverged pair: main (current) on the top row, feature below it. Its labels sit at the tip of the one commit each.
+    // The diverged pair with the branches' lanes: main is lane 0 (blue), feature lane 3 (pink).
+    private static GraphLayout Stamped() => Layouts.Diverged() with { CurrentLane = 0, SelectedLane = 3 };
+
     private static BranchAnimation Switch() =>
-        new(BranchOp.Switch, Layouts.Diverged(), "feature", null, 0, "Switching to feature…");
+        new(BranchOp.Switch, Stamped(), "feature", null, 0, "Switching to feature…");
 
     private static BranchResult SwitchedOk(string text = "✔ Switched to feature") =>
         new(true, "Switched", new Caption(text, new Style(Ink.Ok, true)), null);
@@ -57,51 +60,72 @@ public class BranchAnimationTests
         var newName = Geo.B + 2;
         var newMarker = Geo.B + 1;
 
-        // 0 ms: the old label is current as in the preview; the new one is plain.
+        // 0 ms: the old label is current as in the preview; the new one is plain. Each label keeps its lane's colour in every frame.
         var t0 = anim.Render(Geo, 0).Grid;
-        Assert.Equal(new Cell('m', new Style(Ink.Cur, true)), t0[x, oldName]);
-        Assert.Equal(new Cell('▾', new Style(Ink.Cur)), t0[x, oldMarker]);
+        Assert.Equal(new Cell('m', new Style(Ink.Lane0, true)), t0[x, oldName]);
+        Assert.Equal(new Cell('▾', new Style(Ink.Lane0)), t0[x, oldMarker]);
         Assert.Equal(new Cell('(', new Style(Ink.Dim)), t0[x + 5, oldName]);
-        Assert.Equal(new Cell('f', new Style(Ink.Inc, true)), t0[x, newName]);
-        Assert.Equal(new Cell('▴', new Style(Ink.Inc)), t0[x, newMarker]);
+        Assert.Equal(new Cell('f', new Style(Ink.Lane3, true)), t0[x, newName]);
+        Assert.Equal(new Cell('▴', new Style(Ink.Lane3)), t0[x, newMarker]);
         Assert.Equal(' ', t0[x + 8, newName].Ch);
 
-        // 125 ms: " (current)" is fading off the old label, which is moving from the current style to the normal one.
+        // 125 ms: " (current)" is fading off the old label; the old label's name and marker keep their lane.
         var t125 = anim.Render(Geo, 125).Grid;
-        Assert.Equal(new Cell('m', new Style(Ink.Fg, true)), t125[x, oldName]);
-        Assert.Equal(new Cell('▾', new Style(Ink.Fg)), t125[x, oldMarker]);
+        Assert.Equal(new Cell('m', new Style(Ink.Lane0, true)), t125[x, oldName]);
+        Assert.Equal(new Cell('▾', new Style(Ink.Lane0)), t125[x, oldMarker]);
         Assert.Equal(new Cell('(', new Style(Ink.Frame)), t125[x + 5, oldName]);
-        Assert.Equal(new Cell('f', new Style(Ink.Inc, true)), t125[x, newName]);
+        Assert.Equal(new Cell('f', new Style(Ink.Lane3, true)), t125[x, newName]);
         Assert.Equal(' ', t125[x + 8, newName].Ch);
 
-        // 250 ms: the old label is normal and " (current)" is gone; the new label has not started.
+        // 250 ms: " (current)" is gone from the old label; the new label has not started.
         var t250 = anim.Render(Geo, 250).Grid;
-        Assert.Equal(new Cell('m', new Style(Ink.Inc, true)), t250[x, oldName]);
-        Assert.Equal(new Cell('▾', new Style(Ink.Inc)), t250[x, oldMarker]);
+        Assert.Equal(new Cell('m', new Style(Ink.Lane0, true)), t250[x, oldName]);
+        Assert.Equal(new Cell('▾', new Style(Ink.Lane0)), t250[x, oldMarker]);
         Assert.Equal(' ', t250[x + 5, oldName].Ch);
-        Assert.Equal(new Cell('f', new Style(Ink.Inc, true)), t250[x, newName]);
+        Assert.Equal(new Cell('f', new Style(Ink.Lane3, true)), t250[x, newName]);
         Assert.Equal(' ', t250[x + 8, newName].Ch);
 
-        // 375 ms: " (current)" is fading onto the new label, which is moving to the current style.
+        // 375 ms: " (current)" is fading onto the new label.
         var t375 = anim.Render(Geo, 375).Grid;
-        Assert.Equal(new Cell('f', new Style(Ink.Fg, true)), t375[x, newName]);
-        Assert.Equal(new Cell('▴', new Style(Ink.Fg)), t375[x, newMarker]);
+        Assert.Equal(new Cell('f', new Style(Ink.Lane3, true)), t375[x, newName]);
+        Assert.Equal(new Cell('▴', new Style(Ink.Lane3)), t375[x, newMarker]);
         Assert.Equal(new Cell('(', new Style(Ink.Frame)), t375[x + 8, newName]);
         Assert.Equal(' ', t375[x + 5, oldName].Ch);
 
-        // 600 ms: the new label is current with " (current)" in the preview's dim; the old one is normal.
+        // 600 ms: the new label is current with " (current)" in the preview's dim; the old one is plain.
         var t600 = anim.Render(Geo, 600).Grid;
-        Assert.Equal(new Cell('f', new Style(Ink.Cur, true)), t600[x, newName]);
-        Assert.Equal(new Cell('▴', new Style(Ink.Cur)), t600[x, newMarker]);
+        Assert.Equal(new Cell('f', new Style(Ink.Lane3, true)), t600[x, newName]);
+        Assert.Equal(new Cell('▴', new Style(Ink.Lane3)), t600[x, newMarker]);
         Assert.Equal(new Cell('(', new Style(Ink.Dim)), t600[x + 8, newName]);
-        Assert.Equal(new Cell('m', new Style(Ink.Inc, true)), t600[x, oldName]);
+        Assert.Equal(new Cell('m', new Style(Ink.Lane0, true)), t600[x, oldName]);
         Assert.Equal(' ', t600[x + 5, oldName].Ch);
+    }
+
+    [Fact]
+    public void After_a_switch_each_label_is_in_the_colour_of_its_own_line()
+    {
+        // The reported bug: after a switch the labels and the lines disagreed. Once "(current)" has moved (2 * 250 ms), the old label
+        // must match the current branch's row-A line and the new label the selected branch's row-B line.
+        var anim = Switch();
+        anim.SetResult(SwitchedOk(), 0);
+        var grid = anim.Render(Geo, 2 * 250).Grid;
+        var x = Geo.TipX(1);
+
+        var currentLine = grid[x, Geo.A].Style.Ink;
+        var selectedLine = grid[x, Geo.B].Style.Ink;
+        Assert.NotEqual(currentLine, selectedLine);
+        Assert.Equal('m', grid[x, Geo.A - 2].Ch);
+        Assert.Equal(currentLine, grid[x, Geo.A - 2].Style.Ink);
+        Assert.Equal(currentLine, grid[x, Geo.A - 1].Style.Ink);
+        Assert.Equal('f', grid[x, Geo.B + 2].Ch);
+        Assert.Equal(selectedLine, grid[x, Geo.B + 2].Style.Ink);
+        Assert.Equal(selectedLine, grid[x, Geo.B + 1].Style.Ink);
     }
 
     [Fact]
     public void Switch_frame_at_0_ms_is_the_browse_preview_cell_for_cell()
     {
-        var before = Layouts.Diverged();
+        var before = Stamped();
         var anim = Switch();
         anim.SetResult(SwitchedOk(), 0);
 
@@ -111,7 +135,7 @@ public class BranchAnimationTests
     [Fact]
     public void Switch_graph_cells_are_identical_in_every_frame_and_no_frame_has_a_diamond()
     {
-        var before = Layouts.Diverged();
+        var before = Stamped();
         var anim = Switch();
         anim.SetResult(SwitchedOk(), 0);
         var rest = MergeScenes.Preview(Geo, before).Grid;
@@ -172,13 +196,13 @@ public class BranchAnimationTests
     public void Switch_timeline_starts_when_git_answers_so_the_marker_waits_for_it()
     {
         var anim = Switch();
-        Assert.True(SameCells(MergeScenes.Preview(Geo, Layouts.Diverged()).Grid, anim.Render(Geo, 5_000).Grid));
+        Assert.True(SameCells(MergeScenes.Preview(Geo, Stamped()).Grid, anim.Render(Geo, 5_000).Grid));
 
         anim.SetResult(SwitchedOk(), 2_000);
 
         var x = Geo.TipX(1);
         Assert.Equal('▾', anim.Render(Geo, 2_000).Grid[x, Geo.A - 1].Ch);
-        Assert.Equal(new Cell('f', new Style(Ink.Fg, true)), anim.Render(Geo, 2_375).Grid[x, Geo.B + 2]);
+        Assert.Equal(new Cell('f', new Style(Ink.Lane3, true)), anim.Render(Geo, 2_375).Grid[x, Geo.B + 2]);
         Assert.False(anim.IsDone(2_599));
         Assert.True(anim.IsDone(2_600));
     }
@@ -186,7 +210,7 @@ public class BranchAnimationTests
     [Fact]
     public void Switch_that_fails_never_moves_the_marker()
     {
-        var before = Layouts.Diverged();
+        var before = Stamped();
         var anim = Switch();
         var failed = new BranchResult(false, "Failed", new Caption("✕ Switch failed: boom", new Style(Ink.Bad, true)), null);
 
@@ -202,7 +226,7 @@ public class BranchAnimationTests
     [Fact]
     public void Switch_refused_by_git_keeps_the_marker_where_it_was()
     {
-        var before = Layouts.Diverged();
+        var before = Stamped();
         var anim = Switch();
         anim.SetResult(new BranchResult(false, "Refused", new Caption("Refused: local changes would be overwritten", new Style(Ink.Warn, true)),
             null), 400);
@@ -231,9 +255,9 @@ public class BranchAnimationTests
 
     // Detached HEAD on the diverged pair: the old label reads HEAD (detached).
     private static GraphLayout Detached() =>
-        new("main", true, "feature", Layouts.Cur, Layouts.Sel, Layouts.Shared,
+        new GraphLayout("main", true, "feature", Layouts.Cur, Layouts.Sel, Layouts.Shared,
             [Layouts.C(Layouts.Cur)], false, [Layouts.C(Layouts.Sel)], false, [Layouts.C(Layouts.Shared)], false,
-            Layouts.C(Layouts.Cur), Layouts.C(Layouts.Sel), 1, 1, GraphKind.Diverged);
+            Layouts.C(Layouts.Cur), Layouts.C(Layouts.Sel), 1, 1, GraphKind.Diverged) with { CurrentLane = BranchLanes.None, SelectedLane = 3 };
 
     [Fact]
     public void Switch_to_a_branch_on_the_same_commit_moves_current_between_its_two_labels()
@@ -279,7 +303,7 @@ public class BranchAnimationTests
         Assert.Equal(new Cell('(', new Style(Ink.Frame)), anim.Render(Geo, 125).Grid[x + 5, Geo.A - 2]);
         var mid = anim.Render(Geo, 250).Grid;
         Assert.Equal("HEAD", Row(mid, Geo.A - 2).Trim());
-        Assert.Equal(new Cell('H', new Style(Ink.Inc, true)), mid[x, Geo.A - 2]);
+        Assert.Equal(new Cell('H', new Style(Ink.Fg, true)), mid[x, Geo.A - 2]);
 
         var end = anim.Render(Geo, 600).Grid;
         Assert.Equal("HEAD", Row(end, Geo.A - 2).Trim());
@@ -391,6 +415,19 @@ public class BranchAnimationTests
         Assert.Contains("feature", Row(frame.Grid, Geo.B + 2));
         Assert.Equal(0, CountOf(frame.Grid, '◌'));
         Assert.Equal('▴', frame.Grid[Geo.TipX(1), Geo.B + 1].Ch);
+    }
+
+    [Fact]
+    public void Delete_fades_the_name_in_its_own_lane_then_dim()
+    {
+        // The name keeps the selected branch's lane: bold, then plain, then dim, then gone. It never takes the current one's colour.
+        var anim = new BranchAnimation(BranchOp.Delete, Stamped(), "feature", null, 0, "Deleting feature…");
+        anim.SetResult(Success(Alone("main", Layouts.Cur), "Deleted", "✔ Deleted feature"), 0);
+        var x = Geo.TipX(1);
+
+        Assert.Equal(new Cell('f', new Style(Ink.Lane3, true)), anim.Render(Geo, 100).Grid[x, Geo.B + 2]);
+        Assert.Equal(new Cell('f', new Style(Ink.Lane3)), anim.Render(Geo, 400).Grid[x, Geo.B + 2]);
+        Assert.Equal(new Cell('f', new Style(Ink.Dim)), anim.Render(Geo, 700).Grid[x, Geo.B + 2]);
     }
 
     [Fact]

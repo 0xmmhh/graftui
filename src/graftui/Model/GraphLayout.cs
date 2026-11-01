@@ -24,6 +24,20 @@ public sealed record GraphLayout(
     /// <summary>Newest first, up to 50: the commits Behind counts (on the current branch only). Empty when the layout was not read from git.</summary>
     public IReadOnlyList<CommitInfo> CurrentNew { get; init; } = [];
 
+    /// <summary>The current branch's lane (<see cref="BranchLanes.None"/> when HEAD is detached or the layout was not stamped).</summary>
+    public int CurrentLane { get; init; } = BranchLanes.None;
+
+    /// <summary>The selected branch's lane (<see cref="BranchLanes.None"/> when the layout was not stamped or the name is not listed).</summary>
+    public int SelectedLane { get; init; } = BranchLanes.None;
+
+    /// <summary>This layout with both lanes read from the branch list it was loaded with.</summary>
+    public GraphLayout WithLanes(IReadOnlyList<Branch> branches) =>
+        this with
+        {
+            CurrentLane = Detached ? BranchLanes.None : BranchLanes.LaneOf(branches, Current),
+            SelectedLane = BranchLanes.LaneOf(branches, Selected),
+        };
+
     /// <summary>Placeholder layout used when the real one cannot be read. Tip commits carry only their hash.</summary>
     public static GraphLayout Minimal(string cur, bool detached, string sel, string curTip, string selTip) =>
         new(cur, detached, sel, curTip, selTip, null,

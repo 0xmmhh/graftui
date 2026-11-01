@@ -178,5 +178,6 @@ internal sealed partial class BranchesTab
 
     /// <summary>The layout to animate from: the loaded one, or the bare pair of branches when the load failed.</summary>
     private static GraphLayout Or(GraphLayout? loaded, RepoSnapshot snap, string name, string tip) =>
-        loaded ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, name, snap.HeadHash ?? "", tip);
+        loaded ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, name, snap.HeadHash ?? "", tip)
+            .WithLanes(snap.Branches);
 }

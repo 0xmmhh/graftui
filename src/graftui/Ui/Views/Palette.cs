@@ -13,12 +13,24 @@ public static class Palette
     public static Color Dim { get; private set; } = new(0x6c, 0x7a, 0x8c);
     public static Color Cur { get; private set; } = new(0x4f, 0xd1, 0xc5);
     public static Color SelRow { get; private set; } = new(0x22, 0x31, 0x4a);
+    /// <summary>Background of a text field that has focus. Apart from <see cref="SelRow"/>, so a theme can differ.</summary>
+    public static Color Focus { get; private set; } = new(0x22, 0x31, 0x4a);
     public static Color Inc { get; private set; } = new(0xc3, 0x9b, 0xff);
     public static Color Mrg { get; private set; } = new(0xf5, 0xc4, 0x51);
     public static Color Ok { get; private set; } = new(0x7e, 0xe7, 0x87);
     public static Color Bad { get; private set; } = new(0xff, 0x6b, 0x6b);
     public static Color Warn { get; private set; } = new(0xf0, 0xa3, 0x5e);
     public static Color Hash { get; private set; } = new(0xb3, 0x9b, 0x62);
+
+    // The branch colours, lane 0 first (the trunk's). Six, to match BranchLanes.Count.
+    private static Color[] _lanes =
+    [
+        new(0x5b, 0x9d, 0xff), new(0xc3, 0x9b, 0xff), new(0x4f, 0xd1, 0xc5),
+        new(0xf7, 0x8f, 0xb3), new(0xb5, 0xe3, 0x6b), new(0x7d, 0xcf, 0xff),
+    ];
+
+    /// <summary>The colour of a branch lane (0..BranchLanes.Count-1).</summary>
+    public static Color Lane(int lane) => _lanes[lane];
 
     /// <summary>
     /// Makes <paramref name="t"/> the active colours. Call once at startup, before <c>Application.Create()</c>;
@@ -32,6 +44,7 @@ public static class Palette
         Dim = t.Dim;
         Chip = t.Chip;
         SelRow = t.SelRow;
+        Focus = t.Focus;
         Cur = t.Cur;
         Inc = t.Inc;
         Mrg = t.Mrg;
@@ -39,6 +52,7 @@ public static class Palette
         Bad = t.Bad;
         Warn = t.Warn;
         Hash = t.Hash;
+        _lanes = t.Lanes.ToArray();
     }
 
     /// <summary>Attribute for a semantic style. Background is the selection colour for selected rows, otherwise the terminal background.</summary>
@@ -54,28 +68,35 @@ public static class Palette
     public static Color Chip { get; private set; } = new(0x1a, 0x20, 0x29);
 
     /// <summary>
-    /// One text field's colours: light text on the field's shade, or on the selection colour while the field has focus.
+    /// One text field's colours: light text on the field's shade, or on <see cref="Focus"/> while the field has focus.
     /// <paramref name="bold"/> is for the subject line.
     /// </summary>
     public static Scheme FieldScheme(bool focused, bool bold)
     {
-        var attr = new Attribute(Fg, focused ? SelRow : Chip, bold ? TextStyle.Bold : TextStyle.None);
+        var attr = new Attribute(Fg, focused ? Focus : Chip, bold ? TextStyle.Bold : TextStyle.None);
         // A TextField edits with the Editable role, which Terminal.Gui would derive as a lighter shade; Focus is set too.
         return new Scheme(attr) { Focus = attr, Editable = attr };
     }
 
-    private static Color ForeColor(Ink ink) => ink switch
+    private static Color ForeColor(Ink ink)
     {
-        Ink.Fg => Fg,
-        Ink.Dim => Dim,
-        Ink.Cur => Cur,
-        Ink.Inc => Inc,
-        Ink.Mrg => Mrg,
-        Ink.Ok => Ok,
-        Ink.Bad => Bad,
-        Ink.Warn => Warn,
-        Ink.Hash => Hash,
-        Ink.Frame => Frame,
-        _ => Fg,
-    };
+        // A branch lane is one of the six lane colours; the role inks below are unchanged.
+        if (ink >= Ink.Lane0 && ink <= Ink.Lane5)
+            return _lanes[(int)ink - (int)Ink.Lane0];
+
+        return ink switch
+        {
+            Ink.Fg => Fg,
+            Ink.Dim => Dim,
+            Ink.Cur => Cur,
+            Ink.Inc => Inc,
+            Ink.Mrg => Mrg,
+            Ink.Ok => Ok,
+            Ink.Bad => Bad,
+            Ink.Warn => Warn,
+            Ink.Hash => Hash,
+            Ink.Frame => Frame,
+            _ => Fg,
+        };
+    }
 }

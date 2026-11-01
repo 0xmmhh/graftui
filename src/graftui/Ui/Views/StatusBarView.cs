@@ -9,7 +9,7 @@ namespace graftui.Ui.Views;
 public sealed class StatusBarView : View
 {
     private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim), Ok = new(Ink.Ok), Warn = new(Ink.Warn);
-    private static readonly Style Bad = new(Ink.Bad), CurB = new(Ink.Cur, true), Glyph = new(Ink.Cur);
+    private static readonly Style Bad = new(Ink.Bad), Glyph = new(Ink.Cur);
 
     public RepoSnapshot? Snapshot { get; set; }
 
@@ -50,6 +50,9 @@ public sealed class StatusBarView : View
         return true;
     }
 
+    /// <summary>The current branch's name in the top bar: its lane colour, bold. A detached HEAD has no lane, so it is the foreground.</summary>
+    internal static Style BranchStyle(RepoSnapshot s) => new(BranchInks.Named(s.Branches, s.CurrentBranch), true);
+
     private List<Seg> RightSegs()
     {
         if (ErrorText is not null)
@@ -64,7 +67,7 @@ public sealed class StatusBarView : View
             return
             [
                 new Seg("on ", Fg),
-                new Seg(Snapshot.CurrentBranch, CurB),
+                new Seg(Snapshot.CurrentBranch, BranchStyle(Snapshot)),
                 new Seg(" · ", Dim),
                 changed == 0
                     ? new Seg("working tree clean", Ok)
@@ -75,7 +78,7 @@ public sealed class StatusBarView : View
         return
         [
             new Seg("on ", Fg),
-            new Seg(Snapshot.CurrentBranch, CurB),
+            new Seg(Snapshot.CurrentBranch, BranchStyle(Snapshot)),
             new Seg(" · ", Dim),
             Snapshot.Clean
                 ? new Seg("working tree clean", Ok)

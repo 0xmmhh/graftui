@@ -42,4 +42,63 @@ public class CaptionLayoutTests
     {
         Assert.Equal((1, 12, 13, 1), ArtPaneView.CaptionLayout(15, twoLines: false, compact: true));
     }
+
+    [Fact]
+    public void Single_line_art_gives_the_commit_list_four_more_rows()
+    {
+        // Pane height 22: the 9-row art leaves 7 commit rows, the 5-row single-line art leaves 11.
+        Assert.Equal((1, 9, 10, 11), ArtPaneView.CaptionLayout(22, twoLines: false, compact: true, singleLine: true));
+        Assert.Equal(7 + 4, ArtPaneView.CaptionLayout(22, twoLines: false, compact: true, singleLine: true).BelowRows);
+    }
+
+    [Fact]
+    public void At_pane_height_15_the_single_line_art_leaves_four_commit_rows_and_the_caption_on_row_8()
+    {
+        // 64x22 terminal: the Branches pane is 15 rows tall. Single-line: 5 art rows, so the caption is on row 8 and 4 commit rows follow.
+        var single = ArtPaneView.Rows(15, twoLines: false, compact: true, singleLine: true);
+
+        Assert.Equal(5, single.ArtRows);
+        Assert.Equal(8, single.CaptionRow);
+        Assert.Equal(9, single.RuleRow);
+        Assert.Equal(10, single.BelowTop);
+        Assert.Equal(4, single.BelowRows);
+    }
+
+    [Fact]
+    public void At_pane_height_15_the_normal_art_leaves_one_commit_row_and_the_caption_on_row_11()
+    {
+        var normal = ArtPaneView.Rows(15, twoLines: false, compact: true, singleLine: false);
+
+        Assert.Equal(8, normal.ArtRows);
+        Assert.Equal(11, normal.CaptionRow);
+        Assert.Equal(12, normal.RuleRow);
+        Assert.Equal(13, normal.BelowTop);
+        Assert.Equal(1, normal.BelowRows);
+    }
+
+    [Fact]
+    public void A_two_line_caption_moves_the_second_caption_row_down_and_takes_one_commit_row()
+    {
+        var two = ArtPaneView.Rows(22, twoLines: true, compact: true);
+
+        Assert.Equal(2, two.CaptionRows);
+        Assert.Equal(12, two.CaptionRow);
+        Assert.Equal(6, two.BelowRows);
+    }
+
+    [Fact]
+    public void Single_line_art_only_applies_on_the_branches_tab()
+    {
+        Assert.Equal(ArtPaneView.CaptionLayout(22, twoLines: false), ArtPaneView.CaptionLayout(22, twoLines: false, singleLine: true));
+    }
+
+    [Fact]
+    public void Single_line_art_keeps_its_line_on_the_same_screen_row()
+    {
+        var normal = ArtPaneView.ArtArea(80, 22, compact: true);
+        var single = ArtPaneView.ArtArea(80, 22, compact: true, singleLine: true);
+
+        Assert.Equal(normal!.Value.Y, single!.Value.Y);
+        Assert.Equal(5, single.Value.H);
+    }
 }

@@ -36,7 +36,9 @@ internal sealed partial class BranchesTab
         var name = b.Name;
         var from = snap.CurrentBranch.Length == 0 ? "HEAD" : snap.CurrentBranch;
         var cached = CachedLayout(snap, b);
-        Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.Switch(from, name, cols);
+        var fromInk = _app.InkOf(from);
+        var toInk = _app.InkOf(name);
+        Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.Switch(from, fromInk, name, toInk, cols);
         // The layout is read on the worker before the check, so the finish (later, on the same worker) uses the same one.
         GraphLayout? read = null;
         StartBranchChange(_app.SwitchOp, new SwitchRequest(name), "Switch",
@@ -238,7 +240,8 @@ internal sealed partial class BranchesTab
         var snap = _app.Snapshot;
         var tip = _nameTip;
         var layout = _nameLayout;
-        Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.Rename(old, nu, cols);
+        var oldInk = _app.InkOf(old);
+        Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.Rename(old, oldInk, nu, cols);
         StartBranchChange(_app.RenameBranchOp, new RenameBranchRequest(old, nu), "Rename",
             c => c.Refusal, c => c.Commands,
             () => layout,
@@ -276,7 +279,12 @@ internal sealed partial class BranchesTab
             if (check.CanRun)
                 AskStashMerge(check, branch, loaded);
             else
-                ShowBranchRefused(check.Commands, check.Refusal!, loaded, cols => DirectionLine.Merge(branch, merge.CurrentBranch, false, cols));
+            {
+                var branchInk = _app.InkOf(branch);
+                var curInk = _app.InkOf(merge.CurrentBranch);
+                ShowBranchRefused(check.Commands, check.Refusal!, loaded,
+                    cols => DirectionLine.Merge(branch, branchInk, merge.CurrentBranch, curInk, false, cols));
+            }
         });
     }
 
@@ -287,11 +295,13 @@ internal sealed partial class BranchesTab
         _app.LogCommands(check.Commands);
         var into = check.Into;
         var changed = check.Changed;
+        var branchInk = _app.InkOf(branch);
+        var intoInk = _app.InkOf(into);
         BeginQuestion(new BranchQuestion(
             Title: "Uncommitted changes",
             Text: $"You have {MergeScenes.Plural(changed, "uncommitted change")}. Stash them, merge {branch} into {into}, then pop them back?",
             YesKey: 'y', YesLabel: " stash, merge, pop", NoLabel: " cancel", CancelText: "Merge cancelled: nothing changed",
-            Direction: cols => DirectionLine.StashMerge(branch, into, cols), Layout: layout,
+            Direction: cols => DirectionLine.StashMerge(branch, branchInk, into, intoInk, cols), Layout: layout,
             OnYes: () => StartStashMerge(branch, into, layout, changed)));
     }
 
@@ -303,7 +313,9 @@ internal sealed partial class BranchesTab
     {
         var snap = _app.Snapshot;
         var tip = snap.Branches.FirstOrDefault(b => b.Name == branch)?.Hash ?? "";
-        Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.StashMerge(branch, into, cols);
+        var branchInk = _app.InkOf(branch);
+        var intoInk = _app.InkOf(into);
+        Func<int, IReadOnlyList<Seg>> direction = cols => DirectionLine.StashMerge(branch, branchInk, into, intoInk, cols);
         StartBranchChange(_app.StashMergeOp, new StashMergeRequest(branch), "Stash, merge, pop",
             c => c.Refusal, _ => Array.Empty<GitResult>(),
             () => layout,

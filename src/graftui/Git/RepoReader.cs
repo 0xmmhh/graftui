@@ -87,7 +87,7 @@ public sealed class RepoReader(GitClient git)
         {
             SelectedNew = selNew,
             CurrentNew = curNew,
-        };
+        }.WithLanes(snap.Branches);
     }
 
     /// <summary>Changes-tab read: the status rows, the current branch with its last four commits, and the stash list. Never logged.</summary>

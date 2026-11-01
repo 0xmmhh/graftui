@@ -58,6 +58,34 @@ public class DirectionLineTests
     }
 
     [Fact]
+    public void Browse_draws_each_name_in_its_branch_lane()
+    {
+        var layout = Layouts.Diverged() with { CurrentLane = 0, SelectedLane = 3 };
+
+        var segs = DirectionLine.Browse(layout, 80);
+
+        Assert.Equal(new Style(Ink.Lane3, true), segs[0].Style);
+        Assert.Equal(new Style(Ink.Lane0, true), segs[2].Style);
+    }
+
+    [Fact]
+    public void Browse_of_the_current_branch_alone_uses_its_lane()
+    {
+        var layout = Layouts.Diverged() with { Selected = "main", SelectedLane = 0, CurrentLane = 0, Kind = GraphKind.Same };
+
+        Assert.Equal(new Style(Ink.Lane0, true), DirectionLine.Browse(layout, 80)[0].Style);
+    }
+
+    [Fact]
+    public void Loading_names_the_branch_in_its_lane()
+    {
+        var segs = DirectionLine.Loading("feature", Ink.Lane3);
+
+        Assert.Equal("feature  …", Text(segs));
+        Assert.Equal(new Style(Ink.Lane3, true), segs[0].Style);
+    }
+
+    [Fact]
     public void Browse_labels_a_detached_head_and_keeps_the_label()
     {
         var layout = Layouts.Diverged() with { Current = "", Detached = true };
@@ -71,25 +99,37 @@ public class DirectionLineTests
     [Fact]
     public void Merge_keeps_the_current_label_and_fits_both_names()
     {
-        var text = Text(DirectionLine.Merge("feature/conflict", "main", false, 66));
+        var text = Text(DirectionLine.Merge("feature/conflict", Ink.Lane3, "main", Ink.Lane0, false, 66));
 
         Assert.Equal("merge        feature/conflict  -> into  main (current)", text);
     }
 
     [Fact]
+    public void Merge_names_each_branch_in_its_own_lane_and_a_detached_head_in_the_foreground()
+    {
+        var segs = DirectionLine.Merge("feature", Ink.Lane3, "main", Ink.Lane0, false, 80);
+        Assert.Equal(new Style(Ink.Lane3, true), segs[1].Style);
+        Assert.Equal(new Style(Ink.Lane0, true), segs[3].Style);
+
+        var detached = DirectionLine.Merge("feature", Ink.Lane3, "", Ink.Fg, true, 80);
+        Assert.Equal("merge        feature  -> into  HEAD (detached)", Text(detached));
+        Assert.Equal(new Style(Ink.Fg, true), detached[3].Style);
+    }
+
+    [Fact]
     public void Switch_names_both_branches_at_44_columns()
     {
-        var segs = DirectionLine.Switch("main", "feature/fast-forward", 44);
+        var segs = DirectionLine.Switch("main", Ink.Lane0, "feature/fast-forward", Ink.Lane5, 44);
 
         Assert.Equal("switch       main  ->  feature/fast-forward", Text(segs));
-        Assert.Equal(new Style(Ink.Cur, true), segs[1].Style);
-        Assert.Equal(new Style(Ink.Inc, true), segs[3].Style);
+        Assert.Equal(new Style(Ink.Lane0, true), segs[1].Style);
+        Assert.Equal(new Style(Ink.Lane5, true), segs[3].Style);
     }
 
     [Fact]
     public void Switch_cuts_the_long_name_and_keeps_the_fixed_parts_at_30_columns()
     {
-        var segs = DirectionLine.Switch("feature/fast-forward", "main", 29);
+        var segs = DirectionLine.Switch("feature/fast-forward", Ink.Lane5, "main", Ink.Lane0, 29);
 
         Assert.Equal("switch       featu…  ->  main", Text(segs));
         Assert.True(TextFit.Columns(Text(segs)) <= 30);
@@ -123,16 +163,21 @@ public class DirectionLineTests
     [Fact]
     public void Rename_shows_the_old_name_alone_while_the_box_is_open()
     {
-        Assert.Equal("rename       feature/picks", Text(DirectionLine.Rename("feature/picks", null, 44)));
+        var segs = DirectionLine.Rename("feature/picks", Ink.Lane4, null, 44);
+        Assert.Equal("rename       feature/picks", Text(segs));
+        Assert.Equal(new Style(Ink.Lane4, true), segs[1].Style);
     }
 
     [Fact]
     public void Rename_names_both_at_44_columns_and_cuts_the_new_one()
     {
-        var text = Text(DirectionLine.Rename("feature/picks", "feature/cherries", 43));
+        var segs = DirectionLine.Rename("feature/picks", Ink.Lane4, "feature/cherries", 43);
+        var text = Text(segs);
 
         Assert.Equal("rename       feature/picks  ->  feature/ch…", text);
         Assert.True(TextFit.Columns(text) <= 44);
+        Assert.Equal(new Style(Ink.Lane4, true), segs[1].Style);
+        Assert.Equal(new Style(Ink.Ok, true), segs[3].Style);
     }
 
     [Fact]
@@ -148,16 +193,16 @@ public class DirectionLineTests
     [Fact]
     public void Stash_merge_uses_the_thirteen_column_verb_and_the_into_line()
     {
-        var text = Text(DirectionLine.StashMerge("feature/fast-forward", "main", 66));
+        var text = Text(DirectionLine.StashMerge("feature/fast-forward", Ink.Lane5, "main", Ink.Lane0, 66));
 
         Assert.Equal("stash, merge feature/fast-forward  -> into  main (current)", text);
-        Assert.Equal(new Style(Ink.Dim), DirectionLine.StashMerge("a", "main", 66)[0].Style);
+        Assert.Equal(new Style(Ink.Dim), DirectionLine.StashMerge("a", Ink.Lane3, "main", Ink.Lane0, 66)[0].Style);
     }
 
     [Fact]
     public void Stash_merge_cuts_both_names_at_20_columns_without_losing_the_verb()
     {
-        var text = Text(DirectionLine.StashMerge("feature/fast-forward", "main", 20));
+        var text = Text(DirectionLine.StashMerge("feature/fast-forward", Ink.Lane5, "main", Ink.Lane0, 20));
 
         Assert.StartsWith("stash, merge ", text);
         Assert.Contains("…", text);

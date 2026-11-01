@@ -124,7 +124,8 @@ internal sealed partial class BranchesTab
                     check =>
                     {
                         var layoutNow = loaded
-                            ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, b.Name, snap.HeadHash ?? "", b.Hash);
+                            ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, b.Name, snap.HeadHash ?? "", b.Hash)
+                                .WithLanes(snap.Branches);
                         _app.Ui(() => _app.Animator.BeginAnimation(check, layoutNow));
                     });
                 if (o is null)
@@ -239,7 +240,8 @@ internal sealed partial class BranchesTab
     private void ShowLoading(Branch b)
     {
         _app.Art.Title = "Preview";
-        _app.Art.Direction = _ => DirectionLine.Loading(b.Name);
+        var selInk = _app.InkOf(b.Name);
+        _app.Art.Direction = _ => DirectionLine.Loading(b.Name, selInk);
         _app.Art.Scene = null;
         _app.Art.FallbackCaption = new Caption("Loading…", Muted);
         _app.Art.Panel = null;
@@ -255,7 +257,8 @@ internal sealed partial class BranchesTab
         _app.Art.Direction = cols => DirectionLine.Browse(layout, cols);
         _app.Art.Panel = CommitLists.Idle(layout);
         _app.Art.FallbackCaption = null;
-        _app.Art.Scene = geo =>
+        // A straight graph's preview is drawn in the single-line art (see IsStraight).
+        _app.Art.ShowScene(geo =>
         {
             var frame = MergeScenes.Preview(geo, layout);
             var grid = frame.Grid;
@@ -276,9 +279,16 @@ internal sealed partial class BranchesTab
             else if (layout.Kind == GraphKind.Unrelated)
                 caption = new Caption($"{layout.Selected} and {layout.Current} have no common history", Muted);
             return new SceneFrame(grid, caption);
-        };
+        }, IsStraight(layout));
         _app.Art.SetNeedsDraw();
     }
+
+    /// <summary>
+    /// Whether a layout is a straight graph: fast-forward, up to date or the same commit, and not a detached HEAD. Its preview is drawn
+    /// in the single-line art, since no branch line goes off on its own.
+    /// </summary>
+    internal static bool IsStraight(GraphLayout L) =>
+        !L.Detached && (L.Kind == GraphKind.FastForward || L.Kind == GraphKind.UpToDate || L.Kind == GraphKind.Same);
 
     private static (string Current, string Head, string Name, string Tip) CacheKey(RepoSnapshot snap, Branch b) =>
         (snap.CurrentBranch, snap.HeadHash ?? "", b.Name, b.Hash);

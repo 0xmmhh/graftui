@@ -9,6 +9,9 @@ namespace graftui.Ui.Views;
 /// The preview and animation pane: a direction line, the art, its caption and the commit list.
 /// Layout (pane rows): 1 direction, 2 rule, 3.. art (AH rows), caption (one or two lines), rule, then commit rows.
 /// </summary>
+/// <summary>The rows of one pane's art, caption and commit area, in the pane's own rows (see <see cref="ArtPaneView.Rows"/>).</summary>
+public readonly record struct PaneRows(int ArtRows, int CaptionRow, int CaptionRows, int RuleRow, int BelowTop, int BelowRows);
+
 public sealed class ArtPaneView : PaneView
 {
     private const int MaxArtWidth = 70;
@@ -18,13 +21,44 @@ public sealed class ArtPaneView : PaneView
     private const int TallRows = 11;
     private const int CompactTallRows = 9;
     private const int ShortRows = 8;
+    private const int SingleLineRows = 5;
     private const int TallMinInner = 17;
     private const int CompactTallMinInner = 15;
 
     private static readonly Style Dim = new(Ink.Dim);
     private static readonly Style FrameStyle = new(Ink.Frame);
 
-    public Func<ArtGeometry, SceneFrame>? Scene { get; set; }
+    private Func<ArtGeometry, SceneFrame>? _scene;
+
+    /// <summary>
+    /// The scene drawn in the art. Setting it also clears <see cref="SingleLine"/>, so a scene set this way has the normal height.
+    /// Use <see cref="ShowScene"/> when a scene should have a height of its own.
+    /// </summary>
+    public Func<ArtGeometry, SceneFrame>? Scene
+    {
+        get => _scene;
+        set
+        {
+            _scene = value;
+            SingleLine = false;
+        }
+    }
+
+    /// <summary>
+    /// True while the Branches preview of a straight graph is drawn in 5 rows instead of 9: the line stays on its row, and the caption,
+    /// rule and commit list move up. Only with <see cref="CompactArt"/>. Reset whenever <see cref="Scene"/> is set.
+    /// </summary>
+    public bool SingleLine { get; set; }
+
+    /// <summary>
+    /// Shows <paramref name="scene"/> in the art and sets its height: <paramref name="singleLine"/> only for a straight graph's preview
+    /// on the Branches tab. One call, so the height can never be left over from an earlier scene.
+    /// </summary>
+    public void ShowScene(Func<ArtGeometry, SceneFrame>? scene, bool singleLine = false)
+    {
+        _scene = scene;
+        SingleLine = singleLine;
+    }
 
     /// <summary>Direction line for a given width. Built on demand so names can be cut to the pane.</summary>
     public Func<int, IReadOnlyList<Seg>> Direction { get; set; } = _ => [];
@@ -56,8 +90,10 @@ public sealed class ArtPaneView : PaneView
     public bool CompactArt { get; set; }
 
     // The art's height in a pane with ih inner rows.
-    private static int ArtRows(int ih, bool compact)
+    private static int ArtRows(int ih, bool compact, bool singleLine)
     {
+        if (compact && singleLine)
+            return SingleLineRows;
         if (compact)
             return ih >= CompactTallMinInner ? CompactTallRows : ShortRows;
         return ih >= TallMinInner ? TallRows : ShortRows;
@@ -67,11 +103,11 @@ public sealed class ArtPaneView : PaneView
     /// Where the art's grid is drawn in a pane of the given size (viewport coordinates), or null when no art fits.
     /// Used by the views and by the message form, which is laid over the art.
     /// </summary>
-    public static (int X, int Y, int W, int H)? ArtArea(int paneW, int paneH, bool compact = false)
+    public static (int X, int Y, int W, int H)? ArtArea(int paneW, int paneH, bool compact = false, bool singleLine = false)
     {
         var cw = paneW - 4;
         var ih = paneH - 2;
-        var ah = ArtRows(ih, compact);
+        var ah = ArtRows(ih, compact, singleLine);
         var gw = Math.Min(cw, MaxArtWidth);
         if (cw <= 0 || ih <= 0 || ArtGeometry.For(gw, ah) is null)
             return null;
@@ -83,10 +119,11 @@ public sealed class ArtPaneView : PaneView
     /// the field's X, its row, its width, and whether a label row sits above it. Null when no commit row is free under the caption.
     /// Labels and the field share the rows under the caption that the commit list would use.
     /// </summary>
-    public static (int X, int Y, int W, bool LabelRow)? NameField(int paneW, int paneH, bool captionTwoLines = false, bool compact = false)
+    public static (int X, int Y, int W, bool LabelRow)? NameField(int paneW, int paneH, bool captionTwoLines = false, bool compact = false,
+        bool singleLine = false)
     {
-        var l = CaptionLayout(paneH, captionTwoLines, compact);
-        if (l.BelowRows == 0 || ArtArea(paneW, paneH, compact) == null)
+        var l = CaptionLayout(paneH, captionTwoLines, compact, singleLine);
+        if (l.BelowRows == 0 || ArtArea(paneW, paneH, compact, singleLine) == null)
             return null;
         var label = l.BelowRows >= 2;
         // The rows under the caption are drawn at x=4; "name     " is 9 columns wide, so the field starts at 13.
@@ -97,25 +134,33 @@ public sealed class ArtPaneView : PaneView
     /// Whether a caption of this text is drawn on two lines in a pane of this size. With <paramref name="keepsBelowRows"/> (the name box
     /// is open) it is only when the rows under the two-line caption still hold a label and the field.
     /// </summary>
-    public static bool TwoLineCaption(string text, int paneW, int paneH, bool keepsBelowRows, bool compact = false)
+    public static bool TwoLineCaption(string text, int paneW, int paneH, bool keepsBelowRows, bool compact = false, bool singleLine = false)
     {
         if (TextFit.Wrap2(text, paneW - 4).Second is null)
             return false;
-        return !keepsBelowRows || CaptionLayout(paneH, true, compact).BelowRows >= 2;
+        return !keepsBelowRows || CaptionLayout(paneH, true, compact, singleLine).BelowRows >= 2;
     }
 
     /// <summary>
-    /// Rows of the caption and the rows under it, for a pane of height <paramref name="paneH"/>. A two-line caption
-    /// takes one commit row, and only when a commit row is free; otherwise it falls back to one line.
+    /// Where the art, the caption, the rule and the rows under them sit in a pane of height <paramref name="paneH"/>, in the pane's own
+    /// rows. A two-line caption takes one commit row, and only when a commit row is free; otherwise it falls back to one line.
     /// </summary>
-    public static (int CaptionRows, int RuleRow, int BelowTop, int BelowRows) CaptionLayout(int paneH, bool twoLines, bool compact = false)
+    public static PaneRows Rows(int paneH, bool twoLines, bool compact = false, bool singleLine = false)
     {
         var ih = paneH - 2;
-        var ah = ArtRows(ih, compact);
+        var ah = ArtRows(ih, compact, singleLine);
         var commitRows = Math.Max(0, ih - 4 - ah);
-        return twoLines && commitRows > 0
-            ? (2, 5 + ah, 6 + ah, commitRows - 1)
-            : (1, 4 + ah, 5 + ah, commitRows);
+        if (twoLines && commitRows > 0)
+            return new PaneRows(ah, 3 + ah, 2, 5 + ah, 6 + ah, commitRows - 1);
+        return new PaneRows(ah, 3 + ah, 1, 4 + ah, 5 + ah, commitRows);
+    }
+
+    /// <summary>The caption's rows, the rule's row and the rows under the rule, as <see cref="Rows"/> gives them.</summary>
+    public static (int CaptionRows, int RuleRow, int BelowTop, int BelowRows) CaptionLayout(int paneH, bool twoLines, bool compact = false,
+        bool singleLine = false)
+    {
+        var r = Rows(paneH, twoLines, compact, singleLine);
+        return (r.CaptionRows, r.RuleRow, r.BelowTop, r.BelowRows);
     }
 
     protected override bool OnDrawingContent(DrawContext? context)
@@ -130,13 +175,11 @@ public sealed class ArtPaneView : PaneView
         if (cw <= 0 || ih <= 0)
             return true;
 
-        var ah = ArtRows(ih, CompactArt);
-
         DrawSegs(2, 1, Direction(cw), cw);
         if (DirectionRule)
             DrawRule(2, 2, cw);
 
-        var area = ArtArea(pw, ph, CompactArt);
+        var area = ArtArea(pw, ph, CompactArt, SingleLine);
         SceneFrame? frame = null;
         if (area is { } scene && Scene is not null)
             frame = Scene(ArtGeometry.For(scene.W, scene.H)!);
@@ -158,21 +201,21 @@ public sealed class ArtPaneView : PaneView
         (string First, string? Second) split;
         if (caption is null)
             split = ("", null);
-        else if (CaptionKeepsBelowRows && !TwoLineCaption(caption.Text, pw, ph, keepsBelowRows: true, compact: CompactArt))
+        else if (CaptionKeepsBelowRows && !TwoLineCaption(caption.Text, pw, ph, keepsBelowRows: true, compact: CompactArt, singleLine: SingleLine))
             split = (TextFit.Fit(caption.Text, cw), null);
         else
             split = TextFit.Wrap2(caption.Text, cw);
         var (first, second) = split;
-        var layout = CaptionLayout(ph, second != null, CompactArt);
+        var layout = Rows(ph, second != null, CompactArt, SingleLine);
         if (caption is not null)
         {
             if (layout.CaptionRows == 2)
             {
-                DrawCentred(first, 3 + ah, cw, caption.Style);
-                DrawCentred(second!, 4 + ah, cw, caption.Style);
+                DrawCentred(first, layout.CaptionRow, cw, caption.Style);
+                DrawCentred(second!, layout.CaptionRow + 1, cw, caption.Style);
             }
             else
-                DrawCentred(TextFit.Fit(caption.Text, cw), 3 + ah, cw, caption.Style);
+                DrawCentred(TextFit.Fit(caption.Text, cw), layout.CaptionRow, cw, caption.Style);
         }
 
         DrawRule(2, layout.RuleRow, cw);
