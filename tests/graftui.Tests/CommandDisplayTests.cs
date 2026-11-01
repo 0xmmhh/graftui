@@ -42,7 +42,7 @@ public class CommandDisplayTests
         Assert.Null(Simplify(r));
     }
 
-    // ----- Table rows (section 4 of docs/plans/ui-polish.md) -----
+    // ----- Table rows: how each kind of command is shown -----
 
     [Fact]
     public void Merge_drops_no_edit_and_keeps_the_branch()
