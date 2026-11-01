@@ -10,6 +10,7 @@ An animated git TUI: merge, stage, commit, stash, switch and undo, and see the r
   <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square" alt=".NET 10"/>&nbsp;&nbsp;
   <img src="https://img.shields.io/badge/Terminal.Gui-v2-2ea44f?style=flat-square" alt="Terminal.Gui v2"/>&nbsp;&nbsp;
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform: macOS | Linux"/>&nbsp;&nbsp;
+  <img src="https://img.shields.io/badge/status-alpha-orange?style=flat-square" alt="Status: alpha"/>&nbsp;&nbsp;
   <a href="https://github.com/0xmmhh/graftui/actions/workflows/ci.yml"><img src="https://github.com/0xmmhh/graftui/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="build-and-test: CI status"/></a>
 </p>
 
@@ -28,6 +29,8 @@ An animated git TUI: merge, stage, commit, stash, switch and undo, and see the r
 <br/>
 
 graftui is a thin, safety-first layer over the git CLI. Every action is a real `git` command, listed in the Commands pane as you would type it. Press `v` for the exact list, with exit codes and git's output.
+
+> **graftui is in alpha.** It is early and not finished, so things may change. Feedback is very welcome: [open an issue](https://github.com/0xmmhh/graftui/issues), or see [Help wanted](#help-wanted).
 
 ## What it does
 
@@ -297,6 +300,17 @@ Early but usable for everyday local work: merges, the Changes tab (stage, unstag
 5. **The smart layer**: a forecast of what each key would do, resolving conflicts inside graftui, interactive rebase, a whole-repo graph view, and plain-English explanations of each command
 6. **A packaged release**, installable with `dotnet tool install -g graftui`
 7. **Desktop app**: cross-platform desktop application made with Avalonia (tbc.)
+
+## Help wanted
+
+There is a lot planned, and help is welcome. Some examples:
+
+- **Performance and optimisation.** Faster startup, and faster reads on large repositories.
+- **A desktop app,** made with Avalonia (item 7 above).
+- **A VS Code extension.**
+- **Testing on Linux, and Windows support** (item 2 above). Reports from more systems help a lot.
+
+Open an issue to talk about any of these first, or send a small pull request. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to start.
 
 ## Development
 
