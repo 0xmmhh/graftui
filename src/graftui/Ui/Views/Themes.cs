@@ -3,7 +3,7 @@ using Terminal.Gui.Drawing;
 namespace graftui.Ui.Views;
 
 /// <summary>
-/// One colour set. Token order matches the layout lab (docs/design/layout-lab.html). Lanes are the branch colours in lane order:
+/// One colour set. Lanes are the branch colours in lane order:
 /// lane 0 is the trunk's (see <see cref="Model.BranchLanes"/>).
 /// </summary>
 public sealed record Theme(
@@ -24,7 +24,7 @@ public sealed record Theme(
     Color Hash,
     IReadOnlyList<Color> Lanes);
 
-/// <summary>The five presets from the layout lab, chosen with <c>--theme</c>. The first one is the default.</summary>
+/// <summary>The five presets, chosen with <c>--theme</c>. The first one is the default.</summary>
 public static class Themes
 {
     private static readonly Theme[] All =
