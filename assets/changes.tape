@@ -17,9 +17,6 @@ Hide
 Type "cd ~ && clear"
 Enter
 Sleep 500ms
-Show
-
-Hide
 Type "graftui --sandbox"
 Enter
 Sleep 4s
@@ -28,12 +25,11 @@ Sleep 1s
 Type "graftui --make-edits > /dev/null && clear"
 Enter
 Sleep 2s
-Show
-
 Type "graftui ~/.graftui/sandbox"
-Sleep 400ms
 Enter
-Sleep 3s
+Sleep 4s
+Show
+Sleep 500ms
 Tab
 Sleep 1.5s
 Space

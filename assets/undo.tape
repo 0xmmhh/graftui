@@ -17,11 +17,7 @@ Hide
 Type "cd ~ && clear"
 Enter
 Sleep 500ms
-Show
-
 Type "graftui --sandbox"
-Sleep 1s
-Hide
 Enter
 Sleep 4s
 Show
