@@ -10,7 +10,7 @@ An animated git TUI: merge, stage, commit, stash, switch and undo, and see the r
   <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square" alt=".NET 10"/>&nbsp;&nbsp;
   <img src="https://img.shields.io/badge/Terminal.Gui-v2-2ea44f?style=flat-square" alt="Terminal.Gui v2"/>&nbsp;&nbsp;
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform: macOS | Linux"/>&nbsp;&nbsp;
-  <a href="https://github.com/0xmmhh/graftui/actions/workflows/ci.yml"><img src="https://github.com/0xmmhh/graftui/actions/workflows/ci.yml/badge.svg" alt="build-and-test: CI status"/></a>
+  <a href="https://github.com/0xmmhh/graftui/actions/workflows/ci.yml"><img src="https://github.com/0xmmhh/graftui/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="build-and-test: CI status"/></a>
 </p>
 
 <p>
@@ -199,7 +199,7 @@ graftui --version
 - **Stash** (`z`) takes every change, untracked files included (`git stash push -u`). A one-line box asks for a message; Enter with it empty uses git's default message.
 - **Pop** (`Z`) runs a plain `git stash pop`: the changes come back unstaged. The exception is the stash-merge-pop's own entry, which `Z` pops with `git stash pop --index` so staged changes stay staged. If git refuses `--index` because the staged part cannot apply, the plain pop runs only when it loses nothing (for every file, the staged and working-tree versions are the same), and the caption says the staged changes came back unstaged. Otherwise `Z` refuses, names the files whose staged changes would be lost, and keeps the stash entry (`git stash show -p` shows it). If git cannot apply the entry, graftui puts the working tree and index back exactly as they were, keeps the stash entry, and lists the conflicting files. The repository is never left with conflict markers.
 - **Undo** (`u`) reverses the newest graftui step, one step per press, newest first: commit, amend, merge, discard, stash, pop, the hand-picked unstage, and the branch steps (create, rename, delete) and stash-merge-pop. It refuses when undoing would overwrite something that changed since (the refusal names the file or branch). Undo steps are commits under `refs/graftui/undo/`, so `git log --all`, gitk and other git GUIs show them (as "graftui undo: …"). They are harmless, and only the last 50 are kept.
-- **Refusals** are shown in the caption and logged: nothing staged, an empty subject, a conflicted file, a nested repository, an unfinished merge, rebase, cherry-pick or revert, a submodule, or a detached HEAD.
+- **Refusals** are shown in the caption and logged: nothing staged (for a commit, `c`; amend `A` works with nothing staged), an empty subject, a conflicted file, a nested repository, an unfinished merge, rebase, cherry-pick or revert, a submodule, or a detached HEAD.
 
 </details>
 
@@ -212,7 +212,7 @@ graftui --version
 - **Commands:** the git commands graftui ran, each as the command you would type (`$ git merge feature/x  ✔`), with git's output. A failed command is shown exactly, with its exit code. Press `v` to see the exact list instead: every git call, with its exit code and the reads graftui hides by default. Each saved undo step shows as `↶ saved an undo step (u)`. The `v` hint sits on the pane's border.
 - **Key bar (bottom):** the keys that work right now.
 
-**Branch colours.** Each branch has one colour. It colours the branch's name in the list, its line and label in the graph, and its commit-list header. `main` (or `master`, when there is no `main`) is always the first colour, blue in every theme. The other branches get their colour from their name, so a branch keeps its colour when you select it or switch to it. Neighbours in the list never share a colour. With more than five other branches, colours repeat. The merge commit's `◉` is gold.
+**Branch colours.** Each branch has one colour. It colours the branch's name in the list, its line and label in the graph, and its commit-list header. `main` (or `master`, when there is no `main`) is always the first colour, blue in every theme. The other branches get their colour from their name, so a branch keeps its colour when you select it or switch to it. Neighbours in the list never share a colour. With more than five other branches, colours repeat. Selecting or switching never changes a colour. Adding or removing a branch can shift another branch's colour when two names want the same one. The merge commit's `◉` is gold.
 
 The terminal must be at least 64×22. Names that don't fit are cut with `…`.
 
@@ -253,8 +253,8 @@ graftui stops without running `git merge` when:
 
 | Code | Meaning |
 |---|---|
-| `0` | Normal exit, `--help`, or a merge that succeeded |
-| `1` | Startup error (not a repository, folder not found, git not on `PATH`, `--sandbox` refused), a UI error, a merge that finished after you quit and ended in a conflict or failure, or a stash-merge-pop that conflicted or failed after you quit |
+| `0` | Normal exit, `--help`, `--version`, or a merge that succeeded |
+| `1` | Startup error (not a repository, folder not found, git not on `PATH`, `--sandbox` refused), a UI error, or a merge that finished after you quit and ended in a conflict or failure. Also `1` when the latest change was a stash-merge-pop that conflicted or failed, even if you saw it on screen |
 | `2` | Bad command line (unknown option, too many arguments, unknown theme) |
 
 </details>

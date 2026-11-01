@@ -25,11 +25,9 @@ Hide
 Enter
 Sleep 4s
 Show
-Sleep 500ms
-Sleep 1.5s
+Sleep 2s
 Type "m"
-Sleep 4.5s
-Sleep 3.5s
+Sleep 8s
 Hide
 Escape
 Sleep 500ms

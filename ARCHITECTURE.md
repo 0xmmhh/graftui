@@ -13,6 +13,8 @@ process: graftui never links a git library, and it never edits `.git` files itse
 
 ## 2. Folders
 
+The main files in each folder:
+
 | Folder | What is in it |
 |---|---|
 | `src/graftui/` | `Program.cs` (startup, teardown, exit code) and `CliArgs.cs` (the command line and `HelpText`) |
@@ -34,8 +36,9 @@ so their tests run with plain strings. `Model` has no git calls and no drawing e
 
 `Program.cs` runs these steps in order:
 
-1. `CliArgs.Parse` reads the arguments. A bad argument prints the error and exits with 2. `--help` (and `-h`), `--version`
-   and the hidden `--make-edits` exit early, before any repo is touched.
+1. `CliArgs.Parse` reads the arguments. A bad argument prints the error and exits with 2. `--help` (and `-h`) and `--version`
+   exit before the screen opens and before any repo is touched. The hidden `--make-edits` also exits early, but it edits the
+   practice repo first.
 2. `Themes.TryGet` finds the theme, and `Palette.Apply` sets the colours. This happens before any view exists, because
    every view reads the colours.
 3. With `--sandbox`, `Sandbox.Rebuild` rebuilds `~/.graftui/sandbox`.
@@ -116,8 +119,8 @@ This follows `m` on the Branches tab from the key press to the final frame.
    `MergeAnimation.Render`, and it starts the 50 ms timer. Each `Tick` gives the outcome to `MergeAnimation.SetOutcome`
    once it has arrived, asks for a redraw, and calls `FinishAnimation` when `MergeAnimation.IsDone` says so.
 9. `Animator.FinishAnimation` freezes the last frame. It sets the commit lists (`CommitLists.After`) and logs every
-   command through `AppController.LogCommands`. Each command becomes a `CommandDisplay.Entry`, with its exact line and its
-   simplified line. It logs the conflicting files, and it anchors the log on the `git merge` line. Then it applies the
+   command through `AppController.LogCommands`. Each command goes through `CommandDisplay.Entry`, which turns it into a
+   `LogEntry` holding its exact line and its simplified line. It logs the conflicting files, and it anchors the log on the `git merge` line. Then it applies the
    new snapshot (`ApplySnapshot` refreshes the status bar, the branch list and the key bar) and clears `Busy`.
 10. Drawing: `ArtPaneView.OnDrawingContent` calls the scene for the pane's `ArtGeometry`. `MergeScenes.Merge`,
     `FastForward`, `UpToDate` and `Failed` paint into an `ArtGrid` and return a `SceneFrame`, which is the grid and a caption.
@@ -185,9 +188,10 @@ The table shows the main git command of each operation and the undo kind it save
 - Each undoable step is an `UndoRecord`. Its `UndoKind` says what it is, and it has the refs that moved and the commits it
   needs.
 - `UndoLog` stores each step as one commit under `refs/graftui/undo/NNNNNN`. The newest step has the highest number.
-  The commit uses the empty tree (`mktree`) and is made with `commit-tree --no-gpg-sign`. Its parents are the commits the
-  step needs, so those commits stay reachable. Its message is a headline, `graftui undo: <what>`, then the record as one
-  line of JSON (`UndoJson`).
+  The commit uses the empty tree (`mktree`) and is made with `commit-tree --no-gpg-sign`. A hand-picked unstage is the
+  exception: its tree holds the saved index entries (`UnstageTree`), so the staged versions stay reachable. Its parents
+  are the commits the step needs, so those commits stay reachable. Its message is a headline, `graftui undo: <what>`,
+  then the record as one line of JSON (`UndoJson`).
 - `UndoLog` has `Push` (save a step), `Top` (read the newest) and `Drop` (remove it). Only the last 50 steps are kept
   (`UndoLog.Max`).
 - `UndoOperation.Check` reads the newest step. It refuses when undoing would overwrite something that changed since the
@@ -241,7 +245,10 @@ Each theme gives each lane one colour (`Themes.cs`, the `Lanes` list, applied by
 - Every other branch starts from a preferred lane, which is `Preferred(name)`:
 
   ```csharp
-  internal static int Preferred(string name) => 1 + (int)(Fnv1a(name) % PoolSize);
+  internal static int Preferred(string name)
+  {
+      return 1 + (int)(Fnv1a(name) % PoolSize);
+  }
   ```
 
   `Fnv1a` is a 32-bit FNV-1a hash of the name's UTF-8 bytes. Unlike `string.GetHashCode`, it gives the same answer on every
