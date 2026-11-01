@@ -1,0 +1,31 @@
+version: 2
+
+updates:
+  # One grouped pull request per ecosystem each week, so a week's updates are reviewed together.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "Deps"
+    groups:
+      # Minor and patch updates come together; a major update (for example a new Terminal.Gui major) gets its own pull request.
+      nuget:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "Deps"
+    groups:
+      github-actions:
+        patterns:
+          - "*"

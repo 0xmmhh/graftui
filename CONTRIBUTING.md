@@ -70,6 +70,7 @@ New operations follow the shape in `src/graftui/Operations/IGitOperation.cs`: ch
 - Any change to how graftui touches a repository needs a test in `tests/graftui.Tests` that runs real git in a temporary repository (see `Support/TempRepo.cs`). Tests must never touch `~/.graftui/sandbox` or any real repository.
 - Drawing and text code (`Ui/Scenes`, `Ui/Text`) is pure and can be unit-tested without a terminal.
 - For anything visible, also run it in the sandbox at a normal size and at the minimum size (64×22), and check that nothing overlaps or spills out of its pane.
+- CI also runs the tests on macOS (`build-and-test-macos`, not a required check yet). CodeQL scans the code for security issues on each pull request and weekly (`.github/workflows/codeql.yml`).
 
 ## Recording the GIFs
 

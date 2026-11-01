@@ -33,6 +33,20 @@ jobs:
       - name: Test
         run: dotnet test graftui.slnx --no-build --logger "console;verbosity=normal"
 
+  # Not a required check yet (only build-and-test is); it shows macOS problems early.
+  build-and-test-macos:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Build
+        run: dotnet build graftui.slnx
+      - name: Test
+        run: dotnet test graftui.slnx --no-build --logger "console;verbosity=normal"
+
   # Windows runs only when started by hand (Actions tab → CI → Run workflow)
   # until the Windows fixes are in; some tests still fail there.
   windows:
