@@ -7,11 +7,14 @@ namespace graftui.Ui.Views;
 /// <summary>The branch list: mark, name and ahead/behind. The ahead/behind column is dropped when the pane is too narrow for it.</summary>
 public sealed class BranchesView : PaneView
 {
-    private static readonly Style Fg = new(Ink.Fg), Dim = new(Ink.Dim);
+    private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
     private static readonly Style Inc = new(Ink.Inc), Warn = new(Ink.Warn);
 
     // The narrowest header worth drawing: "vs" and one name letter, with the "…" that cuts it.
     private const int MinHeaderCols = 4;
+
+    // Column of the first name character: 1 the selection arrow, 2 the current branch's star, 3 a space.
+    internal const int NameX = 4;
 
     private int _top;
 
@@ -42,8 +45,8 @@ public sealed class BranchesView : PaneView
 
         var abW = AbWidth(Branches, Counts);
 
-        // mark, space, name, space, ab: the name takes what the ab column and its space leave.
-        var nameW = innerW - 4 - abW;
+        // mark (2 columns), space, name, space, ab: the name takes what the ab column and its space leave.
+        var nameW = NameWidth(innerW, abW);
         var showAb = true;
         if (nameW < 6)
         {
@@ -69,12 +72,13 @@ public sealed class BranchesView : PaneView
 
             Paint.Fill(this, 1, row, innerW, Palette.Get(Fg, isSel));
 
-            // mark
-            DrawText(1, row, b.IsCurrent ? "*" : " ", 1, style, isSel);
+            // mark: the selection arrow, then the current branch's star
+            var (arrow, star) = MarkCells(isSel, b.IsCurrent);
+            DrawText(1, row, arrow, 1, FgB, isSel);
+            DrawText(2, row, star, 1, style, isSel);
 
             // name
-            var nameX = 3;
-            DrawText(nameX, row, b.Name, nameW, style, isSel);
+            DrawText(NameX, row, b.Name, nameW, style, isSel);
 
             if (showAb && !b.IsCurrent && Counts.TryGetValue(b.Name, out var c))
             {
@@ -83,7 +87,7 @@ public sealed class BranchesView : PaneView
                     new($"↑{c.Ahead}", c.Ahead > 0 ? Inc : Dim),
                     new($"↓{c.Behind}", c.Behind > 0 ? Warn : Dim),
                 };
-                Paint.Segs(this, nameX + nameW + 1, row, segs, abW, isSel);
+                Paint.Segs(this, NameX + nameW + 1, row, segs, abW, isSel);
             }
         }
 
@@ -101,6 +105,13 @@ public sealed class BranchesView : PaneView
     /// A branch's name and mark: its lane colour, bold for the current branch. The colour never depends on the selection.
     /// </summary>
     internal static Style NameStyle(Branch b, int lane) => new(BranchInks.Of(lane), b.IsCurrent);
+
+    /// <summary>The two mark columns: "▸" on the selected row, "*" on the current branch, and a space where there is none.</summary>
+    internal static (string Arrow, string Star) MarkCells(bool selected, bool current) =>
+        (selected ? "▸" : " ", current ? "*" : " ");
+
+    /// <summary>The name's width: the inner width less the columns before the name (mark, space) and after it (space, ab column).</summary>
+    internal static int NameWidth(int innerW, int abW) => innerW - NameX - abW;
 
     /// <summary>The ab column's header: "vs main", or "" when there is no room for even a short one.</summary>
     internal static string AbHeader(string current, int maxCols)
@@ -165,7 +176,7 @@ public sealed class BranchesView : PaneView
         var longest = 0;
         foreach (var b in branches)
             longest = Math.Max(longest, TextFit.Columns(TextFit.Sanitize(b.Name)));
-        // border 2 + mark and space 2 + name + space 1 + ab
-        return 2 + 2 + longest + 1 + AbWidth(branches, counts);
+        // border 2 + mark (2 columns) and space 1 + name + space 1 + ab
+        return 2 + 3 + longest + 1 + AbWidth(branches, counts);
     }
 }

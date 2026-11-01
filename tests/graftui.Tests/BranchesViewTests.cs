@@ -12,8 +12,31 @@ public class BranchesViewTests
         var branches = new[] { new Branch("main", "c111111", "c111111", true), new Branch("feature/conflict", "d222222", "d222222", false) };
         var counts = new Dictionary<string, (int Ahead, int Behind)> { ["feature/conflict"] = (1, 1) };
 
-        // border 2 + mark and space 2 + longest name 16 + space 1 + "↑1↓1" 4
-        Assert.Equal(25, BranchesView.WantedWidth(branches, counts));
+        // border 2 + mark (2 columns) and space 1 + longest name 16 + space 1 + "↑1↓1" 4
+        Assert.Equal(26, BranchesView.WantedWidth(branches, counts));
+    }
+
+    [Fact]
+    public void Mark_has_the_arrow_on_the_selected_row_and_the_star_on_the_current_branch()
+    {
+        Assert.Equal(("▸", " "), BranchesView.MarkCells(selected: true, current: false));
+        Assert.Equal((" ", "*"), BranchesView.MarkCells(selected: false, current: true));
+        Assert.Equal(("▸", "*"), BranchesView.MarkCells(selected: true, current: true));
+        Assert.Equal((" ", " "), BranchesView.MarkCells(selected: false, current: false));
+    }
+
+    [Fact]
+    public void At_the_wanted_width_the_longest_name_and_the_ab_column_end_on_the_last_inner_column()
+    {
+        var branches = new[] { new Branch("main", "c111111", "c111111", true), new Branch("feature/conflict", "d222222", "d222222", false) };
+        var counts = new Dictionary<string, (int Ahead, int Behind)> { ["feature/conflict"] = (1, 1) };
+        var innerW = BranchesView.WantedWidth(branches, counts) - 2;
+        const int abW = 4; // "↑1↓1"
+
+        var nameW = BranchesView.NameWidth(innerW, abW);
+
+        Assert.Equal(16, nameW);
+        Assert.Equal(innerW, BranchesView.NameX + nameW + 1 + abW - 1);
     }
 
     [Fact]
