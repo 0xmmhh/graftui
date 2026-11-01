@@ -142,8 +142,17 @@ public class ThemesTests
         foreach (var lane in t.Lanes)
         {
             Assert.True(Contrast(lane, t.Term) >= 4.5, $"{name}: {lane.R:x2}{lane.G:x2}{lane.B:x2} on the background");
-            Assert.True(Contrast(lane, t.SelRow) >= 3.9, $"{name}: {lane.R:x2}{lane.G:x2}{lane.B:x2} on the selected row");
+            Assert.True(Contrast(lane, t.SelRow) >= SelectedRowMinimum(name), $"{name}: {lane.R:x2}{lane.G:x2}{lane.B:x2} on the selected row");
         }
+    }
+
+    // The contrast a lane needs on the selected row. High-contrast's selected row is 262626, lighter than the others, so
+    // its 4070ff and fc0303 lanes sit at 3.6:1 and 3.7:1; the user accepted that, and only that theme gets 3.5.
+    private static double SelectedRowMinimum(string name)
+    {
+        if (name == "high-contrast")
+            return 3.5;
+        return 3.9;
     }
 
     // "rrggbb" as a colour.
