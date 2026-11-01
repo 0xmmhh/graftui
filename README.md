@@ -27,7 +27,7 @@ An animated git TUI: merge, stage, commit, stash, switch and undo, and see the r
 
 <br/>
 
-graftui is a thin, safety-first layer over the git CLI. It never reimplements git. Every action is a real `git` command, listed in the Commands pane as you would type it. Press `v` for the exact list, with exit codes and git's output. You see what git actually did, not a guess.
+graftui is a thin, safety-first layer over the git CLI. Every action is a real `git` command, listed in the Commands pane as you would type it. Press `v` for the exact list, with exit codes and git's output.
 
 ## What it does
 
@@ -41,7 +41,6 @@ graftui is a thin, safety-first layer over the git CLI. It never reimplements gi
 - **Safe by default.** Refuses to merge over uncommitted work or a detached HEAD, offers to stash, merge and pop your changes instead, and aborts conflicts so the repo is never left mid-merge.
 - **Practice sandbox.** `graftui --sandbox` builds a throwaway repo with a branch for each kind of merge.
 - **Five themes.** Pick one with `--theme`.
-- **Tested against real git.** Every safety rule has a test that runs git in a throwaway repository.
 
 ## Install
 
@@ -63,7 +62,7 @@ cd graftui
 - **Upgrading from the old single-file install:** `./dev install` won't overwrite a `~/.local/bin/graftui` it didn't write. Delete that file first, then run `./dev install`.
 - **Other setups:** `dotnet publish src/graftui -c Release -o <folder>` builds graftui into any folder. Put that folder on your `PATH`.
 
-Windows is not supported yet (work in progress). macOS and Linux are.
+Windows is not supported yet (`work in progress`). macOS and Linux are.
 
 ## Quick start
 
@@ -297,6 +296,7 @@ Early but usable for everyday local work: merges, the Changes tab (stage, unstag
 4. **History tools**: cherry-pick, rebase, and a choice of merge types (no-ff, ff-only, squash, linear)
 5. **The smart layer**: a forecast of what each key would do, resolving conflicts inside graftui, interactive rebase, a whole-repo graph view, and plain-English explanations of each command
 6. **A packaged release**, installable with `dotnet tool install -g graftui`
+7. **Desktop app**: cross-platform desktop application made with Avalonia (tbc.)
 
 ## Development
 

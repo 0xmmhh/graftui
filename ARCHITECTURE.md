@@ -1,6 +1,6 @@
 # Architecture
 
-This guide is for someone who knows some C#. It shows how the code is split into folders, how one key press becomes a
+It shows how the code is split into folders, how one key press becomes a
 real `git` command, and where the safety rules live. For what graftui does, read the [README](README.md) first.
 
 File and type names are real and can be found with a search. There are no line numbers, because they go stale.
