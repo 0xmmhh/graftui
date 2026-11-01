@@ -36,7 +36,7 @@ public class BranchesViewTests
         var nameW = BranchesView.NameWidth(innerW, abW);
 
         Assert.Equal(16, nameW);
-        Assert.Equal(innerW, BranchesView.NameX + nameW + 1 + abW - 1);
+        Assert.Equal(innerW, BranchesView.AbX(nameW) + abW - 1);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class BranchesViewTests
     {
         const int innerW = 20;
         const int abW = 4;
-        var abEnd = BranchesView.NameX + BranchesView.NameWidth(innerW, abW) + 1 + abW - 1;
+        var abEnd = BranchesView.AbX(BranchesView.NameWidth(innerW, abW)) + abW - 1;
         var x = BranchesView.HeaderX(innerW, headerCols: 6);
 
         Assert.Equal(innerW, abEnd);

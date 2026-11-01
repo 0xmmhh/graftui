@@ -13,7 +13,7 @@ public sealed class BranchesView : PaneView
     // The narrowest header worth drawing: "vs" and one name letter, with the "…" that cuts it.
     private const int MinHeaderCols = 4;
 
-    // Column of the first name character: 1 the selection arrow, 2 the current branch's star, 3 a space.
+    // Columns: 1 the selection arrow; 2 the current branch's star; 3 a space. The name starts at NameX.
     internal const int NameX = 4;
 
     private int _top;
@@ -87,7 +87,7 @@ public sealed class BranchesView : PaneView
                     new($"↑{c.Ahead}", c.Ahead > 0 ? Inc : Dim),
                     new($"↓{c.Behind}", c.Behind > 0 ? Warn : Dim),
                 };
-                Paint.Segs(this, NameX + nameW + 1, row, segs, abW, isSel);
+                Paint.Segs(this, AbX(nameW), row, segs, abW, isSel);
             }
         }
 
@@ -109,6 +109,9 @@ public sealed class BranchesView : PaneView
     /// <summary>The two mark columns: "▸" on the selected row, "*" on the current branch, and a space where there is none.</summary>
     internal static (string Arrow, string Star) MarkCells(bool selected, bool current) =>
         (selected ? "▸" : " ", current ? "*" : " ");
+
+    /// <summary>The x of the ab column: after the name and its space.</summary>
+    internal static int AbX(int nameW) => NameX + nameW + 1;
 
     /// <summary>The name's width: the inner width less the columns before the name (mark, space) and after it (space, ab column).</summary>
     internal static int NameWidth(int innerW, int abW) => innerW - NameX - abW;
