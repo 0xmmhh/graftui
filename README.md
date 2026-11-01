@@ -20,7 +20,7 @@ An animated git TUI: pick a branch, press <code>m</code>, and see the real <code
   <a href="#contributing">Contributing</a>
 </p>
 
-<img src="assets/demo.gif" alt="graftui demo: a merge commit, then a conflict that is aborted automatically" width="760"/>
+<img src="assets/merge.gif" alt="graftui merging two branches in the practice repo: a fast-forward, then a merge commit" width="760"/>
 
 </div>
 
@@ -238,7 +238,7 @@ dotnet run --project src/graftui -- --sandbox            # rebuild and open ~/.g
 dotnet run --project src/graftui -- ~/.graftui/sandbox   # reopen without rebuilding
 ```
 
-Develop against the sandbox, never against the graftui repository itself. Warnings are errors and nullable reference types are on for every project. The demo GIF is recorded with [vhs](https://github.com/charmbracelet/vhs): `vhs assets/demo.tape`.
+Develop against the sandbox, never against the graftui repository itself. Warnings are errors and nullable reference types are on for every project. The GIFs are recorded with [vhs](https://github.com/charmbracelet/vhs): `vhs assets/merge.tape` (and so on for each tape).
 
 <details>
 <summary>Project layout</summary>
