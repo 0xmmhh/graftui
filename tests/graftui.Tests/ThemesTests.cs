@@ -60,6 +60,7 @@ public class ThemesTests
         Assert.Equal(Palette.Fg, d.Fg);
         Assert.Equal(Palette.Dim, d.Dim);
         Assert.Equal(Palette.SelRow, d.SelRow);
+        Assert.Equal(Palette.Focus, d.Focus);
         Assert.Equal(Palette.Cur, d.Cur);
         Assert.Equal(Palette.Inc, d.Inc);
         Assert.Equal(Palette.Mrg, d.Mrg);
@@ -144,6 +145,44 @@ public class ThemesTests
             Assert.True(Contrast(lane, t.Term) >= 4.5, $"{name}: {lane.R:x2}{lane.G:x2}{lane.B:x2} on the background");
             Assert.True(Contrast(lane, t.SelRow) >= SelectedRowMinimum(name), $"{name}: {lane.R:x2}{lane.G:x2}{lane.B:x2} on the selected row");
         }
+    }
+
+    [Fact]
+    public void A_focused_field_is_drawn_on_the_focus_colour_and_an_unfocused_one_on_the_chip()
+    {
+        var focused = Palette.FieldScheme(focused: true, bold: false);
+        var unfocused = Palette.FieldScheme(focused: false, bold: false);
+
+        Assert.Equal(Palette.Focus, focused.Normal.Background);
+        Assert.Equal(Palette.Chip, unfocused.Normal.Background);
+    }
+
+    [Fact]
+    public void Every_theme_but_high_contrast_focuses_fields_in_its_selected_row_colour()
+    {
+        foreach (var name in Themes.Names.Where(n => n != "high-contrast"))
+        {
+            Assert.True(Themes.TryGet(name, out var t));
+            Assert.Equal(t.SelRow, t.Focus);
+        }
+    }
+
+    [Fact]
+    public void High_contrast_focus_is_the_old_blue_and_stands_out_from_its_chip()
+    {
+        Assert.True(Themes.TryGet("high-contrast", out var t));
+
+        Assert.Equal(new Color(0x2b, 0x46, 0x73), t.Focus);
+        // A focused field must be visibly different from an unfocused one.
+        Assert.True(Contrast(t.Focus, t.Chip) >= 1.3, $"high-contrast: focus against chip is {Contrast(t.Focus, t.Chip):0.00}:1");
+    }
+
+    [Theory]
+    [MemberData(nameof(EveryThemeName))]
+    public void Fg_is_readable_on_the_focus_colour(string name)
+    {
+        Assert.True(Themes.TryGet(name, out var t));
+        Assert.True(Contrast(t.Fg, t.Focus) >= 4.5, $"{name}: text on the focus colour is {Contrast(t.Fg, t.Focus):0.00}:1");
     }
 
     // The contrast a lane needs on the selected row. High-contrast's selected row is 262626, lighter than the others, so

@@ -13,6 +13,8 @@ public static class Palette
     public static Color Dim { get; private set; } = new(0x6c, 0x7a, 0x8c);
     public static Color Cur { get; private set; } = new(0x4f, 0xd1, 0xc5);
     public static Color SelRow { get; private set; } = new(0x22, 0x31, 0x4a);
+    /// <summary>Background of a text field that has focus. Apart from <see cref="SelRow"/>, so a theme can differ.</summary>
+    public static Color Focus { get; private set; } = new(0x22, 0x31, 0x4a);
     public static Color Inc { get; private set; } = new(0xc3, 0x9b, 0xff);
     public static Color Mrg { get; private set; } = new(0xf5, 0xc4, 0x51);
     public static Color Ok { get; private set; } = new(0x7e, 0xe7, 0x87);
@@ -42,6 +44,7 @@ public static class Palette
         Dim = t.Dim;
         Chip = t.Chip;
         SelRow = t.SelRow;
+        Focus = t.Focus;
         Cur = t.Cur;
         Inc = t.Inc;
         Mrg = t.Mrg;
@@ -65,12 +68,12 @@ public static class Palette
     public static Color Chip { get; private set; } = new(0x1a, 0x20, 0x29);
 
     /// <summary>
-    /// One text field's colours: light text on the field's shade, or on the selection colour while the field has focus.
+    /// One text field's colours: light text on the field's shade, or on <see cref="Focus"/> while the field has focus.
     /// <paramref name="bold"/> is for the subject line.
     /// </summary>
     public static Scheme FieldScheme(bool focused, bool bold)
     {
-        var attr = new Attribute(Fg, focused ? SelRow : Chip, bold ? TextStyle.Bold : TextStyle.None);
+        var attr = new Attribute(Fg, focused ? Focus : Chip, bold ? TextStyle.Bold : TextStyle.None);
         // A TextField edits with the Editable role, which Terminal.Gui would derive as a lighter shade; Focus is set too.
         return new Scheme(attr) { Focus = attr, Editable = attr };
     }
