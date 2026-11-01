@@ -10,9 +10,13 @@ updates:
     commit-message:
       prefix: "Deps"
     groups:
+      # Minor and patch updates come together; a major update (for example a new Terminal.Gui major) gets its own pull request.
       nuget:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
