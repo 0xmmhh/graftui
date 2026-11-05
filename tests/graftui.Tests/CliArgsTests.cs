@@ -256,4 +256,13 @@ public class CliArgsTests
         Assert.Contains("v all commands", help);
         Assert.EndsWith("\n", help);
     }
+
+    [Fact]
+    public void HelpText_gives_each_tab_its_own_keys_line()
+    {
+        var lines = CliArgs.HelpText.Split('\n');
+
+        Assert.Contains(lines, l => l.StartsWith("Branches: ", StringComparison.Ordinal) && l.Contains("r rebase"));
+        Assert.Contains(lines, l => l.StartsWith("Changes: ", StringComparison.Ordinal) && l.Contains("Space stage/unstage"));
+    }
 }

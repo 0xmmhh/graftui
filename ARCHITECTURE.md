@@ -20,10 +20,10 @@ The main files in each folder:
 | `src/graftui/` | `Program.cs` (startup, teardown, exit code) and `CliArgs.cs` (the command line and `HelpText`) |
 | `Git/` | `GitClient` is the only code that starts git. `RepoReader` runs read-only queries (`LoadSnapshot`, `LoadLayout`, `LoadChanges`, `LoadDiff`). `StatusParser` and `DiffParser` read git's output. `GitArgs` holds the git verbs and `GitCommandLine` renders a command as you would type it. `GitResult` is what one call returned. `Sandbox` builds `~/.graftui/sandbox`, and `SandboxEdits` is the hidden `--make-edits` flag |
 | `Model/` | Plain records: `Branch`, `CommitInfo`, `RepoSnapshot`, `GraphLayout`, `UndoRecord` and `BranchLanes`. Each operation's request, check and outcome records are in `MergeOutcome`, `BranchModels`, `CommitModels`, `StageModels` and `StashModels` |
-| `Operations/` | One class per git action, each implementing `IGitOperation`: `MergeOperation`, `StageOperation`, `CommitOperation`, `DiscardOperation`, `StashOperation`, `PopOperation`, `UndoOperation`, `SwitchOperation`, `CreateBranchOperation`, `RenameBranchOperation`, `DeleteBranchOperation` and `StashMergeOperation`. Helpers: `UndoLog`, `UndoJson`, `WorkState`, `RepoState`, `BranchGit`, `BranchNames`, `BranchRefusals`, `ChangeRefusals` and `CommitMessage` |
+| `Operations/` | One class per git action, each implementing `IGitOperation`: `MergeOperation`, `StageOperation`, `CommitOperation`, `DiscardOperation`, `StashOperation`, `PopOperation`, `UndoOperation`, `SwitchOperation`, `CreateBranchOperation`, `RenameBranchOperation`, `DeleteBranchOperation`, `StashMergeOperation`, `RebaseOperation`, `CherryPickOperation` and `ResumeSequenceOperation`. Helpers: `UndoLog`, `UndoJson`, `WorkState`, `RepoState`, `BranchGit`, `BranchNames`, `BranchRefusals`, `ChangeRefusals`, `CommitMessage`, `SequenceGit`, `SequenceRefusals` and `SequenceStateFile` |
 | `Ui/App/` | The glue between the views and git: `AppController`, the tabs (`BranchesTab`, `ChangesTab`), the animators (`Animator`, `BranchAnimator`, `ChangesAnimator`), `QuitGate` and `BranchListWidth` |
-| `Ui/Scenes/` | Pure drawing. A scene takes a size and a time and paints an `ArtGrid`: `MergeScenes`, `MergeAnimation`, `BranchAnimation`, `AreasScenes`, `ChangesAnimation`, `StashAnimation`, `StashMergeAnimation`, `ArtGeometry` and `AreasLayout` |
-| `Ui/Text/` | Pure text and layout: `CommandDisplay` (what the Commands pane shows), `CommitLists` (the commit lists, with the `CommitPanel` record), `DirectionLine`, `TextFit`, `ScreenLayout`, `KeyState`, `RefusalText`, `BranchInks` and `Style` (the `Ink` colour roles, `Style` and `Seg`) |
+| `Ui/Scenes/` | Pure drawing. A scene takes a size and a time and paints an `ArtGrid`: `MergeScenes`, `MergeAnimation`, `BranchAnimation`, `RebaseScenes`, `RebaseAnimation`, `AreasScenes`, `ChangesAnimation`, `StashAnimation`, `StashMergeAnimation`, `ArtGeometry` and `AreasLayout` |
+| `Ui/Text/` | Pure text and layout: `CommandDisplay` (what the Commands pane shows), `CommitLists` (the commit lists, with the `CommitPanel` record), `DirectionLine`, `TextFit`, `ScreenLayout`, `KeyState`, `RefusalText`, `RebaseText` (the rebase screens' words), `SequenceLists` (their commit lists), `BranchInks` and `Style` (the `Ink` colour roles, `Style` and `Seg`) |
 | `Ui/Views/` | The Terminal.Gui views: `StatusBarView`, `BranchesView`, `ChangesView`, `ArtPaneView`, `LogView`, `KeyBarView`, `TooSmallView` and `PaneView` (their base). Also `Paint`, `Palette` (the colours in use) and `Themes` (the colour sets) |
 | `tests/graftui.Tests/` | xUnit tests, covered in section 10 |
 
@@ -182,6 +182,9 @@ The table shows the main git command of each operation and the undo kind it save
 | `RenameBranchOperation` | `branch -m <old> <new>` | `RenameBranch` |
 | `DeleteBranchOperation` | `branch -d <name>` or `branch -D <name>` | `DeleteBranch` |
 | `StashMergeOperation` | `stash push -u`, `merge`, `stash pop --index` | `StashMerge` |
+| `RebaseOperation` | `rebase -i --no-autosquash --empty=drop <onto>`, with the todo list graftui writes (`GIT_SEQUENCE_EDITOR` copies it) | `Merge`, when it finishes |
+| `CherryPickOperation` | `cherry-pick` of the chosen commits, oldest first | `Merge`, when it finishes |
+| `ResumeSequenceOperation` | `rebase --continue`, `--skip` or `--abort`; `cherry-pick --continue`, `--skip` or `--abort` | `Merge`, when a resumed sequence finishes; none for an abort |
 
 ## 7. Undo
 
