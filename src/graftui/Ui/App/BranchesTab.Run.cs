@@ -20,10 +20,12 @@ internal sealed partial class BranchesTab
     /// What a change shows when git has answered: the result, the commands it ran, the lines it adds to the log, the exit line,
     /// the snapshot read after it (null when that read failed), the branch to select afterwards, and the process exit code the change
     /// asks for (1 when it conflicted or failed after a merge; 0 otherwise). <c>HoldWidth</c> keeps the art's width where it is when
-    /// the snapshot is applied (a switch: its last frame must not reflow).
+    /// the snapshot is applied (a switch: its last frame must not reflow). <c>Hints</c> tells the Commands pane what the commands were for
+    /// (a rebase's target). <c>Then</c> runs last, after the snapshot and the selection are applied (a paused rebase shows its screen).
     /// </summary>
     internal sealed record BranchFinish(BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log,
-        string ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0, bool HoldWidth = false);
+        string ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0, bool HoldWidth = false, CommandHints? Hints = null,
+        Action? Then = null);
 
     /// <summary>Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now.</summary>
     private void StartWork()
@@ -75,7 +77,7 @@ internal sealed partial class BranchesTab
 
                 var f = finish(o, _app.TryLoadSnapshot());
                 _app.SetChangeExitCode(f.ExitCode);
-                _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.Log, () => EndBranchChange(f)));
+                _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.Log, () => EndBranchChange(f), f.Hints));
                 return f.ExitLine;
             }
             catch (Exception ex)
@@ -97,6 +99,7 @@ internal sealed partial class BranchesTab
             SelectName(name);
         _app.Result = SelectedName();
         _app.ReloadCountsAsync();
+        f.Then?.Invoke();
     }
 
     /// <summary>An exception on the worker: shown on the status bar; the change's animation ends as a failure when one was running.</summary>

@@ -14,7 +14,8 @@ internal sealed class BranchAnimator(AppController app)
 {
     private IBranchAnimation? _anim;
     private Stopwatch? _clock;
-    private (BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log, Action OnDone)? _pending;
+    private (BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log, Action OnDone,
+        CommandHints? Hints)? _pending;
 
     /// <summary>True from <see cref="Begin"/> until the animation has finished.</summary>
     internal bool Running => _anim is not null;
@@ -48,8 +49,9 @@ internal sealed class BranchAnimator(AppController app)
     /// Records git's answer. <paramref name="log"/> is the lines the change adds to the log, each with its style (a refusal's
     /// lines are warnings, a failure's are bad). The animation ends once it has played out past this point.
     /// </summary>
-    internal void SetPending(BranchResult r, IReadOnlyList<GitResult> commands, IReadOnlyList<(string Text, Style Style)> log, Action onDone) =>
-        _pending = (r, commands, log, onDone);
+    internal void SetPending(BranchResult r, IReadOnlyList<GitResult> commands, IReadOnlyList<(string Text, Style Style)> log, Action onDone,
+        CommandHints? hints = null) =>
+        _pending = (r, commands, log, onDone, hints);
 
     private bool Tick()
     {
@@ -86,9 +88,9 @@ internal sealed class BranchAnimator(AppController app)
         app.Art.Scene = geo => anim.Render(geo, final);
         app.Art.Title = anim.Title(final);
         if (pending.Result.After is { } after)
-            app.Art.Panel = CommitLists.Idle(after);
+            app.Art.Panel = pending.Result.Panel ?? CommitLists.Idle(after);
 
-        var anchor = app.LogCommands(pending.Commands, ShowOutput, IsAnchor);
+        var anchor = app.LogCommands(pending.Commands, ShowOutput, IsAnchor, pending.Hints);
         foreach (var (text, style) in pending.Log)
             app.LogMessage(text, style);
         if (anchor >= 0)
@@ -108,12 +110,14 @@ internal sealed class BranchAnimator(AppController app)
         pending.OnDone();
     }
 
-    /// <summary>The log jumps to the first command that moves the branch or the stash: a switch, a branch change, a stash push or a merge.</summary>
+    /// <summary>The log jumps to the first command that moves the branch or the stash: a switch, a branch change, a stash push, a merge, a rebase or a cherry-pick.</summary>
     private static bool IsAnchor(GitResult r) =>
         Is(r, GitArgs.Switch)
         || (Is(r, "branch") && !r.Args.Contains("--contains"))
         || (Is(r, GitArgs.Stash) && Sub(r, "push"))
-        || Is(r, "merge");
+        || Is(r, "merge")
+        || Is(r, "rebase")
+        || Is(r, "cherry-pick");
 
     /// <summary>The anchors' output, the stash pop and the merge abort, and the output of any failed command.</summary>
     private static bool ShowOutput(GitResult r) =>

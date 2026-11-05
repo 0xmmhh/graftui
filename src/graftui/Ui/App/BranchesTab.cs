@@ -5,8 +5,8 @@ using graftui.Ui.Text;
 
 namespace graftui.Ui.App;
 
-/// <summary>Which keys the Branches tab is taking: browsing the list, typing a branch name, or answering a question.</summary>
-internal enum BranchesMode { Browse, Input, Ask }
+/// <summary>Which keys the Branches tab is taking: browsing the list, typing a branch name, answering a question, or confirming a rebase.</summary>
+internal enum BranchesMode { Browse, Input, Ask, Confirm }
 
 /// <summary>
 /// The branch list's behaviour: selection, the preview of the selected branch, and starting a merge. The branch changes (switch,

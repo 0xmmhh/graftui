@@ -323,7 +323,7 @@ public static class MergeScenes
 
     private static int Round(double x) => (int)Math.Round(x, MidpointRounding.AwayFromZero);
 
-    private static Caption Running(bool waiting, string text) =>
+    internal static Caption Running(bool waiting, string text) =>
         waiting ? new Caption(WaitingText, Warn) : new Caption(text, Fg);
 
     private static string ConflictCaption(MergeOutcome o, string cur) =>
@@ -340,7 +340,7 @@ public static class MergeScenes
         return first + (files.Count > 1 ? $" +{files.Count - 1} more" : "");
     }
 
-    private static void DrawShared(ArtGrid grid, ArtGeometry g, GraphLayout L)
+    internal static void DrawShared(ArtGrid grid, ArtGeometry g, GraphLayout L)
     {
         var shared = new Style(BranchInks.Current(L));
         var s = g.Step;
@@ -356,13 +356,13 @@ public static class MergeScenes
         }
     }
 
-    private static void DrawRowA(ArtGrid grid, ArtGeometry g, IReadOnlyList<CommitInfo> list, Style st, bool more,
+    internal static void DrawRowA(ArtGrid grid, ArtGeometry g, IReadOnlyList<CommitInfo> list, Style st, bool more,
         Func<CommitInfo, Style>? colorFor = null, int ghost = 0)
     {
         DrawRow(grid, g, g.A, list, st, more, colorFor, ghost);
     }
 
-    private static void DrawRowB(ArtGrid grid, ArtGeometry g, IReadOnlyList<CommitInfo> list, Style st, bool more,
+    internal static void DrawRowB(ArtGrid grid, ArtGeometry g, IReadOnlyList<CommitInfo> list, Style st, bool more,
         bool connect = true, Func<CommitInfo, Style>? colorFor = null, int ghost = 0)
     {
         if (connect)
@@ -403,7 +403,7 @@ public static class MergeScenes
 
     // Label: a marker on the branch line and the name (with an optional dim extra) on the row beyond it.
     // showName false draws only the marker: the branch animations write the name themselves.
-    private static void Label(ArtGrid grid, ArtGeometry g, int x, int row, bool up, string name, string? extra, Ink ink, bool showName = true)
+    internal static void Label(ArtGrid grid, ArtGeometry g, int x, int row, bool up, string name, string? extra, Ink ink, bool showName = true)
     {
         var inkStyle = new Style(ink);
         grid.Put(x, up ? row - 1 : row + 1, up ? '▾' : '▴', inkStyle);
@@ -429,7 +429,7 @@ public static class MergeScenes
 
     internal static int Runes(string s) => s.EnumerateRunes().Count();
 
-    private static void CurLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L, PreviewOptions? o = null)
+    internal static void CurLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L, PreviewOptions? o = null)
     {
         var name = L.Detached ? "HEAD" : L.Current;
         string? extra = L.Detached ? " (detached)" : " (current)";
@@ -438,7 +438,7 @@ public static class MergeScenes
         Label(grid, g, x, row, up: true, name, extra, BranchInks.Current(L), showName: o?.NoCurName != true);
     }
 
-    private static void SelLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L, PreviewOptions? o = null)
+    internal static void SelLabel(ArtGrid grid, ArtGeometry g, int x, int row, GraphLayout L, PreviewOptions? o = null)
     {
         // The selected branch is the current one: its label is the current label already. Another branch at the same commit gets its own.
         if (L.Kind == GraphKind.Same && L.Selected == L.Current)
