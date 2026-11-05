@@ -115,6 +115,43 @@ public static class DirectionLine
         ];
     }
 
+    // The two-branch line that ends "-> onto <branch>": the first branch can carry an extra (its "(current)"), and so can the second.
+    private static IReadOnlyList<Seg> OntoLine(string verb, string first, Ink firstInk, string firstExtra, string second, Ink secondInk,
+        string secondExtra, int maxCols)
+    {
+        const string arrow = "  -> onto  ";
+        var budget = maxCols - TextFit.Columns(verb) - TextFit.Columns(arrow) - TextFit.Columns(firstExtra) - TextFit.Columns(secondExtra);
+        var (firstShown, secondShown) = TextFit.FitPair(first, second, budget);
+        return
+        [
+            new Seg(verb, Dim),
+            new Seg(firstShown, new Style(firstInk, true)),
+            new Seg(firstExtra, Dim),
+            new Seg(arrow, Dim),
+            new Seg(secondShown, new Style(secondInk, true)),
+            new Seg(secondExtra, Dim),
+        ];
+    }
+
+    /// <summary>
+    /// "rebase       feature/x (current)  -> onto  main": the current branch, which is replayed, then the branch it is put on.
+    /// Each name is in its branch's lane colour.
+    /// </summary>
+    public static IReadOnlyList<Seg> Rebase(string cur, Ink curInk, string onto, Ink ontoInk, int maxCols) =>
+        OntoLine("rebase       ", cur, curInk, " (current)", onto, ontoInk, "", maxCols);
+
+    /// <summary>
+    /// The line with a dim tail added ("   todo", "   2 selected"). A tail that does not fit in <paramref name="cols"/> is left out,
+    /// and the line is returned as it was.
+    /// </summary>
+    public static IReadOnlyList<Seg> WithTail(IReadOnlyList<Seg> line, string tail, int cols)
+    {
+        var used = line.Sum(s => TextFit.Columns(s.Text));
+        if (used + TextFit.Columns(tail) > cols)
+            return line;
+        return [.. line, new Seg(tail, Dim)];
+    }
+
     /// <summary>The line while the preview loads: the selected branch in its lane colour, then "…".</summary>
     public static IReadOnlyList<Seg> Loading(string sel, Ink selInk) =>
         [new Seg(sel, new Style(selInk, true)), new Seg("  …", Dim)];

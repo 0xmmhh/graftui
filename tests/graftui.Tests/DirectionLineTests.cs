@@ -207,4 +207,54 @@ public class DirectionLineTests
         Assert.StartsWith("stash, merge ", text);
         Assert.Contains("…", text);
     }
+
+    [Fact]
+    public void Rebase_names_the_current_branch_then_the_onto_branch_at_80_columns()
+    {
+        var text = Text(DirectionLine.Rebase("feature/picks", Ink.Lane1, "main", Ink.Lane0, 80));
+
+        Assert.Equal("rebase       feature/picks (current)  -> onto  main", text);
+    }
+
+    [Fact]
+    public void Rebase_cuts_the_long_names_to_fit_the_width()
+    {
+        var longName = new string('x', 60);
+
+        var segs = DirectionLine.Rebase(longName, Ink.Lane1, "main", Ink.Lane0, 60);
+        var text = Text(segs);
+
+        Assert.True(TextFit.Columns(text) <= 60, text);
+        Assert.StartsWith("rebase       ", text);
+        Assert.EndsWith("  -> onto  main", text);
+        Assert.Contains("…", text);
+    }
+
+    [Fact]
+    public void Rebase_colours_each_name_with_its_branch_lane()
+    {
+        var segs = DirectionLine.Rebase("feature/picks", Ink.Lane1, "main", Ink.Lane0, 80);
+
+        Assert.Equal(new Style(Ink.Lane1, true), segs.Single(s => s.Text == "feature/picks").Style);
+        Assert.Equal(new Style(Ink.Lane0, true), segs.Single(s => s.Text == "main").Style);
+    }
+
+    [Fact]
+    public void A_tail_is_added_when_it_fits()
+    {
+        var line = DirectionLine.Rebase("feature/picks", Ink.Lane1, "main", Ink.Lane0, 80);
+
+        var text = Text(DirectionLine.WithTail(line, "   todo", 80));
+
+        Assert.EndsWith("main   todo", text);
+    }
+
+    [Fact]
+    public void A_tail_that_does_not_fit_is_dropped()
+    {
+        var line = DirectionLine.Rebase("feature/picks", Ink.Lane1, "main", Ink.Lane0, 80);
+        var width = TextFit.Columns(Text(line));
+
+        Assert.Equal(Text(line), Text(DirectionLine.WithTail(line, "   todo", width)));
+    }
 }

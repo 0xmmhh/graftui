@@ -324,4 +324,20 @@ public class KeyBarFitTests
         Assert.True(BranchesKeyState.MergeOffered(new Branch("feature/x", "abc", "abc", false), new Dictionary<string, (int, int)>()));
         Assert.False(BranchesKeyState.MergeOffered(null, new Dictionary<string, (int, int)>()));
     }
+
+    [Fact]
+    public void Branches_bar_lists_r_rebase_only_when_r_can_rebase()
+    {
+        var with = BranchesKeyState.Empty with { BranchCount = 3, CanRebase = true };
+        var without = BranchesKeyState.Empty with { BranchCount = 3, CanRebase = false };
+
+        Assert.Contains("r rebase", Bar(KeyBarView.BranchesItems(with)));
+        Assert.DoesNotContain("r rebase", Bar(KeyBarView.BranchesItems(without)));
+    }
+
+    [Fact]
+    public void Confirm_bar_lists_enter_rebase_and_esc_cancel()
+    {
+        Assert.Equal("Enter rebase  Esc cancel", Bar(KeyBarView.ConfirmItems()));
+    }
 }

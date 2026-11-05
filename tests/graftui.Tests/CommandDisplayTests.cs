@@ -561,4 +561,39 @@ public class CommandDisplayTests
         Assert.Equal("git stash push -u -m \"graftui: before merging feature/x into main\"",
             Shown(R("stash", "push", "-u", "-m", "graftui: before merging feature/x into main")));
     }
+
+    // ----- The rebase: the line is what the user would type -----
+
+    [Fact]
+    public void Rebase_shows_as_a_plain_rebase_onto_the_branch()
+    {
+        var line = Shown(L("rebase -i --no-autosquash --empty=drop " + H40), new CommandHints(Onto: "main"));
+        Assert.Equal("git rebase main", line);
+    }
+
+    [Fact]
+    public void Interactive_rebase_shows_with_dash_i()
+    {
+        var line = Shown(L("rebase -i --no-autosquash --empty=drop " + H40), new CommandHints(Onto: "main", Interactive: true));
+        Assert.Equal("git rebase -i main", line);
+    }
+
+    [Fact]
+    public void Rebase_without_a_hint_keeps_the_tidied_arguments()
+    {
+        Assert.Equal("git rebase -i --no-autosquash --empty=drop 0123456", Shown(L("rebase -i --no-autosquash --empty=drop " + H40)));
+    }
+
+    [Fact]
+    public void A_failed_rebase_is_shown_exactly_as_it_ran()
+    {
+        var line = Simplify(L("rebase -i --no-autosquash --empty=drop " + H40, exit: 1), new CommandHints(Onto: "main"));
+        Assert.Equal(new DisplayLine(DisplayKind.Command, "git rebase -i --no-autosquash --empty=drop " + H40, Exact: true), line);
+    }
+
+    [Fact]
+    public void Rebase_abort_is_shown_as_it_ran()
+    {
+        Assert.Equal("git rebase --abort", Shown(L("rebase --abort"), new CommandHints(Onto: "main")));
+    }
 }
