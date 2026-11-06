@@ -30,11 +30,15 @@ public static class Sandbox
         if (Path.GetFullPath(path) != Path.GetFullPath(DefaultPath))
             throw new SandboxRefusedException("the sandbox can only be rebuilt at ~/.graftui/sandbox");
 
-        RebuildAt(path, progress);
+        // The short form keeps the home folder (and so the user name) out of the output.
+        RebuildAt(path, progress, "~/.graftui/sandbox");
     }
 
-    /// <summary>Test-only: builds at any path, still behind the marker-file guard. Never called from Program.</summary>
-    internal static void RebuildAt(string path, TextWriter progress)
+    /// <summary>
+    /// Test-only: builds at any path, still behind the marker-file guard. Never called from Program. The progress line names
+    /// <paramref name="shownPath"/>, or the full path when it is null.
+    /// </summary>
+    internal static void RebuildAt(string path, TextWriter progress, string? shownPath = null)
     {
         var full = Path.GetFullPath(path);
         CheckRefusals(full);
@@ -43,7 +47,7 @@ public static class Sandbox
             DeleteOwnTree(full);
 
         Directory.CreateDirectory(full);
-        progress.WriteLine($"graftui: rebuilding practice repo at {full}");
+        progress.WriteLine($"graftui: rebuilding practice repo at {shownPath ?? full}");
         try
         {
             Build(full);

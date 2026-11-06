@@ -11,6 +11,24 @@ public class SandboxOutcomeTests
         ["feature/conflict", "feature/fast-forward", "feature/ff-to-merge", "feature/merge-commit", "feature/picks", "main"];
 
     [Fact]
+    public void The_progress_line_names_the_short_path_and_never_the_home_folder()
+    {
+        var dir = TempRepo.NewSandboxDir();
+        try
+        {
+            var shown = new StringWriter();
+            Sandbox.RebuildAt(dir, shown, "~/.graftui/sandbox");
+
+            Assert.Contains("graftui: rebuilding practice repo at ~/.graftui/sandbox", shown.ToString());
+            Assert.DoesNotContain(Path.GetFullPath(dir), shown.ToString());
+        }
+        finally
+        {
+            TempRepo.DeleteSandboxRoot(dir);
+        }
+    }
+
+    [Fact]
     public void The_sandbox_has_the_expected_branches_on_a_clean_main()
     {
         var dir = TempRepo.NewSandboxDir();
