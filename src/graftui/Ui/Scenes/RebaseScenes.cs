@@ -12,9 +12,6 @@ public static class RebaseScenes
     /// <summary>The most landing ghosts drawn on row B; a longer landing ends in a dim ┄ tail instead.</summary>
     private const int MaxLanding = 3;
 
-    /// <summary>The most ghosts drawn on row A of a paused rebase: the screen has four steps to the right of the base.</summary>
-    private const int MaxGhosts = 4;
-
     private static readonly Style Dim = new(Ink.Dim), FgB = new(Ink.Fg, true);
     private static readonly Style Bad = new(Ink.Bad), BadB = new(Ink.Bad, true), MrgB = new(Ink.Mrg, true), WarnB = new(Ink.Warn, true);
 
@@ -50,7 +47,8 @@ public static class RebaseScenes
 
     /// <summary>
     /// A paused rebase, drawn from its stop alone: its plan rows are in the stop, so the picture is the same after a restart. Row A is the
-    /// base and the plan's commits as ghosts. Row B is the onto tip, the commits that have landed (at most MaxLanding are drawn, then a dim
+    /// base and the plan's commits as ghosts, up to the commits the art has room for; the window moves on when the stop is further along,
+    /// so the stop's ghost is always drawn. Row B is the onto tip, the commits that have landed (at most MaxLanding are drawn, then a dim
     /// tail), and the stop: a conflict is a ✕ one cell short of the next slot, an edit is a warm dot in that slot, and a reword or a squash
     /// is its own ghost on row A, turned warm.
     /// </summary>
@@ -65,10 +63,17 @@ public static class RebaseScenes
         var onto = new Style(ontoInk);
         var stopAt = Math.Clamp(stop.Step - 1, 0, rows.Count - 1);
         var landed = LandedBefore(rows, stopAt);
-        var ghosts = Math.Min(rows.Count, MaxGhosts);
 
-        // Row A: the base, then each planned commit as a dim ghost on a dashed line.
-        grid.Put(g.XB, g.A, '●', Dim);
+        // The window of ghosts on row A: it starts at the base, unless the stop is past the last ghost the art has room for.
+        var slots = Math.Max(1, (g.Width - 1 - g.XB) / g.Step);
+        var first = Math.Max(0, stopAt + 1 - slots);
+        var ghosts = Math.Min(rows.Count - first, slots);
+
+        // Row A: the base (or a dim ┄ when the window has moved on), then each planned commit as a dim ghost on a dashed line.
+        if (first == 0)
+            grid.Put(g.XB, g.A, '●', Dim);
+        else
+            grid.Put(g.XB, g.A, '┄', Dim);
         var px = g.XB;
         for (var i = 0; i < ghosts; i++)
         {
@@ -79,8 +84,9 @@ public static class RebaseScenes
         }
 
         var warmOnA = stop.Pause == PauseKind.Reword || stop.Pause == PauseKind.Squash;
-        if (warmOnA && stopAt < ghosts)
-            grid.Put(g.TipX(stopAt + 1), g.A, '●', WarnB);
+        var stopSlot = stopAt - first + 1;
+        if (warmOnA)
+            grid.Put(g.TipX(stopSlot), g.A, '●', WarnB);
 
         // Row B: the line down from row A, the onto tip, then the landed commits in their branch's colour. At most MaxLanding are drawn; a
         // longer landing ends in a dim tail, so the stop's slot is still on the art.
@@ -105,7 +111,7 @@ public static class RebaseScenes
 
         // The stop's own line runs from the last landed commit to the stop, or, after a tail, only its last cell.
         var from = truncated ? slot - 2 : last + 1;
-        var labelX = warmOnA ? g.TipX(Math.Min(stopAt + 1, MaxGhosts)) : slot;
+        var labelX = warmOnA ? g.TipX(stopSlot) : slot;
         if (stop.Pause == PauseKind.Conflict)
         {
             grid.HLine(from, slot - 2, g.B, Bad, '━');

@@ -101,4 +101,21 @@ public class CaptionLayoutTests
         Assert.Equal(normal!.Value.Y, single!.Value.Y);
         Assert.Equal(5, single.Value.H);
     }
+
+    [Fact]
+    public void A_hidden_art_moves_the_caption_to_the_art_row_and_gives_the_rows_under_the_rule_its_space()
+    {
+        var hidden = ArtPaneView.Rows(15, twoLines: false, compact: true, singleLine: false, hidden: true);
+
+        Assert.Equal(3, hidden.CaptionRow);
+        Assert.Equal(0, hidden.ArtRows);
+        Assert.Equal(9, hidden.BelowRows);
+    }
+
+    [Fact]
+    public void The_todo_list_hides_the_art_only_on_a_short_pane()
+    {
+        Assert.True(ArtPaneView.ListNeedsWholePane(15, compact: true));
+        Assert.False(ArtPaneView.ListNeedsWholePane(21, compact: true));
+    }
 }
