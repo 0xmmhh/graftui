@@ -137,6 +137,40 @@ public class RebasePausedSceneTests
     }
 
     [Fact]
+    public void A_reword_stop_after_four_steps_of_eight_keeps_its_warm_dot_and_label_on_row_A()
+    {
+        // Step 5 of 8: the stop is the fifth ghost, which the old four-ghost cap dropped.
+        var grid = Paint(Stop(PauseKind.Reword, 5, Eight().Select((r, i) => i == 4 ? r with { Action = RebaseAction.Reword } : r).ToList()));
+
+        Assert.Equal('●', grid[46, 2].Ch);
+        Assert.Equal(WarnB, grid[46, 2].Style);
+        Assert.Equal('▾', grid[46, 1].Ch);
+        Assert.Contains("feature (rebasing 5/8)", RowText(grid, 0), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_squash_stop_past_the_last_ghost_the_art_has_room_for_moves_the_window_so_it_is_still_drawn()
+    {
+        // The 60-column art has room for seven ghosts. Step 8 of 8 is the eighth row, so the window starts at row two and the base is a ┄.
+        var rows = Eight().Select((r, i) => i == 7 ? r with { Action = RebaseAction.Squash } : r).ToList();
+        var grid = Paint(Stop(PauseKind.Squash, 8, rows));
+
+        Assert.Equal('┄', grid[16, 2].Ch);
+        Assert.Equal('●', grid[58, 2].Ch);
+        Assert.Equal(WarnB, grid[58, 2].Style);
+        Assert.Contains("feature (rebasing 8/8)", RowText(grid, 0), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_short_plan_keeps_the_base_at_the_start_of_row_A()
+    {
+        var grid = Paint(Stop(PauseKind.Conflict, 1, Four()));
+
+        Assert.Equal('●', grid[16, 2].Ch);
+        Assert.Equal('◌', grid[22, 2].Ch);
+    }
+
+    [Fact]
     public void The_running_art_is_the_paused_picture_with_the_running_caption_then_the_result()
     {
         var stop = Stop(PauseKind.Conflict, 3, Four());
