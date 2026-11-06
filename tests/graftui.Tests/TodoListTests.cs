@@ -14,7 +14,7 @@ public class TodoListTests
     private static TodoState State(int count, int cursor = 0)
     {
         var rows = Enumerable.Range(0, count).Select(i => Row(((char)('a' + i)).ToString())).ToList();
-        var s = new TodoState(rows, "feature");
+        var s = new TodoState(rows);
         for (var i = 0; i < cursor; i++)
             s.Down();
         return s;
@@ -35,7 +35,7 @@ public class TodoListTests
     public void The_action_takes_its_colour_and_a_drop_has_a_dim_subject()
     {
         var rows = new[] { Row("a", RebaseAction.Pick), Row("b", RebaseAction.Reword), Row("c", RebaseAction.Squash), Row("d", RebaseAction.Drop) };
-        var lines = SequenceLists.Todo(new TodoState(rows, "feature"), 80, 9, Cur);
+        var lines = SequenceLists.Todo(new TodoState(rows), 80, 9, Cur);
 
         Assert.Equal(new Style(Cur, true), lines[0][1].Style);
         Assert.Equal(new Style(Ink.Warn, true), lines[1][1].Style);
@@ -71,7 +71,7 @@ public class TodoListTests
     public void A_subject_is_cut_to_the_width_of_the_pane()
     {
         var rows = new[] { new RebaseRow("a1234567", "a1234567", new string('x', 60), RebaseAction.Pick) };
-        var line = SequenceLists.Todo(new TodoState(rows, "feature"), 30, 9, Cur)[0];
+        var line = SequenceLists.Todo(new TodoState(rows), 30, 9, Cur)[0];
 
         Assert.True(Text(line).Length <= 30, Text(line));
         Assert.EndsWith("…", Text(line), StringComparison.Ordinal);

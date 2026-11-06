@@ -26,7 +26,7 @@ internal sealed partial class BranchesTab
     /// <summary>The todo list opens on a check that passed: its rows are the plan, and the cursor starts on the first row.</summary>
     private void OpenTodo(RebaseCheck check, GraphLayout? layout)
     {
-        _todo = new TodoState(check.Rows, check.Branch);
+        _todo = new TodoState(check.Rows);
         _todoCheck = check;
         _todoLayout = Or(layout, _app.Snapshot, check.Onto, check.OntoTip);
         _todoNote = null;
@@ -51,10 +51,22 @@ internal sealed partial class BranchesTab
         art.Panel = null;
         art.Below = null;
         art.Scene = geo => RebaseScenes.Preview(geo, L, todo.Rows, todo.Cursor);
-        art.HideArt = ArtPaneView.ListNeedsWholePane(art.Viewport.Height, compact: true);
+        RefreshTodoArt();
         art.FallbackCaption = _todoNote ?? new Caption(RebaseText.TodoHint, Muted);
         art.BelowFor = (cols, rows) => SequenceLists.Todo(todo, cols, rows, BranchInks.Current(L));
         art.SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// Hides the art when the pane has no room for the todo rows beside it. The pane's height is current only after a layout, so the app calls
+    /// this from the art's viewport change (a resize lays the pane out again). Does nothing outside the todo list.
+    /// </summary>
+    internal void RefreshTodoArt()
+    {
+        if (Mode != BranchesMode.Todo)
+            return;
+        _app.Art.HideArt = ArtPaneView.ListNeedsWholePane(_app.Art.Viewport.Height, compact: true);
+        _app.Art.SetNeedsDraw();
     }
 
     /// <summary>The direction line of the todo list: the rebase, then the dim "todo" tail.</summary>

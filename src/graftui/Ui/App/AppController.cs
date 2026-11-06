@@ -259,6 +259,8 @@ public sealed class AppController
             BranchList.SetNeedsDraw();
             Log.SetNeedsDraw();
         };
+        // The todo list hides its art by the pane's height. The viewport is current only after the layout, which runs after ScreenChanged.
+        Art.ViewportChanged += (_, _) => BranchesTab.RefreshTodoArt();
         App.Keyboard.KeyDown += OnKeyDown;
 
         BranchesTab.RequestPreview();

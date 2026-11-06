@@ -264,7 +264,7 @@ public class CliArgsTests
 
         Assert.Contains(lines, l => l.StartsWith("Branches: ", StringComparison.Ordinal) && l.Contains("r rebase"));
         Assert.Contains(lines, l => l.StartsWith("Branches: ", StringComparison.Ordinal) && l.Contains("i interactive"));
-        Assert.Contains(lines, l => l.StartsWith("Todo rebase: ", StringComparison.Ordinal) && l.Contains("⇧↑↓ reorder") && l.Contains("Enter start"));
+        Assert.Contains(lines, l => l.StartsWith("Todo rebase: ", StringComparison.Ordinal) && l.Contains("⇧↑↓/J K reorder") && l.Contains("Enter start"));
         Assert.Contains(lines, l => l.StartsWith("Changes: ", StringComparison.Ordinal) && l.Contains("Space stage/unstage"));
         // v and Esc work on both tabs, so they are not on either tab's line.
         Assert.Contains("Both tabs: v all commands · Esc quit", lines);

@@ -1,5 +1,4 @@
 using graftui.Model;
-using graftui.Operations;
 using graftui.Ui.Text;
 
 namespace graftui.Tests;
@@ -10,7 +9,7 @@ public class TodoStateTests
     private static RebaseRow Row(string name, RebaseAction action = RebaseAction.Pick) => new(name + "0000000", name, "subject " + name, action);
 
     private static TodoState State(params RebaseAction[] actions) =>
-        new(actions.Select((a, i) => Row(((char)('a' + i)).ToString(), a)).ToList(), "feature");
+        new(actions.Select((a, i) => Row(((char)('a' + i)).ToString(), a)).ToList());
 
     private static string Names(TodoState s) => string.Concat(s.Rows.Select(r => r.ShortHash));
 
@@ -64,7 +63,6 @@ public class TodoStateTests
 
         Assert.Equal("abc", Names(s));
         Assert.Equal(1, s.Cursor);
-        Assert.Equal("abc", string.Concat(s.Original.Select(r => r.ShortHash)));
     }
 
     [Fact]
@@ -116,21 +114,5 @@ public class TodoStateTests
         var s = State(RebaseAction.Pick, RebaseAction.Squash, RebaseAction.Drop);
 
         Assert.Null(s.StartRefusal());
-    }
-
-    [Theory]
-    [InlineData("dd")]
-    [InlineData("sp")]
-    [InlineData("fp")]
-    [InlineData("dfp")]
-    [InlineData("ps")]
-    [InlineData("pdr")]
-    [InlineData("pppp")]
-    public void The_start_refusal_agrees_with_the_engines_plan_check(string codes)
-    {
-        var actions = codes.Select(c => RebasePlan.ActionForKey(c)!.Value).ToArray();
-        var s = State(actions);
-
-        Assert.Equal(s.StartRefusal() is null, s.Analysis.Error.Length == 0);
     }
 }
