@@ -33,8 +33,10 @@ jobs:
       - name: Test
         run: dotnet test graftui.slnx --no-build --logger "console;verbosity=normal"
 
-  # Not a required check yet (only build-and-test is); it shows macOS problems early.
+  # macOS runs only when started by hand (Actions tab → CI → Run workflow): it takes several minutes, and development
+  # already happens on macOS with the full test run before each pull request.
   build-and-test-macos:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     timeout-minutes: 25
     steps:
