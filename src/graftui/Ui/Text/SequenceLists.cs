@@ -72,6 +72,52 @@ public static class SequenceLists
         return Group(L, list);
     }
 
+    /// <summary>
+    /// The todo list under the art (the mock's todoHtml): a ▸ on the cursor's row, the action in its colour, the short hash, then the
+    /// subject (dim for a drop). Only <paramref name="visible"/> rows are listed; the window keeps the cursor in view.
+    /// </summary>
+    public static IReadOnlyList<IReadOnlyList<Seg>> Todo(TodoState state, int cols, int visible, Ink curInk)
+    {
+        var rows = state.Rows;
+        var first = Window(rows.Count, state.Cursor, visible);
+        List<IReadOnlyList<Seg>> lines = [];
+        for (var i = first; i < rows.Count && lines.Count < visible; i++)
+            lines.Add(TodoLine(rows[i], i == state.Cursor, cols, curInk));
+        return lines;
+    }
+
+    /// <summary>
+    /// The first row the todo list shows: the cursor sits in the middle of the visible rows, and the list never shows past its end.
+    /// </summary>
+    public static int Window(int count, int cursor, int visible) => Math.Clamp(cursor - visible / 2, 0, Math.Max(0, count - visible));
+
+    private static IReadOnlyList<Seg> TodoLine(RebaseRow row, bool selected, int cols, Ink curInk)
+    {
+        var mark = selected ? "▸ " : "  ";
+        var label = RebaseText.ActionLabel(row.Action).PadRight(7);
+        var subject = TextFit.Fit(row.Subject, Math.Max(0, cols - TextFit.Columns(mark + label + row.ShortHash + " ")));
+        var subjectStyle = row.Action == RebaseAction.Drop ? Dim : Fg;
+        return
+        [
+            new Seg(mark, selected ? new Style(Ink.Fg, true) : Dim),
+            new Seg(label, new Style(TodoInk(row.Action, curInk), true)),
+            new Seg(row.ShortHash, new Style(Ink.Hash)),
+            new Seg(" " + subject, subjectStyle),
+        ];
+    }
+
+    // The colour of a todo action: a pick takes the current branch's ink, an edit or reword the warning ink, a fold the merge ink, a drop the bad ink.
+    private static Ink TodoInk(RebaseAction action, Ink curInk)
+    {
+        if (action == RebaseAction.Reword || action == RebaseAction.Edit)
+            return Ink.Warn;
+        if (action == RebaseAction.Squash || action == RebaseAction.Fixup)
+            return Ink.Mrg;
+        if (action == RebaseAction.Drop)
+            return Ink.Bad;
+        return curInk;
+    }
+
     // One landed commit: its new hash, the subject, the hash it had, and the commits folded into it.
     private sealed record Landing(string Hash, string Subject, string Old, string Folded);
 
