@@ -1,4 +1,5 @@
 using graftui.Model;
+using graftui.Operations;
 
 namespace graftui.Git;
 
@@ -8,6 +9,9 @@ namespace graftui.Git;
 /// </summary>
 public sealed class RepoReader(GitClient git)
 {
+    // The top-level client: a paused sequence's paths are relative to the top level, so it reads the pause from there.
+    private GitClient? _root;
+
     private const int ListCount = 3;
     private const int ListFetch = ListCount + 1; // one extra row tells whether the list was cut short
     private const int NewListMax = 50; // the commit list shows up to this many of the commits the counts count
@@ -40,7 +44,22 @@ public sealed class RepoReader(GitClient git)
         }
 
         ct.ThrowIfCancellationRequested();
-        return new RepoSnapshot(current, head, clean, branches, counts, git.HasUndoSteps());
+        var paused = new SequenceReader(RootClient()).ReadPaused();
+        return new RepoSnapshot(current, head, clean, branches, counts, git.HasUndoSteps())
+        {
+            Paused = paused,
+            PausedOldTip = paused is not null && paused.Ours ? ReadOldTip() : null,
+        };
+    }
+
+    private GitClient RootClient() => _root ??= new GitClient(git.GetTopLevel() ?? git.RepoPath);
+
+    /// <summary>The branch tip the paused sequence started from, from its state file. Null when the file cannot be read.</summary>
+    private string? ReadOldTip()
+    {
+        var gitDir = RepoState.GitDir(RootClient(), []);
+        var state = gitDir is null ? null : SequenceStateFile.Load(gitDir);
+        return state?.OldTip;
     }
 
     public GraphLayout LoadLayout(RepoSnapshot snap, Branch sel, CancellationToken ct)

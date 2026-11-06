@@ -7,17 +7,18 @@ namespace graftui.Ui.Text;
 /// exist. The bar lists only the keys that act now. Keys that are hidden still work as before (and refuse when they cannot act).
 /// </summary>
 public sealed record ChangesKeyState(int RowCount, ChangeSide? SelectedSide, bool HasUnstaged, bool HasStaged, bool HasHead, bool HasStash,
-    bool HasUndo)
+    bool HasUndo, bool Paused = false)
 {
     public static readonly ChangesKeyState Empty = new(0, null, false, false, false, false, false);
 }
 
 /// <summary>
 /// What the Branches tab's key bar needs: how many branches there are, whether m can merge the selected branch, and whether u has a step.
-/// CanRebase is whether r can rebase the current branch onto the selected one (see <see cref="RebaseOffered"/>).
+/// CanRebase is whether r can rebase the current branch onto the selected one (see <see cref="RebaseOffered"/>). Pause is the kind of
+/// paused sequence, when there is one: the bar then lists the pause's keys instead.
 /// </summary>
 public sealed record BranchesKeyState(int BranchCount, bool CanMerge, bool HasUndo, bool CanSwitch = false, bool CanCreate = false,
-    bool CanRename = false, bool CanDelete = false, bool CanRebase = false)
+    bool CanRename = false, bool CanDelete = false, bool CanRebase = false, PauseKind? Pause = null)
 {
     public static readonly BranchesKeyState Empty = new(0, false, false);
 
@@ -31,7 +32,8 @@ public sealed record BranchesKeyState(int BranchCount, bool CanMerge, bool HasUn
         CanCreate: s.HeadHash is not null && s.CurrentBranch.Length > 0,
         CanRename: sel is not null,
         CanDelete: sel is { IsCurrent: false },
-        CanRebase: RebaseOffered(sel, s));
+        CanRebase: RebaseOffered(sel, s),
+        Pause: SequenceStatus.KindOf(s));
 
     /// <summary>
     /// m shows for a branch that is not the current one and is ahead of HEAD. An unknown count shows m too: the merge checks and explains.
