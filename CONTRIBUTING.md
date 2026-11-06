@@ -82,7 +82,7 @@ brew install vhs          # macOS; see the VHS docs for other systems
 vhs assets/merge.tape     # likewise conflict, changes, undo and switch
 ```
 
-Each tape runs graftui with `--sandbox` or opens `~/.graftui/sandbox`, so it only ever records the practice repo. The `--sandbox` rebuild prints the full path before the screen opens, so the tapes hide that part. Keep each GIF under about 800 KB (1 MB at most), and check the frames before you commit: no username, hostname or home path other than `~/.graftui/sandbox`.
+Each tape runs graftui with `--sandbox` or opens `~/.graftui/sandbox`, so it only ever records the practice repo. The tapes hide the launch, so each GIF starts inside graftui. Keep each GIF under about 800 KB (1 MB at most), and check the frames before you commit: no username, hostname or home path other than `~/.graftui/sandbox`.
 
 ## Pull requests
 
