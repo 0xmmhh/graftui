@@ -164,16 +164,18 @@ internal sealed partial class BranchesTab
     private static BranchResult RefusedResult(string reason) =>
         new(false, "Refused", new Caption(RefusalText.Caption(reason), WarnB), null, "Refused", RefusalText.Overlay(reason));
 
-    private static BranchFinish RefusedFinish(string reason, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string select) =>
+    private static BranchFinish RefusedFinish(string reason, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string select,
+        CommandHints? hints = null) =>
         new(RefusedResult(reason), commands, RefusalText.LogLines(reason).Select(l => (Text: l, Style: WarnB)).ToList(),
-            $"graftui: refused: {reason}", after, select);
+            $"graftui: refused: {reason}", after, select, Hints: hints);
 
     /// <summary>A change that failed: the failure is the result. A null <paramref name="select"/> keeps the selection where it is.</summary>
-    private static BranchFinish FailedFinish(string verb, string message, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string? select)
+    private static BranchFinish FailedFinish(string verb, string message, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string? select,
+        CommandHints? hints = null)
     {
         var text = $"{verb} failed: {message}";
         return new BranchFinish(new BranchResult(false, "Failed", new Caption($"✕ {text}", BadB), null), commands, [(text, BadB)],
-            $"graftui: {verb.ToLowerInvariant()} failed: {message}", after, select);
+            $"graftui: {verb.ToLowerInvariant()} failed: {message}", after, select, Hints: hints);
     }
 
     /// <summary>The commit panel of a layout (the commit rows under the art), or null without a layout.</summary>

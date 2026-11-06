@@ -61,7 +61,7 @@ public class RebaseTextTests
     }
 
     [Fact]
-    public void PlainDone_is_the_mock_wording_with_the_count_given()
+    public void PlainDone_has_the_wording_with_the_count_given()
     {
         Assert.Equal("✔ Rebased feature/picks onto main: 2 commits replayed, old ones kept as backup",
             RebaseText.PlainDone("feature/picks", "main", 2));
@@ -85,8 +85,22 @@ public class RebaseTextTests
     public void Refusals_name_the_branches()
     {
         Assert.Equal("cannot rebase feature/picks onto itself", RebaseText.OntoItself("feature/picks"));
-        Assert.Equal("main has no commits of its own on top of feature/fast-forward",
+        Assert.Equal("main has no commits of its own since feature/fast-forward: nothing to rebase",
             RebaseText.NoOwn("main", "feature/fast-forward"));
+    }
+
+    [Fact]
+    public void The_early_refusal_and_the_engine_say_the_same_words()
+    {
+        var early = RebaseText.EarlyRefusal(Layouts.FastForward(), "main", "feature");
+
+        Assert.Equal(SequenceRefusals.NoOwnCommits("main", "feature"), early);
+    }
+
+    [Fact]
+    public void A_conflicting_rebase_that_cannot_be_aborted_says_so_and_names_the_command()
+    {
+        Assert.Equal("the rebase stopped at a conflict and could not be aborted: run git rebase --abort", RebaseText.NotAborted);
     }
 
     [Fact]
@@ -94,7 +108,7 @@ public class RebaseTextTests
     {
         var refusal = RebaseText.EarlyRefusal(Layouts.FastForward(), "main", "feature");
 
-        Assert.Equal("main has no commits of its own on top of feature", refusal);
+        Assert.Equal("main has no commits of its own since feature: nothing to rebase", refusal);
     }
 
     [Fact]

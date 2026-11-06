@@ -4,8 +4,8 @@ using graftui.Ui.Scenes;
 namespace graftui.Ui.Text;
 
 /// <summary>
-/// The commit lists under the rebase screens (the mock's lists). Each list is one group: the current branch's header, then its rows
-/// newest first. The last row is the branch the commits land on, where the screen shows it.
+/// The commit lists under the rebase screens. Each list is one group: the current branch's header, then its rows newest first.
+/// The last row is the branch the commits land on, where the screen shows it.
 /// </summary>
 public static class SequenceLists
 {
@@ -31,7 +31,7 @@ public static class SequenceLists
     }
 
     /// <summary>
-    /// The done screen (the mock's afterList): each commit that landed, newest first, with the hash it had and any commit folded into it;
+    /// The done screen: each commit that landed, newest first, with the hash it had and any commit folded into it;
     /// then the commits dropped or skipped; then the new base.
     /// </summary>
     public static CommitPanel Rebased(SequenceOutcome o, IReadOnlyList<RebaseRow> rows, GraphLayout L)

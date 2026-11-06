@@ -149,7 +149,7 @@ int FinishMerge()
 }
 
 // A stage, unstage, commit, amend or branch change that is still running is finished before exit. Only a stash-merge-pop that
-// conflicted or failed sets an exit code (1, as a failed merge does); the others exit 0.
+// conflicted or failed, and a rebase that conflicted or failed, sets an exit code (1, as a failed merge does); the others exit 0.
 int WaitForChanges()
 {
     var task = gui?.ChangesTask;

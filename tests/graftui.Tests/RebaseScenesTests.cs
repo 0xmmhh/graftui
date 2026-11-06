@@ -97,6 +97,24 @@ public class RebaseScenesTests
     }
 
     [Fact]
+    public void More_than_three_landing_commits_draw_three_ghosts_and_then_a_tail()
+    {
+        var more = new[]
+        {
+            Row(C1), Row(C2), Row(C3),
+            new RebaseRow("fffffff6", "fffffff6", "four", RebaseAction.Pick),
+            new RebaseRow("fffffff7", "fffffff7", "five", RebaseAction.Pick),
+        };
+
+        var grid = RebaseScenes.Preview(G, L, more, -1).Grid;
+
+        // The onto tip is commit 1, so the three ghosts sit at 2, 3 and 4; the fourth and fifth landings are not drawn.
+        Assert.Equal(3, CountOn(grid, G.B, '◌'));
+        Assert.Equal('◌', grid[G.TipX(4), G.B].Ch);
+        Assert.Equal('┄', grid[G.TipX(4) + 1, G.B].Ch);
+    }
+
+    [Fact]
     public void A_dropped_commit_lands_nowhere()
     {
         var gone = new RebaseRow("eeeeeee5", "eeeeeee5", "gone", RebaseAction.Drop);

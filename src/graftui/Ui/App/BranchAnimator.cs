@@ -87,10 +87,13 @@ internal sealed class BranchAnimator(AppController app)
         // Freeze the scene at its final time so the art stops moving.
         app.Art.Scene = geo => anim.Render(geo, final);
         app.Art.Title = anim.Title(final);
-        if (pending.Result.After is { } after)
-            app.Art.Panel = pending.Result.Panel ?? CommitLists.Idle(after);
+        // The result's panel is applied even without an After (a rebase whose snapshot failed keeps its list).
+        if (pending.Result.Panel is { } panel)
+            app.Art.Panel = panel;
+        else if (pending.Result.After is { } after)
+            app.Art.Panel = CommitLists.Idle(after);
 
-        var anchor = app.LogCommands(pending.Commands, ShowOutput, IsAnchor, pending.Hints);
+        var anchor = app.LogCommands(pending.Commands, ShowOutput, AnchorFor(pending.Commands), pending.Hints);
         foreach (var (text, style) in pending.Log)
             app.LogMessage(text, style);
         if (anchor >= 0)
@@ -124,7 +127,21 @@ internal sealed class BranchAnimator(AppController app)
         IsAnchor(r)
         || (Is(r, GitArgs.Stash) && Sub(r, "pop"))
         || (Is(r, "merge") && r.Args.Contains("--abort"))
+        || IsRebaseAbort(r)
         || !r.Success;
+
+    /// <summary>
+    /// The command the log jumps to. After a rebase that was aborted, that is its abort: a conflicting rebase prints a long failure before
+    /// it, and the abort is what the change ended on. Otherwise the first anchor, as always.
+    /// </summary>
+    internal static Func<GitResult, bool> AnchorFor(IReadOnlyList<GitResult> commands)
+    {
+        if (commands.Any(IsRebaseAbort))
+            return IsRebaseAbort;
+        return IsAnchor;
+    }
+
+    private static bool IsRebaseAbort(GitResult r) => Is(r, "rebase") && Sub(r, "--abort");
 
     private static bool Is(GitResult r, string verb) => r.Args.Count > 0 && r.Args[0] == verb;
 

@@ -1,11 +1,12 @@
 using graftui.Model;
+using graftui.Operations;
 using graftui.Ui.Scenes;
 
 namespace graftui.Ui.Text;
 
 /// <summary>
-/// The words of the rebase screens. The mock's words are used as they are, except where graftui does something else (noted at
-/// each text). The words of the pauses (a conflict, an edit, a message) are here too, for the pause screens.
+/// The words of the rebase screens. Refusals come from the engine as they are. The words of the pauses (a conflict, an edit, a message)
+/// are here too, for the pause screens.
 /// </summary>
 public static class RebaseText
 {
@@ -40,6 +41,9 @@ public static class RebaseText
 
     public static string Aborted(string cur) => $"✕ Rebase aborted: {cur} unchanged";
 
+    /// <summary>The failure when a conflicting rebase could not be aborted: git still holds it, so the user must abort it by hand.</summary>
+    public const string NotAborted = "the rebase stopped at a conflict and could not be aborted: run git rebase --abort";
+
     public static string Failed(string message) => $"✕ Rebase failed: {message}";
 
     /// <summary>The log line that closes a rebase that was aborted at once (the exit line says the same for the terminal).</summary>
@@ -48,8 +52,8 @@ public static class RebaseText
     /// <summary>Rebasing a branch onto itself. The interactive edit of its own commits comes later.</summary>
     public static string OntoItself(string cur) => $"cannot rebase {cur} onto itself";
 
-    /// <summary>The refusal for a branch with no commits of its own on top of the selected one.</summary>
-    public static string NoOwn(string cur, string sel) => $"{cur} has no commits of its own on top of {sel}";
+    /// <summary>The refusal for a branch with no commits of its own on top of the selected one: the engine's own words, as its check says them.</summary>
+    public static string NoOwn(string cur, string sel) => SequenceRefusals.NoOwnCommits(cur, sel);
 
     /// <summary>
     /// The refusal that needs no git call: a fast-forward means the current branch has no commits of its own. Null when the check
@@ -61,7 +65,7 @@ public static class RebaseText
     /// <summary>True when the rebase ran but its undo step could not be saved. The message then says why.</summary>
     public static bool UndoSaveFailed(SequenceOutcome o) => o.Message.Contains("could not save the undo step", StringComparison.Ordinal);
 
-    /// <summary>The label of a plan action, as git and the mocks name it.</summary>
+    /// <summary>The label of a plan action, as git names it.</summary>
     public static string ActionLabel(RebaseAction action)
     {
         if (action == RebaseAction.Reword)

@@ -134,32 +134,42 @@ internal sealed partial class BranchesTab
         _app.Keys.SetNeedsDraw();
     }
 
-    /// <summary>Runs the rebase: the operation checks again, the animation starts, then git rebases the branch.</summary>
+    /// <summary>
+    /// Runs the rebase: the operation checks again, the animation starts, then git rebases the branch. The plan is the rows the confirm
+    /// screen showed, so a change since then is refused and the rows the finish uses are the rows that ran.
+    /// </summary>
     private void StartRebase(RebaseCheck check, GraphLayout? layout)
     {
         var onto = check.Onto;
-        var rows = check.Rows;
         var L = Or(layout, _app.Snapshot, onto, check.OntoTip);
-        var direction = RebaseDirection(check.Branch, onto);
-        StartBranchChange(_app.RebaseOp, new RebaseRequest(onto, ExpectedHead: check.Head), "Rebase",
+        StartBranchChange(_app.RebaseOp, new RebaseRequest(onto, ExpectedHead: check.Head, Plan: check.Rows), "Rebase",
             c => c.Refusal, c => c.Commands,
             () => layout,
-            (_, _) => new BranchStart(new RebaseAnimation(L, rows), direction, SequenceLists.Running(L, rows)),
+            RebaseStart,
             (o, after) => RebaseFinish(o, after, check, L),
-            direction);
+            RebaseDirection(check.Branch, onto));
+    }
+
+    /// <summary>
+    /// The animation and the running panel, drawn from the check the operation made just before git starts (not the confirm's, which is
+    /// older). Called on the UI thread.
+    /// </summary>
+    private BranchStart RebaseStart(GraphLayout? loaded, RebaseCheck fresh)
+    {
+        var L = Or(loaded, _app.Snapshot, fresh.Onto, fresh.OntoTip);
+        return new BranchStart(new RebaseAnimation(L, fresh.Rows), RebaseDirection(fresh.Branch, fresh.Onto),
+            SequenceLists.Running(L, fresh.Rows));
     }
 
     /// <summary>The finish of a rebase, on the worker: git's outcome becomes the result, its refusal or its failure, or the done screen.</summary>
     private BranchFinish RebaseFinish(SequenceOutcome o, RepoSnapshot? after, RebaseCheck check, GraphLayout L)
     {
+        var hints = new CommandHints(Onto: check.Onto);
         if (o.Kind == SequenceOutcomeKind.Refused)
-            return RefusedFinish(o.Message, o.Commands, after, check.Onto);
+            return RefusedFinish(o.Message, o.Commands, after, check.Onto, hints);
 
         if (o.Kind == SequenceOutcomeKind.Failed)
-        {
-            var failed = FailedFinish("Rebase", o.Message, o.Commands, after, null);
-            return failed with { ExitCode = 1 };
-        }
+            return FailedFinish("Rebase", o.Message, o.Commands, after, null, hints) with { ExitCode = 1 };
 
         if (o.Kind == SequenceOutcomeKind.Paused)
             return AbortConflict(o, check, L);
@@ -175,15 +185,18 @@ internal sealed partial class BranchesTab
         if (RebaseText.UndoSaveFailed(o))
             log.Add((o.Message, WarnB));
 
-        var result = new BranchResult(true, RebaseText.DoneTitle, new Caption(done, OkB), LayoutOf(after, check.Onto),
-            Panel: SequenceLists.Rebased(o, check.Rows, L), Sequence: o);
+        // The layout after the rebase shows the onto tip as it is now; the confirm's layout is the fallback when the snapshot failed.
+        var landed = LayoutOf(after, check.Onto);
+        var result = new BranchResult(true, RebaseText.DoneTitle, new Caption(done, OkB), landed,
+            Panel: SequenceLists.Rebased(o, check.Rows, landed ?? L), Sequence: o);
         return new BranchFinish(result, o.Commands, log, "graftui: " + o.Message, after, check.Onto,
             Hints: new CommandHints(Onto: check.Onto));
     }
 
     /// <summary>
-    /// A conflict stops the rebase. For now it is aborted at once, so the branch is exactly as it was, and the result says so. The pause
-    /// screen replaces this step.
+    /// A conflict stops the rebase. For now it is aborted at once, so the branch is exactly as it was, and the result says so. The resume
+    /// operation aborts it. When that cannot be verified, git's own abort runs and is checked; if the repo is still mid-rebase, the
+    /// failure says so. The exit code is 1, as for a stash-merge-pop that conflicted. The pause screen replaces this step.
     /// </summary>
     private BranchFinish AbortConflict(SequenceOutcome o, RebaseCheck check, GraphLayout L)
     {
@@ -192,14 +205,19 @@ internal sealed partial class BranchesTab
         var request = new ResumeRequest(ResumeAction.Abort, null, stop.Commit);
         var abort = _app.ResumeOp.Check(request);
         commands.AddRange(abort.Commands);
-        if (!abort.CanRun)
-            return FailedFinish("Rebase", abort.Refusal!, commands, _app.TryLoadSnapshot(), null) with { ExitCode = 1 };
+        var aborted = abort.CanRun ? _app.ResumeOp.Run(request, abort) : null;
+        if (aborted is not null)
+            commands.AddRange(aborted.Commands);
 
-        var aborted = _app.ResumeOp.Run(request, abort);
-        commands.AddRange(aborted.Commands);
         var after = _app.TryLoadSnapshot();
-        if (aborted.Kind != SequenceOutcomeKind.Aborted)
-            return FailedFinish("Rebase", aborted.Message, commands, after, null) with { ExitCode = 1 };
+        var hints = new CommandHints(Onto: check.Onto);
+        if (aborted is null || aborted.Kind != SequenceOutcomeKind.Aborted)
+        {
+            if (!RebaseAbort.Force(_app.RootGit, check.GitDir, check.Branch, check.Head, commands))
+                return FailedFinish("Rebase", RebaseText.NotAborted, commands, after, null, hints) with { ExitCode = 1 };
+
+            after = _app.TryLoadSnapshot();
+        }
 
         var cur = check.Branch;
         var log = new List<(string Text, Style Style)>
@@ -209,7 +227,7 @@ internal sealed partial class BranchesTab
         };
         var result = new BranchResult(false, RebaseText.AbortedTitle, new Caption(RebaseText.Aborted(cur), BadB), L);
         return new BranchFinish(result, commands, log, RebaseText.ExitAborted(cur, check.Onto), after, null,
-            Hints: new CommandHints(Onto: check.Onto));
+            ExitCode: 1, Hints: hints);
     }
 
     /// <summary>The layout of a branch in a snapshot read after a change; null when that read failed or the branch is not listed.</summary>

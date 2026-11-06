@@ -5,7 +5,7 @@ using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace graftui.Ui.Views;
 
-/// <summary>Which keys the bar lists: the branches, the changes, a commit message form, a yes/no question, or a one-line message box.</summary>
+/// <summary>Which keys the bar lists: the branches, the changes, a commit message form, a yes/no question, a one-line message box, or a rebase's confirm screen.</summary>
 public enum KeyBarMode { Branches, Changes, Input, Ask, Message, Confirm }
 
 /// <summary>

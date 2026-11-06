@@ -4,11 +4,14 @@ using graftui.Ui.Text;
 namespace graftui.Ui.Scenes;
 
 /// <summary>
-/// The rebase scenes, ported from the mock's rebasePreview. Each is drawn from a layout, the plan rows and a cursor, so a frame is a
-/// function of its inputs only.
+/// The rebase scenes: the branches before a rebase, drawn from a layout, the plan rows and a cursor, so a frame is a function of its
+/// inputs only.
 /// </summary>
 public static class RebaseScenes
 {
+    /// <summary>The most landing ghosts drawn on row B; a longer landing ends in a dim ┄ tail instead.</summary>
+    private const int MaxLanding = 3;
+
     private static readonly Style Dim = new(Ink.Dim), FgB = new(Ink.Fg, true);
     private static readonly Style Bad = new(Ink.Bad), MrgB = new(Ink.Mrg, true), WarnB = new(Ink.Warn, true);
 
@@ -62,17 +65,21 @@ public static class RebaseScenes
     }
 
     // One dim ◌ on row B for each commit that lands on the onto tip, joined to it by dim ┄. A fold lands on the commit above it, and a drop never lands.
+    // At most MaxLanding ghosts are drawn; a longer landing ends in a dim ┄ tail after the last one.
     private static void DrawLanding(ArtGrid grid, ArtGeometry g, GraphLayout L, IReadOnlyList<RebaseRow> rows)
     {
         var landing = rows.Count(r => r.Action == RebaseAction.Pick || r.Action == RebaseAction.Reword || r.Action == RebaseAction.Edit);
+        var shown = Math.Min(landing, MaxLanding);
         var last = g.TipX(L.SelectedOwn.Count);
-        for (var k = 1; k <= landing; k++)
+        for (var k = 1; k <= shown; k++)
         {
             var x = g.TipX(L.SelectedOwn.Count + k);
             grid.HLine(last + 1, x - 1, g.B, Dim, '┄');
             grid.Put(x, g.B, '◌', Dim);
             last = x;
         }
+        if (landing > shown)
+            grid.HLine(last + 1, last + g.Step - 1, g.B, Dim, '┄');
     }
 
     private static int IndexOf(IReadOnlyList<CommitInfo> commits, string hash)
