@@ -73,7 +73,7 @@ public static class SequenceLists
     }
 
     /// <summary>
-    /// The todo list under the art (the mock's todoHtml): a ▸ on the cursor's row, the action in its colour, the short hash, then the
+    /// The todo list under the art: a ▸ on the cursor's row, the action in its colour, the short hash, then the
     /// subject (dim for a drop). Only <paramref name="visible"/> rows are listed; the window keeps the cursor in view.
     /// </summary>
     public static IReadOnlyList<IReadOnlyList<Seg>> Todo(TodoState state, int cols, int visible, Ink curInk)
