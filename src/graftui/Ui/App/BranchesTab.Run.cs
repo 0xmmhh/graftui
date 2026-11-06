@@ -14,7 +14,7 @@ namespace graftui.Ui.App;
 internal sealed partial class BranchesTab
 {
     /// <summary>What a change shows when it starts: its animation, its direction line and the panel under the art.</summary>
-    private sealed record BranchStart(IBranchAnimation Anim, Func<int, IReadOnlyList<Seg>> Direction, CommitPanel? Commits);
+    internal sealed record BranchStart(IBranchAnimation Anim, Func<int, IReadOnlyList<Seg>> Direction, CommitPanel? Commits);
 
     /// <summary>
     /// What a change shows when git has answered: the result, the commands it ran, the lines it adds to the log, the exit line,

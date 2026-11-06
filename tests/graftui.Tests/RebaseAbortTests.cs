@@ -55,6 +55,23 @@ public class RebaseAbortTests
     }
 
     [Fact]
+    public void Force_reports_failure_when_git_still_holds_the_rebase_after_its_abort()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var before = repo.Head;
+        StartConflict(repo);
+        // git cannot abort a rebase whose onto is not a commit, so the rebase is still there after its abort.
+        File.WriteAllText(Path.Combine(GitDir(repo), "rebase-merge", "onto"), "not-a-commit\n");
+        var log = new List<GitResult>();
+
+        var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", before, log);
+
+        Assert.False(restored);
+        Assert.True(SequenceGit.RebaseInProgress(GitDir(repo)));
+        Assert.Contains(log, r => r.Args.SequenceEqual(["rebase", "--abort"]));
+    }
+
+    [Fact]
     public void Force_on_a_repo_with_no_rebase_only_checks_the_branch()
     {
         using var repo = SequenceRepos.FeatureConflict();

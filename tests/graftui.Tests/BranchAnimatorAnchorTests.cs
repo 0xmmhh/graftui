@@ -1,5 +1,7 @@
 using graftui.Git;
 using graftui.Ui.App;
+using graftui.Ui.Scenes;
+using graftui.Ui.Text;
 
 namespace graftui.Tests;
 
@@ -23,6 +25,27 @@ public class BranchAnimatorAnchorTests
 
         Assert.False(anchorOn(failed));
         Assert.True(anchorOn(abort));
+    }
+
+    [Fact]
+    public void The_log_shows_the_output_of_an_abort_and_of_a_failure_but_not_of_a_plain_command()
+    {
+        Assert.True(BranchAnimator.ShowOutput(Result("git rebase --abort", 0, "rebase", "--abort")));
+        Assert.True(BranchAnimator.ShowOutput(Result("git fetch", 1, "fetch")));
+        Assert.False(BranchAnimator.ShowOutput(Result("git status", 0, "status")));
+    }
+
+    [Fact]
+    public void A_finished_change_keeps_its_own_panel_or_shows_the_idle_list_of_its_snapshot_or_none()
+    {
+        var caption = new Caption("done", new Style(Ink.Ok));
+        var layout = Layouts.Diverged();
+        var own = CommitLists.Idle(layout);
+
+        Assert.Same(own, BranchAnimator.FinishPanel(new BranchResult(true, "Done", caption, layout, Panel: own)));
+        Assert.Equal(CommitLists.Idle(layout).Left.Rows.Select(r => r.Subject),
+            BranchAnimator.FinishPanel(new BranchResult(true, "Done", caption, layout))!.Left.Rows.Select(r => r.Subject));
+        Assert.Null(BranchAnimator.FinishPanel(new BranchResult(false, "Failed", caption, null)));
     }
 
     [Fact]

@@ -340,4 +340,12 @@ public class KeyBarFitTests
     {
         Assert.Equal("Enter rebase  Esc cancel", Bar(KeyBarView.ConfirmItems()));
     }
+
+    [Fact]
+    public void The_bar_in_confirm_mode_shows_the_confirm_keys()
+    {
+        var bar = new KeyBarView { Mode = KeyBarMode.Confirm };
+
+        Assert.Equal("Enter rebase  Esc cancel", Bar(bar.Items()));
+    }
 }

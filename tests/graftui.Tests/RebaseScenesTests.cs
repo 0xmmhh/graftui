@@ -84,6 +84,16 @@ public class RebaseScenesTests
     }
 
     [Fact]
+    public void A_cursor_on_a_commit_that_is_not_on_the_branch_draws_no_marker()
+    {
+        var rows = new[] { new RebaseRow(new string('f', 40), "fffffff", "Not on this branch", RebaseAction.Pick) };
+
+        var grid = RebaseScenes.Preview(G, L, rows, cursor: 0).Grid;
+
+        Assert.Equal(0, RowText(grid, G.A + 1).Count(c => c == '▴'));
+    }
+
+    [Fact]
     public void One_dim_ghost_lands_on_row_B_for_each_commit_that_is_kept()
     {
         // Two picks and a fold: the fold lands on the commit above it, so it adds no ghost.

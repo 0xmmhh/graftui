@@ -88,10 +88,8 @@ internal sealed class BranchAnimator(AppController app)
         app.Art.Scene = geo => anim.Render(geo, final);
         app.Art.Title = anim.Title(final);
         // The result's panel is applied even without an After (a rebase whose snapshot failed keeps its list).
-        if (pending.Result.Panel is { } panel)
+        if (FinishPanel(pending.Result) is { } panel)
             app.Art.Panel = panel;
-        else if (pending.Result.After is { } after)
-            app.Art.Panel = CommitLists.Idle(after);
 
         var anchor = app.LogCommands(pending.Commands, ShowOutput, AnchorFor(pending.Commands), pending.Hints);
         foreach (var (text, style) in pending.Log)
@@ -113,6 +111,13 @@ internal sealed class BranchAnimator(AppController app)
         pending.OnDone();
     }
 
+    /// <summary>
+    /// The panel under the art once a change has finished: the result's own panel, else the idle list of its snapshot. Null keeps the
+    /// panel as it is.
+    /// </summary>
+    internal static CommitPanel? FinishPanel(BranchResult r) =>
+        r.Panel ?? (r.After is { } after ? CommitLists.Idle(after) : null);
+
     /// <summary>The log jumps to the first command that moves the branch or the stash: a switch, a branch change, a stash push, a merge, a rebase or a cherry-pick.</summary>
     private static bool IsAnchor(GitResult r) =>
         Is(r, GitArgs.Switch)
@@ -123,7 +128,7 @@ internal sealed class BranchAnimator(AppController app)
         || Is(r, "cherry-pick");
 
     /// <summary>The anchors' output, the stash pop and the merge abort, and the output of any failed command.</summary>
-    private static bool ShowOutput(GitResult r) =>
+    internal static bool ShowOutput(GitResult r) =>
         IsAnchor(r)
         || (Is(r, GitArgs.Stash) && Sub(r, "pop"))
         || (Is(r, "merge") && r.Args.Contains("--abort"))

@@ -74,7 +74,7 @@ public sealed class KeyBarView : View
     }
 
     /// <summary>The (key, label, priority) items for the current mode. Labels start with a space.</summary>
-    private IReadOnlyList<(string Key, string Label, int Priority)> Items() => Mode switch
+    internal IReadOnlyList<(string Key, string Label, int Priority)> Items() => Mode switch
     {
         KeyBarMode.Changes => ChangesItems(ChangesState),
         KeyBarMode.Input => InputItems(BodyFocused),
