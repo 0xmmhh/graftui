@@ -2,6 +2,7 @@ using graftui.Git;
 using graftui.Ui.App;
 using graftui.Ui.Scenes;
 using graftui.Ui.Text;
+using graftui.Ui.Views;
 
 namespace graftui.Tests;
 
@@ -46,6 +47,33 @@ public class BranchAnimatorAnchorTests
         Assert.Equal(CommitLists.Idle(layout).Left.Rows.Select(r => r.Subject),
             BranchAnimator.FinishPanel(new BranchResult(true, "Done", caption, layout))!.Left.Rows.Select(r => r.Subject));
         Assert.Null(BranchAnimator.FinishPanel(new BranchResult(false, "Failed", caption, null)));
+    }
+
+    [Fact]
+    public void A_resumed_conflict_logs_from_the_staging_command_not_from_the_continue()
+    {
+        var add = Result("git add -- app.txt", 0, "add", "--", "app.txt");
+        var continueRebase = Result("git rebase --continue", 0, "rebase", "--continue");
+
+        var commands = new[] { add, continueRebase };
+
+        // Both are anchors; the log jumps to the first one that matches, which is the staging.
+        Assert.Same(add, commands.First(BranchAnimator.AnchorFor(commands)));
+    }
+
+    [Fact]
+    public void A_log_anchored_on_the_continue_scrolls_the_staging_line_above_the_top()
+    {
+        // The staging (entry 0), then the continue (entry 1) and three more lines of its step, in a pane of three rows. The anchor is the
+        // top line unless the newest lines would leave the pane half empty, so the staging is above the top only when anchored on the continue.
+        int[] entryOfLine = [0, 1, 1, 1, 1];
+        int[] heights = [1, 1, 1, 1, 1];
+
+        var onStaging = LogView.TopLine(heights, rows: 3, anchor: LogView.AnchorLine(entryOfLine, 0));
+        var onContinue = LogView.TopLine(heights, rows: 3, anchor: LogView.AnchorLine(entryOfLine, 1));
+
+        Assert.Equal(0, onStaging);
+        Assert.Equal(1, onContinue);
     }
 
     [Fact]

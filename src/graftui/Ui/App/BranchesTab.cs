@@ -76,7 +76,7 @@ internal sealed partial class BranchesTab
 
     internal void MoveSelection(int delta)
     {
-        if (_app.Busy || _app.Snapshot.Branches.Count == 0)
+        if (_app.Busy || _app.IsPaused || _app.Snapshot.Branches.Count == 0)
             return;
 
         _app.ReleaseBranchWidth();
@@ -173,6 +173,12 @@ internal sealed partial class BranchesTab
 
     internal void RequestPreview()
     {
+        // A paused rebase owns the art: its screen is shown whatever was selected.
+        if (_app.IsPaused)
+        {
+            ShowPause();
+            return;
+        }
         if (_app.Snapshot.Branches.Count == 0)
             return;
 
@@ -225,7 +231,7 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>A preview may replace the art only when nothing is running, no change's result is shown, and no question is open.</summary>
-    private bool MayDrawPreview => !_app.Busy && _app.Result is null && Mode == BranchesMode.Browse;
+    private bool MayDrawPreview => !_app.Busy && !_app.IsPaused && _app.Result is null && Mode == BranchesMode.Browse;
 
     internal void ShowInitialState()
     {

@@ -11,7 +11,7 @@ namespace graftui.Operations;
 /// </summary>
 public sealed class CherryPickOperation(GitClient git) : IGitOperation<CherryPickRequest, CherryPickCheck, SequenceOutcome>
 {
-    /// <summary>Preconditions for picking the commits onto the current branch. Read-only; every call is logged.</summary>
+    /// <summary>Preconditions for picking the commits onto the current branch. Reads git, except that it removes a stale state file; every call is logged.</summary>
     public CherryPickCheck Check(CherryPickRequest request)
     {
         var log = new List<GitResult>();
@@ -54,14 +54,10 @@ public sealed class CherryPickOperation(GitClient git) : IGitOperation<CherryPic
         catch (Exception ex)
         {
             var message = ex.Message;
-            if (!started)
+            if (started && SequenceGit.PickInProgress(gitDir))
             {
-                // Nothing reached git: the state written for this run is not needed.
-                SequenceStateFile.Delete(gitDir);
-            }
-            else if (SequenceGit.PickInProgress(gitDir))
-            {
-                // Git holds a pick that graftui started: abort it so the branch is exactly as before.
+                // Git holds a pick that graftui started: abort it so the branch is exactly as before. Its state stays while git holds the
+                // pick, so the pick is still recognised as graftui's if the abort fails.
                 var abort = BranchGit.Call(git, log, "cherry-pick", "--abort");
                 if (abort.Success)
                 {
@@ -72,6 +68,11 @@ public sealed class CherryPickOperation(GitClient git) : IGitOperation<CherryPic
                 {
                     message += "; the cherry-pick could not be aborted: check git status";
                 }
+            }
+            else
+            {
+                // Nothing reached git, or git no longer holds a pick (it finished, or never ran): the state written for this run is over.
+                SequenceStateFile.Delete(gitDir);
             }
             return Failed(check, message, log);
         }
@@ -91,6 +92,9 @@ public sealed class CherryPickOperation(GitClient git) : IGitOperation<CherryPic
         var inProgress = RepoState.InProgress(args => BranchGit.Call(git, log, args), gitDirPath);
         if (inProgress is not null)
             return Refuse(ChangeRefusals.InProgress(inProgress), gitDir: gitDirPath);
+
+        // A state file left by a sequence that is no longer in progress is stale: it goes before these picks start.
+        SequenceStateFile.Delete(gitDirPath);
 
         var symbolic = BranchGit.SymbolicHead(git, log);
         if (symbolic.Length == 0)

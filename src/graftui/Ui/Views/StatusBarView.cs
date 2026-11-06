@@ -59,6 +59,8 @@ public sealed class StatusBarView : View
             return [new Seg("git error: " + ErrorText, Bad)];
         if (Snapshot is null)
             return [];
+        if (SequenceStatus.IsPaused(Snapshot))
+            return SequenceStatus.Segs(Snapshot.Paused!, new Style(BranchInks.Named(Snapshot.Branches, Snapshot.Paused!.Branch), true));
         if (Snapshot.CurrentBranch.Length == 0)
             return [new Seg("HEAD detached · merging disabled", Warn)];
 

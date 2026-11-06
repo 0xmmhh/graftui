@@ -100,6 +100,45 @@ public static class RebaseText
     /// <summary>"(rebasing 2/3)": the step a paused rebase is on.</summary>
     public static string Rebasing(int step, int total) => $"(rebasing {step}/{total})";
 
+    /// <summary>The title of the paused rebase's screen.</summary>
+    public const string PausedTitle = "Paused";
+
+    /// <summary>The title of the question that asks before a paused rebase is aborted.</summary>
+    public const string AbortTitle = "Abort the rebase?";
+
+    /// <summary>The caption when the question is answered no, and the pause stays.</summary>
+    public const string StillPaused = "Still paused: nothing changed";
+
+    /// <summary>The running caption while a paused rebase is aborted.</summary>
+    public const string Aborting = "Aborting the rebase…";
+
+    /// <summary>The question's text: the branch goes back to its old tip. The conflict fixes in the files are lost.</summary>
+    public static string AbortText(string branch, string? shortTip) =>
+        $"{branch} goes back to {MergeScenes.Short(shortTip)} as it was before. Conflict fixes you made in the files are lost.";
+
+    /// <summary>The direction line's tail while paused: "   paused 2/3".</summary>
+    public static string PausedTail(SequenceStop s) => $"   paused {s.Step}/{s.Total}";
+
+    /// <summary>The caption under a paused sequence: what stopped it, and what the keys do.</summary>
+    public static string PauseCaption(SequenceStop s)
+    {
+        if (s.Pause == PauseKind.Conflict)
+            return $"✕ CONFLICT in {Files(s.Files.Select(f => f.Path).ToList())}: resolve it in your editor, then Enter continues, or press X to abort";
+        if (s.Pause == PauseKind.Edit)
+            return EditStop(s);
+        return MessagePause(s);
+    }
+
+    /// <summary>The status bar's last words for a pause: what it waits for.</summary>
+    public static string PauseWord(SequenceStop s)
+    {
+        if (s.Pause == PauseKind.Conflict)
+            return "conflict";
+        if (s.Pause == PauseKind.Edit)
+            return "editing";
+        return "waiting for a message";
+    }
+
     public static string RewordTitle(string shortHash) => $"Reword {shortHash}";
 
     public const string RewordBody = "Git holds this commit until you confirm its message.";

@@ -63,14 +63,41 @@ public sealed class ArtPaneView : PaneView
     /// <summary>Direction line for a given width. Built on demand so names can be cut to the pane.</summary>
     public Func<int, IReadOnlyList<Seg>> Direction { get; set; } = _ => [];
 
-    /// <summary>The commit list under the caption, or null when the pane shows none (the Changes tab).</summary>
-    public CommitPanel? Panel { get; set; }
+    private CommitPanel? _panel;
+    private IReadOnlyList<IReadOnlyList<Seg>>? _below;
+
+    /// <summary>The commit list under the caption, or null when the pane shows none (the Changes tab). Setting it clears <see cref="BelowFor"/>.</summary>
+    public CommitPanel? Panel
+    {
+        get => _panel;
+        set
+        {
+            _panel = value;
+            BelowFor = null;
+        }
+    }
 
     /// <summary>Width of the whole screen. At least <see cref="CommitPanels.SideBySideMinCols"/> lists the commit groups side by side.</summary>
     public int ScreenCols { get; set; }
 
-    /// <summary>Lines drawn under the caption in place of <see cref="Panel"/> (the Changes tab's summary).</summary>
-    public IReadOnlyList<IReadOnlyList<Seg>>? Below { get; set; }
+    /// <summary>
+    /// Lines drawn under the caption in place of <see cref="Panel"/> (the Changes tab's summary). Setting it clears <see cref="BelowFor"/>.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<Seg>>? Below
+    {
+        get => _below;
+        set
+        {
+            _below = value;
+            BelowFor = null;
+        }
+    }
+
+    /// <summary>
+    /// Lines under the rule, made for the pane's width and the rows that are free there (a paused rebase's conflicted files). Drawn in
+    /// place of <see cref="Below"/> and <see cref="Panel"/>. Setting either of those clears it, so set this one last.
+    /// </summary>
+    public Func<int, int, IReadOnlyList<IReadOnlyList<Seg>>>? BelowFor { get; set; }
 
     public Caption? FallbackCaption { get; set; }
 
@@ -220,7 +247,8 @@ public sealed class ArtPaneView : PaneView
 
         DrawRule(2, layout.RuleRow, cw);
 
-        if (Below is { } below)
+        var below = BelowFor?.Invoke(cw - 2, layout.BelowRows) ?? Below;
+        if (below is not null)
         {
             for (var k = 0; k < layout.BelowRows && k < below.Count; k++)
                 DrawSegs(4, layout.BelowTop + k, below[k], cw - 2);

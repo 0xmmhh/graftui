@@ -81,20 +81,28 @@ public sealed class AppController
     internal void MarkChangeOutcomeShown() => _changeOutcomeShown = true;
 
     private volatile int _changeExitCode;
+    private volatile bool _changeLeftPause;
 
     /// <summary>
-    /// The exit code the latest change asks for: 1 when a stash-merge-pop conflicted or failed (as a failed merge exits 1), else 0.
-    /// Program reads it after the change's worker has finished.
+    /// The exit code the latest change asks for: 1 when a stash-merge-pop conflicted or failed, or a rebase stopped at a conflict (as a
+    /// failed merge exits 1), else 0. Program reads it after the change's worker has finished.
     /// </summary>
     public int ChangeExitCode => _changeExitCode;
 
-    internal void SetChangeExitCode(int code) => _changeExitCode = code;
+    /// <summary>True when <see cref="ChangeExitCode"/> was set by a rebase left paused: if the pause is gone at exit, its code goes too.</summary>
+    public bool ChangeLeftPause => _changeLeftPause;
+
+    internal void SetChangeExitCode(int code, bool leftPause = false)
+    {
+        _changeExitCode = code;
+        _changeLeftPause = leftPause;
+    }
 
     /// <summary>Called when a new change starts, so an outcome drawn for an earlier change does not count for this one.</summary>
     internal void BeginChangeOutcome()
     {
         _changeOutcomeShown = false;
-        _changeExitCode = 0;
+        SetChangeExitCode(0);
     }
 
     /// <summary>True once the outcome has been drawn in the UI (so the exit path need not print it again).</summary>
@@ -229,6 +237,7 @@ public sealed class AppController
         BranchList.Branches = Snapshot.Branches;
         BranchList.Counts = Snapshot.Counts;
         BranchList.Selected = BranchesTab.Selected;
+        BranchList.PausedBranch = SequenceStatus.PausedBranch(Snapshot);
         _tooSmall.Cols = App.Screen.Width;
         _tooSmall.Rows = App.Screen.Height;
         Art.ScreenCols = App.Screen.Width;
@@ -412,6 +421,13 @@ public sealed class AppController
             return;
         }
 
+        // A paused rebase takes the Branches keys: Enter, S and X continue or abort it, the other branch keys are refused.
+        if (IsPaused)
+        {
+            BranchesTab.HandlePauseKey(e);
+            return;
+        }
+
         if (e == Key.CursorUp)
         {
             e.Handled = true;
@@ -463,6 +479,7 @@ public sealed class AppController
     private void ToggleTab()
     {
         Result = null;
+        BranchesTab.ForgetPauseNote();
         ReleaseBranchWidth();
         ActiveTab = ActiveTab == TabKind.Branches ? TabKind.Changes : TabKind.Branches;
         var onChanges = ActiveTab == TabKind.Changes;
@@ -512,8 +529,21 @@ public sealed class AppController
         BranchList.Branches = s.Branches;
         BranchList.Counts = s.Counts;
         BranchList.Selected = BranchesTab.Selected;
+        BranchList.PausedBranch = SequenceStatus.PausedBranch(s);
         BranchList.SetNeedsDraw();
     }
+
+    /// <summary>True while a rebase or cherry-pick that graftui started is paused. Only that pause is shown as one.</summary>
+    internal bool IsPaused => SequenceStatus.IsPaused(Snapshot);
+
+    /// <summary>The pause's caption for the Changes tab, or null when nothing is paused.</summary>
+    internal Caption? PauseCaption() => IsPaused ? SequenceStatus.Caption(Snapshot.Paused!) : null;
+
+    /// <summary>
+    /// What the repo holds now, read after the UI has closed: a pause graftui started that is still there, or a sequence of graftui's that
+    /// is still in progress but cannot be read. Program prints the matching exit line and exits 1 for a conflict.
+    /// </summary>
+    public SequenceRead ReadSequenceAtExit() => new SequenceReader(RootGit).ReadSequence();
 
     /// <summary>Holds the branch list's width where it is, so the art does not reflow under a switch's last frame.</summary>
     internal void HoldBranchWidth() => _listWidth.Hold();
@@ -578,26 +608,41 @@ public sealed class AppController
         Log.SetNeedsDraw();
     }
 
-    internal void ReloadCountsAsync()
+    /// <summary>
+    /// Reads the snapshot with counts on a worker. On the UI thread it is applied, unless a merge or another snapshot has changed things
+    /// since the read started. <paramref name="then"/> runs there afterwards, once the read is applied or dropped: a screen that depends on
+    /// the snapshot (the pause screen) is then drawn from a fresh read.
+    /// </summary>
+    internal void ReloadCountsAsync(Action? then = null)
     {
         var seq = SnapshotSeq;
         Task.Run(() =>
         {
+            RepoSnapshot? s = null;
+            Exception? failed = null;
             try
             {
-                var s = Reader.LoadSnapshot(withCounts: true, CancellationToken.None);
-                Ui(() =>
-                {
-                    // Dropped when a merge or another snapshot has changed things since this read started.
-                    if (!Busy && seq == SnapshotSeq)
-                        ApplySnapshot(s);
-                });
+                s = Reader.LoadSnapshot(withCounts: true, CancellationToken.None);
             }
             catch (Exception ex)
             {
-                Ui(() => ShowGitError(ex));
+                failed = ex;
             }
+            Ui(() => CountsRead(s, failed, seq, then));
         });
+    }
+
+    /// <summary>
+    /// The UI thread's part of a counts read. A failed read shows its error and leaves the snapshot as it was. <paramref name="then"/> runs
+    /// in both cases: a screen that depends on the snapshot (the pause screen) is still due, and the snapshot in place already says what it is.
+    /// </summary>
+    internal void CountsRead(RepoSnapshot? s, Exception? failed, int seq, Action? then)
+    {
+        if (failed is not null)
+            ShowGitError(failed);
+        else if (s is not null && !Busy && seq == SnapshotSeq)
+            ApplySnapshot(s);
+        then?.Invoke();
     }
 
     // ---------- helpers ----------

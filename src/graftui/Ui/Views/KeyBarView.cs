@@ -104,17 +104,18 @@ public sealed class KeyBarView : View
             items.Add(("a", " stage all", 3));
         if (s.HasStaged)
             items.Add(("U", " unstage all", 2));
-        if (s.HasStaged)
+        // A paused sequence owns the repo: commit, amend, discard, stash, pop and undo wait until it is finished.
+        if (s.HasStaged && !s.Paused)
             items.Add(("c", " commit", 9));
-        if (s.HasHead)
+        if (s.HasHead && !s.Paused)
             items.Add(("A", " amend", 4));
-        if (s.SelectedSide == ChangeSide.Unstaged)
+        if (s.SelectedSide == ChangeSide.Unstaged && !s.Paused)
             items.Add(("x", " discard", 8));
-        if (s.RowCount > 0)
+        if (s.RowCount > 0 && !s.Paused)
             items.Add(("z", " stash", 7));
-        if (s.HasStash)
+        if (s.HasStash && !s.Paused)
             items.Add(("Z", " pop", 6));
-        if (s.HasUndo)
+        if (s.HasUndo && !s.Paused)
             items.Add(("u", " undo", 5));
         items.Add(("Esc", " quit", 12));
         return items;
@@ -156,6 +157,9 @@ public sealed class KeyBarView : View
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s)
     {
+        if (s.Pause is not null)
+            return PauseItems(s.Pause.Value);
+
         var items = new List<(string Key, string Label, int Priority)> { ("Tab", " changes", 11) };
         if (s.BranchCount >= 2)
             items.Add(("↑↓", " select", 1));
@@ -174,6 +178,24 @@ public sealed class KeyBarView : View
         if (s.HasUndo)
             items.Add(("u", " undo", 8));
         items.Add(("Esc", " quit", 12));
+        return items;
+    }
+
+    /// <summary>
+    /// The keys of a paused sequence. A conflict can be skipped; an edit is amended and continued; a reword or squash just continues. Tab
+    /// and Esc are always listed.
+    /// </summary>
+    internal static IReadOnlyList<(string Key, string Label, int Priority)> PauseItems(PauseKind kind)
+    {
+        var items = new List<(string Key, string Label, int Priority)>
+        {
+            ("Enter", kind == PauseKind.Edit ? " amend & continue" : " continue", 6),
+        };
+        if (kind == PauseKind.Conflict)
+            items.Add(("S", " skip", 4));
+        items.Add(("X", " abort", 5));
+        items.Add(("Tab", " changes", 3));
+        items.Add(("Esc", " quit", 7));
         return items;
     }
 

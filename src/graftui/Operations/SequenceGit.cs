@@ -150,15 +150,20 @@ internal static class SequenceGit
 
     /// <summary>
     /// What a paused cherry-pick waits for: always a conflict, on the commit in CHERRY_PICK_HEAD. The files are read from the work tree.
+    /// Null when no commit is held: the sequencer is left between two picks (the current one was committed by hand), and there is no
+    /// stop to show. The sequence is then still in progress, but its stop cannot be read.
     /// </summary>
-    internal static SequenceStop ReadPickStop(GitClient git, SequenceState s, List<GitResult> log)
+    internal static SequenceStop? ReadPickStop(GitClient git, SequenceState s, List<GitResult> log)
     {
-        var files = UnmergedFiles(git, log);
         var head = BranchGit.Call(git, log, GitArgs.RevParse, "-q", GitArgs.Verify, "CHERRY_PICK_HEAD");
         var commit = head.Success ? head.StdOut.Trim() : "";
+        if (commit.Length == 0)
+            return null;
+
+        var files = UnmergedFiles(git, log);
         var step = IndexOfHash(s.Picks, commit);
         return new SequenceStop(SequenceKind.CherryPick, PauseKind.Conflict, s.Branch, s.Onto, commit, BranchGit.Short(commit),
-            commit.Length > 0 ? Subject(git, log, commit) : "", ConflictState(git.RepoPath, files), step + 1, s.Picks.Count, "", [], Ours: true);
+            Subject(git, log, commit), ConflictState(git.RepoPath, files), step + 1, s.Picks.Count, "", [], Ours: true);
     }
 
     private static SequenceStop RebaseStop(SequenceState s, PauseKind pause, string commit, IReadOnlyList<ConflictFile> files,
@@ -274,19 +279,16 @@ internal static class SequenceGit
         if (RebaseInProgress(gitDir))
             return SettleRebasePaused(git, gitDir, s, last, log);
 
+        // Git no longer holds the rebase, so its state is over whatever the reads below find. It goes first, so a read that throws
+        // cannot leave it behind for the next rebase to mistake for its own.
+        SequenceStateFile.Delete(gitDir);
         var symbolic = BranchGit.SymbolicHead(git, log);
         if (symbolic != BranchGit.HeadsPrefix + s.Branch)
-        {
-            SequenceStateFile.Delete(gitDir);
             return Failed(s, $"the rebase finished off {s.Branch}; check git status", log);
-        }
 
         var newTip = BranchGit.RefOrEmpty(git, log, "HEAD");
         if (!last.Success && newTip == s.OldTip)
-        {
-            SequenceStateFile.Delete(gitDir);
             return Failed(s, BranchGit.FirstLine(last), log);
-        }
 
         var ontoTip = BranchGit.RefOrEmpty(git, log, BranchGit.HeadsPrefix + s.Onto);
         var newCommits = ReadPairs(git, log, ontoTip + ".." + newTip);
@@ -297,7 +299,6 @@ internal static class SequenceGit
         var moves = s.Rows.Select(r => mapped.FirstOrDefault(m => m.Old == r.Hash) ?? new CommitMove(r.Hash, null)).ToList();
 
         var (undo, problem) = SaveUndo(git, log, s, newTip, $"rebase of {s.Branch} onto {s.Onto}");
-        SequenceStateFile.Delete(gitDir);
         var message = $"rebased {s.Branch} onto {s.Onto}";
         if (problem is not null)
             message += $"; could not save the undo step: {problem}";
@@ -326,12 +327,11 @@ internal static class SequenceGit
             s.AlreadyApplied.Add(empty);
         }
 
+        // No pick is held any more, so the sequence is over: its state goes before the reads below, as in the rebase.
+        SequenceStateFile.Delete(gitDir);
         var newTip = BranchGit.RefOrEmpty(git, log, "HEAD");
         if (!last.Success && newTip == s.OldTip && s.Skipped.Count == 0 && s.AlreadyApplied.Count == 0)
-        {
-            SequenceStateFile.Delete(gitDir);
             return Failed(s, BranchGit.FirstLine(last), log);
-        }
 
         var kept = s.Picks.Where(p => !s.Skipped.Contains(p) && !s.AlreadyApplied.Contains(p))
             .Select(p => (Hash: p, Subject: Subject(git, log, p)))
@@ -342,7 +342,6 @@ internal static class SequenceGit
 
         var what = s.Picks.Count == 1 ? $"cherry-pick of {BranchGit.Short(s.Picks[0])}" : $"cherry-pick of {s.Picks.Count} commits";
         var (undo, problem) = SaveUndo(git, log, s, newTip, what);
-        SequenceStateFile.Delete(gitDir);
         var count = newCommits.Count;
         var message = $"picked {count} {(count == 1 ? "commit" : "commits")} onto {s.Branch}";
         if (problem is not null)
@@ -355,6 +354,9 @@ internal static class SequenceGit
     private static SequenceOutcome PausedPick(GitClient git, string gitDir, SequenceState s, List<GitResult> log, string? note = null)
     {
         var stop = ReadPickStop(git, s, log);
+        if (stop is null)
+            return Failed(s, "could not read the paused cherry-pick; check git status", log);
+
         var message = $"cherry-pick paused at {stop.ShortCommit}";
         if (note is not null)
             message += $"; {note}";
@@ -369,7 +371,8 @@ internal static class SequenceGit
     /// that rev-parse reads, so it never throws and never needs a logged call.
     /// </summary>
     internal static bool PickInProgress(string gitDir) =>
-        File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")) || Directory.Exists(Path.Combine(gitDir, "sequencer"));
+        gitDir.Length > 0
+        && (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")) || Directory.Exists(Path.Combine(gitDir, "sequencer")));
 
     /// <summary>True when git no longer waits on <paramref name="commit"/>: it skipped that pick, or it moved on to a later one. Throws when git fails.</summary>
     internal static bool PickMovedOn(GitClient git, List<GitResult> log, string commit) =>
@@ -405,7 +408,8 @@ internal static class SequenceGit
 
             // Git rejected the todo: the rebase is started but has no steps. Abort it so the branch is exactly as before.
             var abort = BranchGit.Call(git, log, "rebase", "--abort");
-            SequenceStateFile.Delete(gitDir);
+            if (!RebaseInProgress(gitDir))
+                SequenceStateFile.Delete(gitDir);
             var reason = BranchGit.FirstLine(last);
             return Failed(s, abort.Success ? reason : reason + "; the rebase could not be aborted: check git status", log);
         }
@@ -433,9 +437,13 @@ internal static class SequenceGit
             s?.Skipped ?? [], s?.Resolved ?? [], s?.Reworded ?? [], s?.Amended ?? [], s?.AlreadyApplied ?? [],
             message, [.. log], undo);
 
-    /// <summary>True while git holds a rebase (its folder exists), whichever backend made it.</summary>
+    /// <summary>
+    /// True while git holds a rebase (its folder exists), whichever backend made it. An empty git dir is no repo at all: it is never
+    /// read relative to the working directory.
+    /// </summary>
     internal static bool RebaseInProgress(string gitDir) =>
-        Directory.Exists(Path.Combine(gitDir, "rebase-merge")) || Directory.Exists(Path.Combine(gitDir, "rebase-apply"));
+        gitDir.Length > 0
+        && (Directory.Exists(Path.Combine(gitDir, "rebase-merge")) || Directory.Exists(Path.Combine(gitDir, "rebase-apply")));
 
     /// <summary>Hash and subject of each commit in a range, oldest first. Throws when git fails.</summary>
     internal static List<(string Hash, string Subject)> ReadPairs(GitClient git, List<GitResult> log, string range)

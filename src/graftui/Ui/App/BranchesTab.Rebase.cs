@@ -14,7 +14,7 @@ internal enum ConfirmKeyAction { Ignore, Run, Back }
 /// <summary>
 /// The rebase on the Branches tab (r): the current branch is put onto the selected one. A refusal is shown at once, or after the check.
 /// A check that passes opens the confirm screen; Enter runs the rebase through <see cref="StartBranchChange"/>, as the other branch
-/// changes run. A conflict is aborted at once for now: the pause screen comes in a later step.
+/// changes run. A rebase that stops (a conflict, an edit, a message) leaves the pause screen, which is in BranchesTab.Pause.cs.
 /// </summary>
 internal sealed partial class BranchesTab
 {
@@ -22,11 +22,10 @@ internal sealed partial class BranchesTab
     private GraphLayout? _confirmLayout;
 
     /// <summary>
-    /// What a rebase's finish reads from the app: the resume operation (it aborts a conflict), the root repo (the fallback abort runs
-    /// there), and the reads of the snapshot after the rebase and of a branch's layout in it.
+    /// What a rebase's finish reads from the app: the root repo (the fallback abort of a paused rebase runs there), and the reads of the
+    /// snapshot after the change and of a branch's layout in it.
     /// </summary>
-    internal sealed record RebaseEngine(ResumeSequenceOperation Resume, GitClient Root, Func<RepoSnapshot?> ReadSnapshot,
-        Func<RepoSnapshot, Branch, GraphLayout?> ReadLayout);
+    internal sealed record RebaseEngine(GitClient Root, Func<RepoSnapshot?> ReadSnapshot, Func<RepoSnapshot, Branch, GraphLayout?> ReadLayout);
 
     /// <summary>
     /// r: rebases the current branch onto the selected one. The current branch itself is refused at once. Otherwise a worker reads the
@@ -173,7 +172,7 @@ internal sealed partial class BranchesTab
     {
         var onto = check.Onto;
         var L = Or(layout, _app.Snapshot, onto, check.OntoTip);
-        var engine = new RebaseEngine(_app.ResumeOp, _app.RootGit, _app.TryLoadSnapshot, _app.TryLoadLayout);
+        var engine = new RebaseEngine(_app.RootGit, _app.TryLoadSnapshot, _app.TryLoadLayout);
         StartBranchChange(_app.RebaseOp, new RebaseRequest(onto, ExpectedHead: check.Head, Plan: check.Rows), "Rebase",
             c => c.Refusal, c => c.Commands,
             () => layout,
@@ -193,73 +192,101 @@ internal sealed partial class BranchesTab
             SequenceLists.Running(L, fresh.Rows));
     }
 
-    /// <summary>The finish of a rebase, on the worker: git's outcome becomes the result, its refusal or its failure, or the done screen.</summary>
-    internal static BranchFinish RebaseFinish(SequenceOutcome o, RepoSnapshot? after, RebaseCheck check, GraphLayout L, RebaseEngine engine)
+    /// <summary>The finish of a rebase that was run from the confirm screen.</summary>
+    internal static BranchFinish RebaseFinish(SequenceOutcome o, RepoSnapshot? after, RebaseCheck check, GraphLayout L, RebaseEngine engine) =>
+        SequenceFinish(o, after, check.Rows, L, engine);
+
+    /// <summary>
+    /// The finish of any rebase step, on the worker: git's outcome becomes the result. A refusal or a failure is shown as before; a pause
+    /// stops the rebase on its screen; a finished rebase (or one that was aborted) gives its result. The rows are the plan the run used.
+    /// </summary>
+    internal static BranchFinish SequenceFinish(SequenceOutcome o, RepoSnapshot? after, IReadOnlyList<RebaseRow> rows, GraphLayout L,
+        RebaseEngine engine)
     {
-        var hints = new CommandHints(Onto: check.Onto);
+        var onto = o.Onto;
+        var hints = new CommandHints(Onto: onto);
         if (o.Kind == SequenceOutcomeKind.Refused)
-            return RefusedFinish(o.Message, o.Commands, after, check.Onto, hints);
+            return RefusedFinish(o.Message, o.Commands, after, onto, hints);
 
         if (o.Kind == SequenceOutcomeKind.Failed)
             return FailedFinish("Rebase", o.Message, o.Commands, after, null, hints) with { ExitCode = 1 };
 
         if (o.Kind == SequenceOutcomeKind.Paused)
-            return AbortConflict(o, check, L, engine);
+            return PausedFinish(o, after);
 
-        return RebaseDoneFinish(o, after, check, L, engine);
+        if (o.Kind == SequenceOutcomeKind.Aborted)
+            return AbortedFinish(o.Branch, onto, o.Commands, after, LayoutAfter(after, onto, engine.ReadLayout));
+
+        return RebaseDoneFinish(o, after, rows, L, engine);
     }
 
     /// <summary>A rebase that ran: the caption names the replayed commits, the panel lists what became of each commit.</summary>
-    internal static BranchFinish RebaseDoneFinish(SequenceOutcome o, RepoSnapshot? after, RebaseCheck check, GraphLayout L, RebaseEngine engine)
+    internal static BranchFinish RebaseDoneFinish(SequenceOutcome o, RepoSnapshot? after, IReadOnlyList<RebaseRow> rows, GraphLayout L,
+        RebaseEngine engine)
     {
-        var done = RebaseText.Done(o, check.Branch, check.Onto);
+        var done = RebaseText.Done(o, o.Branch, o.Onto);
         var log = new List<(string Text, Style Style)> { (done, OkB) };
         if (RebaseText.UndoSaveFailed(o))
             log.Add((o.Message, WarnB));
 
-        // The layout after the rebase shows the onto tip as it is now; the confirm's layout is the fallback when the snapshot failed.
-        var landed = LayoutAfter(after, check.Onto, engine.ReadLayout);
+        // The layout after the rebase shows the onto tip as it is now; the layout the change started from is the fallback when the snapshot failed.
+        var landed = LayoutAfter(after, o.Onto, engine.ReadLayout);
         var result = new BranchResult(true, RebaseText.DoneTitle, new Caption(done, OkB), landed,
-            Panel: SequenceLists.Rebased(o, check.Rows, landed ?? L), Sequence: o);
-        return new BranchFinish(result, o.Commands, log, "graftui: " + o.Message, after, check.Onto,
-            Hints: new CommandHints(Onto: check.Onto));
+            Panel: SequenceLists.Rebased(o, rows, landed ?? L), Sequence: o);
+        return new BranchFinish(result, o.Commands, log, "graftui: " + o.Message, after, o.Onto)
+        {
+            Hints = new CommandHints(Onto: o.Onto),
+        };
     }
 
     /// <summary>
-    /// A conflict stops the rebase. For now it is aborted at once, so the branch is exactly as it was, and the result says so. The resume
-    /// operation aborts it. When that cannot be verified, git's own abort runs and is checked; if the repo is still mid-rebase, the
-    /// failure says so. The exit code is 1, as for a stash-merge-pop that conflicted. The pause screen replaces this step.
+    /// A rebase that stopped: the pause screen takes over. The log says what stopped it (a conflict only, the other stops show their caption).
+    /// The exit line is null: when graftui exits, the line is read from the repo then, since the pause may have ended by then.
+    /// The exit code is 1 for a conflict left paused, as a conflicted rebase exits 1; an edit or a message exits 0.
     /// </summary>
-    internal static BranchFinish AbortConflict(SequenceOutcome o, RebaseCheck check, GraphLayout L, RebaseEngine engine)
+    internal static BranchFinish PausedFinish(SequenceOutcome o, RepoSnapshot? after)
     {
         var stop = o.Stop!;
-        var commands = o.Commands.ToList();
-        var request = new ResumeRequest(ResumeAction.Abort, null, stop.Commit);
-        var abort = engine.Resume.Check(request);
-        commands.AddRange(abort.Commands);
-        var aborted = abort.CanRun ? engine.Resume.Run(request, abort) : null;
-        if (aborted is not null)
-            commands.AddRange(aborted.Commands);
-
-        var after = engine.ReadSnapshot();
-        var hints = new CommandHints(Onto: check.Onto);
-        if (aborted is null || aborted.Kind != SequenceOutcomeKind.Aborted)
+        var conflict = stop.Pause == PauseKind.Conflict;
+        var log = new List<(string Text, Style Style)>();
+        if (conflict)
+            log.Add((RebaseText.ConflictLine(stop), BadB));
+        var result = new BranchResult(true, RebaseText.PausedTitle, SequenceStatus.Caption(stop), null, Sequence: o);
+        return new BranchFinish(result, o.Commands, log, null, after, null)
         {
-            if (!RebaseAbort.Force(engine.Root, check.GitDir, check.Branch, check.Head, commands))
-                return FailedFinish("Rebase", RebaseText.NotAborted, commands, after, null, hints) with { ExitCode = 1 };
-
-            after = engine.ReadSnapshot();
-        }
-
-        var cur = check.Branch;
-        var log = new List<(string Text, Style Style)>
-        {
-            (RebaseText.ConflictLine(stop), BadB),
-            (RebaseText.Aborted(cur), BadB),
+            ExitCode = conflict ? 1 : 0,
+            Hints = new CommandHints(Onto: o.Onto),
         };
-        var result = new BranchResult(false, RebaseText.AbortedTitle, new Caption(RebaseText.Aborted(cur), BadB), L);
-        return new BranchFinish(result, commands, log, RebaseText.ExitAborted(cur, check.Onto), after, null,
-            ExitCode: 1, Hints: hints);
+    }
+
+    /// <summary>A rebase that was aborted: the branch is back on its old tip, and the selection stays where it was.</summary>
+    internal static BranchFinish AbortedFinish(string cur, string onto, IReadOnlyList<GitResult> commands, RepoSnapshot? after,
+        GraphLayout? landed)
+    {
+        var text = RebaseText.Aborted(cur);
+        var result = new BranchResult(false, RebaseText.AbortedTitle, new Caption(text, BadB), landed);
+        return new BranchFinish(result, commands, [(text, BadB)], RebaseText.ExitAborted(cur, onto), after, null)
+        {
+            Hints = new CommandHints(Onto: onto),
+        };
+    }
+
+    /// <summary>
+    /// The fallback abort of a paused rebase, for when the resume operation refuses because its state file is gone: git's own abort runs and
+    /// is checked against the old tip the snapshot read. When that cannot be verified, the failure says the rebase must be aborted by hand.
+    /// </summary>
+    internal static BranchFinish AbortPausedFinish(SequenceStop stop, string oldTip, ResumeCheck check, RebaseEngine engine)
+    {
+        var commands = check.Commands.ToList();
+        var result = RebaseAbort.Force(engine.Root, check.GitDir, stop.Branch, oldTip, commands);
+        var after = engine.ReadSnapshot();
+        var hints = new CommandHints(Onto: stop.Onto);
+        if (result == RebaseAbortResult.NotInProgress)
+            return RefusedFinish(SequenceRefusals.NothingPaused, commands, after, stop.Branch, hints);
+        if (result == RebaseAbortResult.Failed)
+            return FailedFinish("Rebase", RebaseText.NotAborted, commands, after, null, hints) with { ExitCode = 1 };
+
+        return AbortedFinish(stop.Branch, stop.Onto, commands, after, LayoutAfter(after, stop.Onto, engine.ReadLayout));
     }
 
     /// <summary>The layout of a branch in a snapshot read after a change; null when that read failed or the branch is not listed.</summary>

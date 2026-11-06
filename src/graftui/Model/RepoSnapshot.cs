@@ -12,4 +12,13 @@ public sealed record RepoSnapshot(
     bool Clean,
     IReadOnlyList<Branch> Branches,
     IReadOnlyDictionary<string, (int Ahead, int Behind)> Counts,
-    bool HasUndo = false);
+    bool HasUndo = false)
+{
+    /// <summary>
+    /// The rebase or cherry-pick that is paused, or null. Only a pause graftui started (<see cref="SequenceStop.Ours"/>) is shown as one.
+    /// </summary>
+    public SequenceStop? Paused { get; init; }
+
+    /// <summary>The branch tip before the paused sequence started (its state file's old tip). Null without a pause.</summary>
+    public string? PausedOldTip { get; init; }
+}

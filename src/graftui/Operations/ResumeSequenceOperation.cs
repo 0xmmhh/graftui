@@ -174,31 +174,25 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         if (kind is null)
             return Refuse(SequenceRefusals.NothingPaused, op, gitDirPath);
 
-        // A state for another sequence, or none: graftui does not touch a sequence it did not start.
-        var state = SequenceStateFile.Load(gitDirPath);
-        var expected = kind switch
-        {
-            "rebase" => SequenceKind.Rebase,
-            "cherry-pick" => SequenceKind.CherryPick,
-            _ => (SequenceKind?)null,
-        };
-        if (state is null || expected is null || state.Kind != expected)
+        // Not graftui's sequence (no state, another kind, or git's files do not match the state): graftui does not touch it.
+        var state = SequenceOwnership.Owned(gitDirPath, kind);
+        if (state is null)
             return Refuse(ChangeRefusals.InProgress(kind), op, gitDirPath);
 
         var stop = state.Kind == SequenceKind.CherryPick
             ? SequenceGit.ReadPickStop(git, state, log)
             : SequenceGit.ReadRebaseStop(git, gitDirPath, state, log);
-        var refusal = Gate(request, stop, log);
+        var refusal = Gate(request, stop, op, log);
         return new Probe(new ResumeCheck(refusal, stop, gitDirPath, log), state, op);
     }
 
     /// <summary>What the pause allows. Null when the action may run.</summary>
-    private string? Gate(ResumeRequest request, SequenceStop? stop, List<GitResult> log)
+    private string? Gate(ResumeRequest request, SequenceStop? stop, SequenceKind op, List<GitResult> log)
     {
         if (request.Action == ResumeAction.Abort)
             return null;
         if (stop is null)
-            return ChangeRefusals.InProgress("rebase");
+            return ChangeRefusals.InProgress(WordFor(op));
         if (request.ExpectedCommit is not null && request.ExpectedCommit != stop.Commit)
             return SequenceRefusals.PauseChanged;
 

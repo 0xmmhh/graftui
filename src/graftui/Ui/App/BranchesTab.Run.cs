@@ -18,14 +18,21 @@ internal sealed partial class BranchesTab
 
     /// <summary>
     /// What a change shows when git has answered: the result, the commands it ran, the lines it adds to the log, the exit line,
-    /// the snapshot read after it (null when that read failed), the branch to select afterwards, and the process exit code the change
-    /// asks for (1 when it conflicted or failed after a merge; 0 otherwise). <c>HoldWidth</c> keeps the art's width where it is when
-    /// the snapshot is applied (a switch: its last frame must not reflow). <c>Hints</c> tells the Commands pane what the commands were for
-    /// (a rebase's target). <c>Then</c> runs last, after the snapshot and the selection are applied (a paused rebase shows its screen).
+    /// the snapshot read after it (null when that read failed) and the branch to select afterwards. The rest is set with initialisers:
+    /// <c>ExitCode</c> is the process exit code the change asks for (1 when it conflicted or failed after a merge; 0 otherwise).
+    /// <c>HoldWidth</c> keeps the art's width where it is when the snapshot is applied (a switch: its last frame must not reflow).
+    /// <c>Hints</c> tells the Commands pane what the commands were for (a rebase's target). The exit line is null when a pause is left:
+    /// the terminal's line is then read from the repo at exit.
     /// </summary>
     internal sealed record BranchFinish(BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log,
-        string ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0, bool HoldWidth = false, CommandHints? Hints = null,
-        Action? Then = null);
+        string? ExitLine, RepoSnapshot? After, string? Select)
+    {
+        public int ExitCode { get; init; }
+
+        public bool HoldWidth { get; init; }
+
+        public CommandHints? Hints { get; init; }
+    }
 
     /// <summary>Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now.</summary>
     private void StartWork()
@@ -76,7 +83,7 @@ internal sealed partial class BranchesTab
                     return null;
 
                 var f = finish(o, _app.TryLoadSnapshot());
-                _app.SetChangeExitCode(f.ExitCode);
+                _app.SetChangeExitCode(f.ExitCode, LeftPause(f.Result));
                 _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.Log, () => EndBranchChange(f), f.Hints));
                 return f.ExitLine;
             }
@@ -88,8 +95,11 @@ internal sealed partial class BranchesTab
         }, CancellationToken.None);
     }
 
-    /// <summary>Runs on the UI thread when a change's final frame is drawn: the new snapshot, the selection, and the counts.</summary>
-    private void EndBranchChange(BranchFinish f)
+    /// <summary>
+    /// Runs on the UI thread when a change's final frame is drawn: the new snapshot, the selection, and the counts. A change that left the
+    /// repo paused then shows the pause screen (see <see cref="ShowPauseAfter"/>).
+    /// </summary>
+    internal void EndBranchChange(BranchFinish f)
     {
         if (f.HoldWidth)
             _app.HoldBranchWidth();
@@ -98,9 +108,27 @@ internal sealed partial class BranchesTab
         if (f.Select is { } name)
             SelectName(name);
         _app.Result = SelectedName();
-        _app.ReloadCountsAsync();
-        f.Then?.Invoke();
+        _app.ReloadCountsAsync(() => ShowPauseAfter(f.Result));
     }
+
+    /// <summary>
+    /// After a change, when the repo is still paused: the pause screen takes the art, in place of the change's last frame. A change that
+    /// left the pause as it was (refused or failed) gives its caption to the pause screen, so the reason stays on screen. Call it after the
+    /// snapshot has been read.
+    /// </summary>
+    internal void ShowPauseAfter(BranchResult result)
+    {
+        // The counts read can finish after the user has moved on. On the Changes tab, or while a question or an input is open, the pause
+        // screen waits: returning to the Branches tab draws it (RequestPreview), and the tab change has forgotten the note already.
+        if (!_app.IsPaused || _app.Busy || _app.ActiveTab != AppController.TabKind.Branches || Mode != BranchesMode.Browse)
+            return;
+        if (!LeftPause(result))
+            _pauseNote = result.Caption;
+        ShowPause();
+    }
+
+    /// <summary>True when the change's outcome is a rebase or cherry-pick left paused (so the pause screen is its screen).</summary>
+    internal static bool LeftPause(BranchResult result) => result.Sequence?.Kind == SequenceOutcomeKind.Paused;
 
     /// <summary>An exception on the worker: shown on the status bar; the change's animation ends as a failure when one was running.</summary>
     private void FailBranchChange(Exception ex, string verb)
@@ -113,7 +141,7 @@ internal sealed partial class BranchesTab
             _app.BranchAnimator.SetPending(failed, [], [(text, BadB)], () =>
             {
                 _app.Result = SelectedName();
-                _app.ReloadCountsAsync();
+                _app.ReloadCountsAsync(() => ShowPauseAfter(failed));
             });
             return;
         }
@@ -167,7 +195,7 @@ internal sealed partial class BranchesTab
     private static BranchFinish RefusedFinish(string reason, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string select,
         CommandHints? hints = null) =>
         new(RefusedResult(reason), commands, RefusalText.LogLines(reason).Select(l => (Text: l, Style: WarnB)).ToList(),
-            $"graftui: refused: {reason}", after, select, Hints: hints);
+            $"graftui: refused: {reason}", after, select) { Hints = hints };
 
     /// <summary>A change that failed: the failure is the result. A null <paramref name="select"/> keeps the selection where it is.</summary>
     private static BranchFinish FailedFinish(string verb, string message, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string? select,
@@ -175,7 +203,7 @@ internal sealed partial class BranchesTab
     {
         var text = $"{verb} failed: {message}";
         return new BranchFinish(new BranchResult(false, "Failed", new Caption($"✕ {text}", BadB), null), commands, [(text, BadB)],
-            $"graftui: {verb.ToLowerInvariant()} failed: {message}", after, select, Hints: hints);
+            $"graftui: {verb.ToLowerInvariant()} failed: {message}", after, select) { Hints = hints };
     }
 
     /// <summary>The commit panel of a layout (the commit rows under the art), or null without a layout.</summary>

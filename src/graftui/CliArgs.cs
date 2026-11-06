@@ -29,6 +29,7 @@ Options:
 
 Branches: Tab Changes · ↑/↓ select · m merge · s switch · n new · R rename · D delete · r rebase · u undo
 Changes: Space stage/unstage · a stage all · U unstage all · c commit · A amend · x discard · z stash · Z pop · u undo
+Paused rebase: Enter continue · S skip · X abort · Tab changes · Esc quit
 Both tabs: v all commands · Esc quit
 
 """;

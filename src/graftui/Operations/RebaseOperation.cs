@@ -13,7 +13,7 @@ namespace graftui.Operations;
 /// </summary>
 public sealed class RebaseOperation(GitClient git) : IGitOperation<RebaseRequest, RebaseCheck, SequenceOutcome>
 {
-    /// <summary>Preconditions for rebasing the current branch onto request.Onto. Read-only; every call is logged.</summary>
+    /// <summary>Preconditions for rebasing the current branch onto request.Onto. Reads git, except that it removes a stale state file; every call is logged.</summary>
     public RebaseCheck Check(RebaseRequest request)
     {
         var log = new List<GitResult>();
@@ -66,14 +66,10 @@ public sealed class RebaseOperation(GitClient git) : IGitOperation<RebaseRequest
         catch (Exception ex)
         {
             var message = ex.Message;
-            if (!started)
+            if (started && SequenceGit.RebaseInProgress(gitDir))
             {
-                // Nothing reached git: the state written for this run is not needed.
-                SequenceStateFile.Delete(gitDir);
-            }
-            else if (SequenceGit.RebaseInProgress(gitDir))
-            {
-                // Git holds a rebase that graftui started: abort it so the branch is exactly as before.
+                // Git holds a rebase that graftui started: abort it so the branch is exactly as before. Its state stays while git holds the
+                // rebase, so the rebase is still recognised as graftui's if the abort fails.
                 var abort = BranchGit.Call(git, log, "rebase", "--abort");
                 if (abort.Success)
                 {
@@ -84,6 +80,11 @@ public sealed class RebaseOperation(GitClient git) : IGitOperation<RebaseRequest
                 {
                     message += "; the rebase could not be aborted: check git status";
                 }
+            }
+            else
+            {
+                // Nothing reached git, or git no longer holds the rebase (it finished, or never ran): the state written for this run is over.
+                SequenceStateFile.Delete(gitDir);
             }
             return Failed(check, message, log);
         }
@@ -104,6 +105,10 @@ public sealed class RebaseOperation(GitClient git) : IGitOperation<RebaseRequest
         var inProgress = RepoState.InProgress(args => BranchGit.Call(git, log, args), gitDirPath);
         if (inProgress is not null)
             return Refuse(ChangeRefusals.InProgress(inProgress), gitDir: gitDirPath);
+
+        // Nothing is in progress, so a state file left by a paused sequence is stale (the user finished it with plain git). It goes
+        // before this rebase starts, so the next pause cannot be mistaken for it.
+        SequenceStateFile.Delete(gitDirPath);
 
         var symbolic = BranchGit.SymbolicHead(git, log);
         if (symbolic.Length == 0)

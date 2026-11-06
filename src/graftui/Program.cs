@@ -2,6 +2,7 @@ using graftui;
 using graftui.Git;
 using graftui.Model;
 using graftui.Ui.App;
+using graftui.Ui.Text;
 using graftui.Ui.Views;
 using Terminal.Gui.App;
 using Terminal.Gui.ViewBase;
@@ -109,13 +110,28 @@ finally
 var exitCode = FinishMerge();
 var changeCode = WaitForChanges();
 
+// A rebase or cherry-pick left paused is printed with what to run next. It is read from the repo now, since it may have ended.
+var read = gui?.ReadSequenceAtExit() ?? new SequenceRead(null, null, null);
+var paused = read.Stop is not null && read.Stop.Ours ? read.Stop : null;
+if (paused is not null)
+    Console.WriteLine(SequenceStatus.ExitLine(paused));
+else if (read.Unreadable is { } word)
+    Console.WriteLine(SequenceStatus.StillInProgressLine(word));
+
 if (uiError is not null)
 {
     await Console.Error.WriteLineAsync($"graftui: UI error: {uiError}");
     return 1;
 }
 
-return exitCode != 0 ? exitCode : changeCode;
+// A conflict left paused exits 1, as a conflicted rebase does. An edit or a message pause exits 0. When the pause that set the change's
+// code is gone by exit, the code goes with it.
+var gone = ExitRule.ChangeGone(paused, read.Unreadable);
+var changeNow = gone && gui is not null && gui.ChangeLeftPause ? 0 : changeCode;
+var code = exitCode != 0 ? exitCode : changeNow;
+if (paused is not null && paused.Pause == PauseKind.Conflict && code == 0)
+    return 1;
+return code;
 
 int FinishMerge()
 {
@@ -149,7 +165,8 @@ int FinishMerge()
 }
 
 // A stage, unstage, commit, amend or branch change that is still running is finished before exit. Only a stash-merge-pop that
-// conflicted or failed, and a rebase that conflicted or failed, sets an exit code (1, as a failed merge does); the others exit 0.
+// conflicted or failed, and a rebase that failed or stopped at a conflict, sets an exit code (1, as a failed merge does); the others exit 0.
+// A pause's own line is not printed here: the pause is printed from the repo at exit (see above).
 int WaitForChanges()
 {
     var task = gui?.ChangesTask;

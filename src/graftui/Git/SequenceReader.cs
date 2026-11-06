@@ -4,45 +4,53 @@ using graftui.Operations;
 namespace graftui.Git;
 
 /// <summary>
+/// What the repo holds, read in one pass (<see cref="SequenceReader.ReadSequence"/>). Stop is the stop of the sequence in progress: graftui's
+/// own (Ours true), a sequence graftui did not start (Ours false), or null when nothing is in progress or git cannot say. OldTip is the old
+/// tip graftui saved, set only with its own stop. Unreadable is "rebase" or "cherry-pick" when graftui's own sequence is still in progress
+/// but its stop cannot be read.
+/// </summary>
+public sealed record SequenceRead(SequenceStop? Stop, string? OldTip, string? Unreadable);
+
+/// <summary>
 /// Read-only views of a rebase or a cherry-pick in progress, for the screen. Nothing here is added to a command log or changes
 /// the repo, and nothing throws: a read that fails gives null, or an empty result.
 /// </summary>
 public sealed class SequenceReader(GitClient git)
 {
+    private static readonly SequenceRead Nothing = new(null, null, null);
+
+    /// <summary>The stop the paused rebase or cherry-pick is at (see <see cref="ReadSequence"/>). Null when nothing is in progress, or git cannot say.</summary>
+    public SequenceStop? ReadPaused() => ReadSequence().Stop;
+
     /// <summary>
-    /// The stop the paused rebase or cherry-pick is at. Null when nothing is in progress, or git cannot say.
-    /// Ours is false when no graftui state matches the git operation (a rebase or a merge that graftui did not start).
+    /// Reads what git holds and whether graftui started it (<see cref="SequenceOwnership.Owned"/>). A sequence graftui did not start is
+    /// not ours, and is refused everywhere; its stop carries Ours false and only its kind. Never throws.
     /// </summary>
-    public SequenceStop? ReadPaused()
+    public SequenceRead ReadSequence()
     {
         try
         {
             var log = new List<GitResult>();
             var gitDir = RepoState.GitDir(git, log);
             if (gitDir is null)
-                return null;
+                return Nothing;
 
             var kind = RepoState.InProgress(args => BranchGit.Call(git, log, args), gitDir);
             if (kind is null)
-                return null;
+                return Nothing;
 
-            var expected = kind switch
-            {
-                "rebase" => SequenceKind.Rebase,
-                "cherry-pick" => SequenceKind.CherryPick,
-                _ => (SequenceKind?)null,
-            };
-            var state = SequenceStateFile.Load(gitDir);
-            if (expected is null || state is null || state.Kind != expected)
-                return NotOurs(expected ?? SequenceKind.CherryPick);
+            var state = SequenceOwnership.Owned(gitDir, kind);
+            if (state is null)
+                return new SequenceRead(NotOurs(kind == "rebase" ? SequenceKind.Rebase : SequenceKind.CherryPick), null, null);
 
-            return expected == SequenceKind.Rebase
-                ? SequenceGit.ReadRebaseStop(git, gitDir, state, log)
-                : SequenceGit.ReadPickStop(git, state, log);
+            var stop = state.Kind == SequenceKind.CherryPick
+                ? SequenceGit.ReadPickStop(git, state, log)
+                : SequenceGit.ReadRebaseStop(git, gitDir, state, log);
+            return stop is null ? new SequenceRead(null, null, kind) : new SequenceRead(stop, state.OldTip, null);
         }
         catch (Exception)
         {
-            return null;
+            return Nothing;
         }
     }
 

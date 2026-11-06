@@ -31,6 +31,9 @@ public sealed class BranchesView : PaneView
 
     public int Selected { get; set; }
 
+    /// <summary>The branch of a paused rebase: it keeps its mark while HEAD is detached. "" when nothing is paused.</summary>
+    public string PausedBranch { get; set; } = "";
+
     protected override bool OnDrawingContent(DrawContext? context)
     {
         ClearAll();
@@ -73,7 +76,7 @@ public sealed class BranchesView : PaneView
             Paint.Fill(this, 1, row, innerW, Palette.Get(Fg, isSel));
 
             // mark: the selection arrow, then the current branch's star
-            var (arrow, star) = MarkCells(isSel, b.IsCurrent);
+            var (arrow, star) = MarkCells(isSel, b.IsCurrent || b.Name == PausedBranch);
             DrawText(1, row, arrow, 1, FgB, isSel);
             DrawText(2, row, star, 1, style, isSel);
 

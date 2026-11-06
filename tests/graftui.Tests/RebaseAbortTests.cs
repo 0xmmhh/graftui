@@ -32,7 +32,7 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", before, log);
 
-        Assert.True(restored);
+        Assert.Equal(RebaseAbortResult.Aborted, restored);
         Assert.Equal(before, repo.Head);
         Assert.Equal("refs/heads/feature", repo.Run("symbolic-ref", "-q", "HEAD"));
         Assert.True(repo.IsClean);
@@ -51,7 +51,7 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", "0000000000000000000000000000000000000000", log);
 
-        Assert.False(restored);
+        Assert.Equal(RebaseAbortResult.Failed, restored);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", before, log);
 
-        Assert.False(restored);
+        Assert.Equal(RebaseAbortResult.Failed, restored);
         Assert.True(SequenceGit.RebaseInProgress(GitDir(repo)));
         Assert.Contains(log, r => r.Args.SequenceEqual(["rebase", "--abort"]));
     }
@@ -80,7 +80,38 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", before, log);
 
-        Assert.True(restored);
+        Assert.Equal(RebaseAbortResult.NotInProgress, restored);
         Assert.DoesNotContain(log, r => r.Args.Count > 0 && r.Args[0] == "rebase");
+    }
+
+    [Fact]
+    public void Force_leaves_a_rebase_that_is_not_graftuis_alone_and_runs_no_abort()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var before = repo.Head;
+        StartConflict(repo);
+        repo.Run("rebase", "--abort");
+        repo.Commit("app.txt", "feature again\n", "Change line 1 again");
+        Assert.False(repo.Git.Run("rebase", "main").Success);
+        var log = new List<GitResult>();
+
+        var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", before, log);
+
+        Assert.Equal(RebaseAbortResult.Failed, restored);
+        Assert.True(SequenceGit.RebaseInProgress(GitDir(repo)));
+        Assert.DoesNotContain(log, r => r.Args.SequenceEqual(["rebase", "--abort"]));
+    }
+
+    [Fact]
+    public void Force_with_no_git_dir_refuses_at_once_and_never_looks_in_the_working_directory()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var before = repo.Head;
+        var log = new List<GitResult>();
+
+        var restored = RebaseAbort.Force(repo.Git, "", "feature", before, log);
+
+        Assert.Equal(RebaseAbortResult.Failed, restored);
+        Assert.Empty(log);
     }
 }
