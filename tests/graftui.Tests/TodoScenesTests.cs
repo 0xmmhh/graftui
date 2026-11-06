@@ -337,6 +337,88 @@ public class TodoScenesTests
         var refused = TodoScenes.Ended(Run(rows), rows, Outcome(SequenceOutcomeKind.Refused));
 
         Assert.Equal(TodoEnd.Halt, refused.End);
-        Assert.Equal(TodoScenes.Cut, TodoScenes.Total(refused));
+        Assert.Equal(TodoScenes.HaltAt, TodoScenes.Total(refused));
+        Assert.Equal(Dump(Frame(rows, refused, 0)), Dump(Frame(rows, refused, TodoScenes.Total(refused))));
     }
+
+    [Fact]
+    public void A_resume_whose_stop_is_not_in_the_plan_starts_at_its_step_and_names_no_row()
+    {
+        var rows = Plan(RebaseAction.Pick, RebaseAction.Pick, RebaseAction.Pick);
+        var stop = Stop(PauseKind.Conflict, rows, 2) with { Commit = "ffffffff" };
+
+        Assert.Equal(-1, TodoScenes.StopIndex(rows, stop));
+        Assert.Equal(2, TodoScenes.ResumeFrom(rows, stop, ResumeAction.Skip));
+    }
+
+    [Theory]
+    [InlineData(3, 2980)]
+    [InlineData(5, 4660)]
+    [InlineData(6, 4660)]
+    [InlineData(20, 4646)]
+    [InlineData(50, 4636)]
+    public void The_replay_ends_at_today_s_time_up_to_five_rows_and_within_the_budget_after_that(int n, long total)
+    {
+        var run = Run(Picks(n));
+
+        Assert.Equal(total, TodoScenes.Total(run));
+        Assert.True(TodoScenes.Total(run) <= TodoScenes.Cut + TodoScenes.ReplayMs);
+    }
+
+    [Fact]
+    public void A_long_replay_keeps_its_flights_in_order_and_each_one_takes_some_time()
+    {
+        var run = Run(Picks(50));
+
+        Assert.True(run.Fly >= 1);
+        for (var j = 1; j < run.Starts.Count; j++)
+            Assert.True(run.Starts[j] > run.Starts[j - 1]);
+    }
+
+    [Theory]
+    [InlineData(41)]
+    [InlineData(23)]
+    public void At_the_smallest_geometries_a_conflict_on_the_fourth_row_is_drawn_on_row_B(int width)
+    {
+        var geo = ArtGeometry.For(width, 9)!;
+        var rows = Picks(5);
+        var run = TodoScenes.Ended(Run(rows), rows, Outcome(SequenceOutcomeKind.Paused, Stop(PauseKind.Conflict, rows, 3)));
+
+        var grid = TodoScenes.Rebase(geo, ThreeOwn(), rows, run, TodoScenes.Total(run), 0, waiting: false).Grid;
+
+        Assert.Equal('✕', grid[width - 1, geo.B].Ch);
+    }
+
+    [Fact]
+    public void A_conflict_on_the_fifth_row_at_64_columns_is_drawn_inside_the_art_on_row_B()
+    {
+        var geo = ArtGeometry.For(64, 9)!;
+        var rows = Picks(5);
+        var run = TodoScenes.Ended(Run(rows), rows, Outcome(SequenceOutcomeKind.Paused, Stop(PauseKind.Conflict, rows, 4)));
+
+        var grid = TodoScenes.Rebase(geo, ThreeOwn(), rows, run, TodoScenes.Total(run), 0, waiting: false).Grid;
+
+        Assert.Equal('✕', grid[58, geo.B].Ch);
+    }
+
+    /// <summary>n picks with made-up hashes, for the runs whose length is the point of a test.</summary>
+    private static IReadOnlyList<RebaseRow> Picks(int n) =>
+        Enumerable.Range(0, n).Select(i => new RebaseRow("h" + i, "h" + i, "subject " + i, RebaseAction.Pick)).ToList();
+
+    /// <summary>The onto branch with three commits of its own, so its first slot is three steps past the base's tip.</summary>
+    private static GraphLayout ThreeOwn()
+    {
+        var a = new CommitInfo("a1111111", "a111111", 1, "Fix typo in README");
+        var b = new CommitInfo("b2222222", "b222222", 1, "Add logging");
+        var c = new CommitInfo("c3333333", "c333333", 1, "Bump version");
+        var s1 = new CommitInfo("e5555555", "e555555", 1, "Second on main");
+        var s2 = new CommitInfo("f6666666", "f666666", 1, "Third on main");
+        var s3 = new CommitInfo("g7777777", "g777777", 1, "Fourth on main");
+        var shared = new CommitInfo("0000000000", "0000000", 1, "Initial");
+        return new GraphLayout("main", false, "feature", "c1", "d2", "b0", [a, b, c], false, [s1, s2, s3], false, [shared], false, a, s3, 3, 1,
+            GraphKind.Diverged);
+    }
+
+    private static string Dump(ArtGrid g) =>
+        string.Join("\n", Enumerable.Range(0, g.Height).Select(y => string.Concat(Enumerable.Range(0, g.Width).Select(x => g[x, y].Ch))));
 }
