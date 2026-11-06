@@ -79,7 +79,7 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>On the UI thread after the check: its refusal is shown, and a check that passes opens the confirm screen.</summary>
-    private void AfterRebaseCheck(RebaseCheck check, GraphLayout? layout)
+    internal void AfterRebaseCheck(RebaseCheck check, GraphLayout? layout)
     {
         if (!check.CanRun)
         {
