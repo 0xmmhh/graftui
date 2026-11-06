@@ -119,6 +119,12 @@ public static class RebasePlan
         return null;
     }
 
+    /// <summary>
+    /// True when the plan does more than pick every commit (a reword, edit, fold or drop). A paused rebase that is resumed reads its
+    /// kind from this, since the state file does not say whether it was started from the todo list.
+    /// </summary>
+    public static bool IsEdited(IReadOnlyList<RebaseRow> rows) => rows.Any(r => r.Action != RebaseAction.Pick);
+
     /// <summary>True for a squash or a fixup: a row that folds into the kept row above it.</summary>
     public static bool IsFold(RebaseAction action) => action == RebaseAction.Squash || action == RebaseAction.Fixup;
 }

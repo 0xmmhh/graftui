@@ -27,11 +27,17 @@ internal sealed partial class BranchesTab
     /// </summary>
     internal sealed record RebaseEngine(GitClient Root, Func<RepoSnapshot?> ReadSnapshot, Func<RepoSnapshot, Branch, GraphLayout?> ReadLayout);
 
+    /// <summary>r: rebases the current branch onto the selected one, as one pick per commit (the confirm screen).</summary>
+    internal void BeginRebase() => BeginRebaseFlow(interactive: false);
+
+    /// <summary>i: the same check as r, then the todo list instead of the confirm screen, where the plan is edited.</summary>
+    internal void BeginInteractive() => BeginRebaseFlow(interactive: true);
+
     /// <summary>
-    /// r: rebases the current branch onto the selected one. The current branch itself is refused at once. Otherwise a worker reads the
+    /// r and i: the current branch is put onto the selected one. The current branch itself is refused at once. Otherwise a worker reads the
     /// layout, refuses a fast-forward (it has no commits of its own), and runs the check.
     /// </summary>
-    internal void BeginRebase()
+    private void BeginRebaseFlow(bool interactive)
     {
         var layout = _app.CurrentLayout();
         var snap = _app.Snapshot;
@@ -43,7 +49,8 @@ internal sealed partial class BranchesTab
         var cached = CachedLayout(snap, b);
         if (b.IsCurrent)
         {
-            ShowBranchRefused([], RebaseText.OntoItself(cur), cached, RebaseDirection(cur, b.Name));
+            var reason = interactive ? RebaseText.InteractiveOntoSelf(cur) : RebaseText.OntoItself(cur);
+            ShowBranchRefused([], reason, cached, RebaseDirection(cur, b.Name));
             return;
         }
 
@@ -54,7 +61,7 @@ internal sealed partial class BranchesTab
             {
                 var loaded = cached ?? _app.TryLoadLayout(snap, b);
                 var check = CheckRebase(_app.RebaseOp, cur, b.Name, loaded);
-                _app.Ui(() => AfterRebaseCheck(check, loaded));
+                _app.Ui(() => AfterRebaseCheck(check, loaded, interactive));
             }
             catch (Exception ex)
             {
@@ -77,8 +84,10 @@ internal sealed partial class BranchesTab
         return early is null ? op.Check(new RebaseRequest(onto)) : new RebaseCheck(early, cur, onto, "", "", [], "", []);
     }
 
-    /// <summary>On the UI thread after the check: its refusal is shown, and a check that passes opens the confirm screen.</summary>
-    internal void AfterRebaseCheck(RebaseCheck check, GraphLayout? layout)
+    /// <summary>
+    /// On the UI thread after the check: its refusal is shown. A check that passes opens the confirm screen (r) or the todo list (i).
+    /// </summary>
+    internal void AfterRebaseCheck(RebaseCheck check, GraphLayout? layout, bool interactive)
     {
         if (!check.CanRun)
         {
@@ -88,7 +97,10 @@ internal sealed partial class BranchesTab
 
         EndWork();
         _app.LogCommands(check.Commands);
-        OpenConfirm(check, layout);
+        if (interactive)
+            OpenTodo(check, layout);
+        else
+            OpenConfirm(check, layout);
     }
 
     /// <summary>The confirm screen: the current branch's commits, each marked as rewritten, above the new base. Enter runs it.</summary>
@@ -132,7 +144,7 @@ internal sealed partial class BranchesTab
         {
             var layout = _confirmLayout;
             CloseConfirm();
-            StartRebase(check, layout);
+            StartRebase(check, layout, check.Rows, interactive: false);
             return;
         }
 
@@ -166,42 +178,47 @@ internal sealed partial class BranchesTab
 
     /// <summary>
     /// Runs the rebase: the operation checks again, the animation starts, then git rebases the branch. The plan is the rows the confirm
-    /// screen showed, so a change since then is refused and the rows the finish uses are the rows that ran.
+    /// screen (r) or the todo list (i) showed, so a change since then is refused, and the rows the finish uses are the rows that ran.
     /// </summary>
-    private void StartRebase(RebaseCheck check, GraphLayout? layout)
+    private void StartRebase(RebaseCheck check, GraphLayout? layout, IReadOnlyList<RebaseRow> plan, bool interactive)
     {
         var onto = check.Onto;
         var L = Or(layout, _app.Snapshot, onto, check.OntoTip);
         var engine = new RebaseEngine(_app.RootGit, _app.TryLoadSnapshot, _app.TryLoadLayout);
-        StartBranchChange(_app.RebaseOp, new RebaseRequest(onto, ExpectedHead: check.Head, Plan: check.Rows), "Rebase",
+        StartBranchChange(_app.RebaseOp, new RebaseRequest(onto, ExpectedHead: check.Head, Plan: plan), "Rebase",
             c => c.Refusal, c => c.Commands,
             () => layout,
-            (loaded, fresh) => RebaseStart(loaded, _app.Snapshot, fresh, _app.InkOf),
-            (o, after) => RebaseFinish(o, after, check, L, engine),
+            (loaded, fresh) => RebaseStart(loaded, _app.Snapshot, fresh, _app.InkOf, interactive),
+            (o, after) => RebaseFinish(o, after, plan, L, engine, interactive),
             RebaseDirection(check.Branch, onto));
     }
 
     /// <summary>
-    /// The animation and the running panel, drawn from the check the operation made just before git starts (not the confirm's, which is
-    /// older). Called on the UI thread.
+    /// The animation and the running panel, drawn from the check the operation made just before git starts (not the confirm's or the todo
+    /// list's, which are older). A todo run plays the todo scene; a plain rebase keeps its static running frame. Called on the UI thread.
     /// </summary>
-    internal static BranchStart RebaseStart(GraphLayout? loaded, RepoSnapshot snap, RebaseCheck fresh, Func<string, Ink> inkOf)
+    internal static BranchStart RebaseStart(GraphLayout? loaded, RepoSnapshot snap, RebaseCheck fresh, Func<string, Ink> inkOf, bool interactive)
     {
         var L = Or(loaded, snap, fresh.Onto, fresh.OntoTip);
-        return new BranchStart(new RebaseAnimation(L, fresh.Rows), DirectionFor(fresh.Branch, fresh.Onto, inkOf),
-            SequenceLists.Running(L, fresh.Rows));
+        var direction = DirectionFor(fresh.Branch, fresh.Onto, inkOf);
+        var panel = SequenceLists.Running(L, fresh.Rows);
+        if (interactive)
+            return new BranchStart(new TodoAnimation(L, fresh.Rows, TodoScenes.Plan(fresh.Rows, 0, -1)), direction, panel);
+        return new BranchStart(new RebaseAnimation(L, fresh.Rows), direction, panel);
     }
 
-    /// <summary>The finish of a rebase that was run from the confirm screen.</summary>
-    internal static BranchFinish RebaseFinish(SequenceOutcome o, RepoSnapshot? after, RebaseCheck check, GraphLayout L, RebaseEngine engine) =>
-        SequenceFinish(o, after, check.Rows, L, engine);
+    /// <summary>The finish of a rebase that was run from the confirm screen or the todo list.</summary>
+    internal static BranchFinish RebaseFinish(SequenceOutcome o, RepoSnapshot? after, IReadOnlyList<RebaseRow> plan, GraphLayout L,
+        RebaseEngine engine, bool interactive) =>
+        SequenceFinish(o, after, plan, L, engine, interactive);
 
     /// <summary>
     /// The finish of any rebase step, on the worker: git's outcome becomes the result. A refusal or a failure is shown as before; a pause
-    /// stops the rebase on its screen; a finished rebase (or one that was aborted) gives its result. The rows are the plan the run used.
+    /// stops the rebase on its screen; a finished rebase (or one that was aborted) gives its result. The rows are the plan the run used, and
+    /// <paramref name="interactive"/> says whether its done caption is the todo list's.
     /// </summary>
     internal static BranchFinish SequenceFinish(SequenceOutcome o, RepoSnapshot? after, IReadOnlyList<RebaseRow> rows, GraphLayout L,
-        RebaseEngine engine)
+        RebaseEngine engine, bool interactive)
     {
         var onto = o.Onto;
         var hints = new CommandHints(Onto: onto);
@@ -217,14 +234,17 @@ internal sealed partial class BranchesTab
         if (o.Kind == SequenceOutcomeKind.Aborted)
             return AbortedFinish(o.Branch, onto, o.Commands, after, LayoutAfter(after, onto, engine.ReadLayout));
 
-        return RebaseDoneFinish(o, after, rows, L, engine);
+        return RebaseDoneFinish(o, after, rows, L, engine, interactive);
     }
 
-    /// <summary>A rebase that ran: the caption names the replayed commits, the panel lists what became of each commit.</summary>
+    /// <summary>
+    /// A rebase that ran: the caption names the replayed commits (or, for a todo list, what was kept, squashed and dropped); the panel lists
+    /// what became of each commit.
+    /// </summary>
     internal static BranchFinish RebaseDoneFinish(SequenceOutcome o, RepoSnapshot? after, IReadOnlyList<RebaseRow> rows, GraphLayout L,
-        RebaseEngine engine)
+        RebaseEngine engine, bool interactive)
     {
-        var done = RebaseText.Done(o, o.Branch, o.Onto);
+        var done = interactive ? RebaseText.Interactive(o, o.Branch, rows) : RebaseText.Done(o, o.Branch, o.Onto);
         var log = new List<(string Text, Style Style)> { (done, OkB) };
         if (RebaseText.UndoSaveFailed(o))
             log.Add((o.Message, WarnB));
@@ -235,7 +255,7 @@ internal sealed partial class BranchesTab
             Panel: SequenceLists.Rebased(o, rows, landed ?? L), Sequence: o);
         return new BranchFinish(result, o.Commands, log, "graftui: " + o.Message, after, o.Onto)
         {
-            Hints = new CommandHints(Onto: o.Onto),
+            Hints = new CommandHints(Onto: o.Onto, Interactive: interactive),
         };
     }
 

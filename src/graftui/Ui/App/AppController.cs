@@ -407,6 +407,13 @@ public sealed class AppController
             return;
         }
 
+        // The todo list of an interactive rebase takes every key but v as well: its keys edit the plan, and Tab does not leave it.
+        if (ActiveTab == TabKind.Branches && BranchesTab.Mode == BranchesMode.Todo)
+        {
+            BranchesTab.HandleTodoKey(e);
+            return;
+        }
+
         if (e == Key.Tab)
         {
             e.Handled = true;
@@ -467,6 +474,11 @@ public sealed class AppController
         {
             e.Handled = true;
             BranchesTab.BeginRebase();
+        }
+        else if (e == Key.I)
+        {
+            e.Handled = true;
+            BranchesTab.BeginInteractive();
         }
         else if (e == Key.U)
         {
