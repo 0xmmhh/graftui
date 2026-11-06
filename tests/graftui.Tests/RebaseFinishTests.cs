@@ -51,8 +51,8 @@ public class RebaseFinishTests
         var outcome = op.Run(request, check);
         Assert.Equal(SequenceOutcomeKind.Done, outcome.Kind);
 
-        var f = BranchesTab.RebaseFinish(outcome, ReaderOf(repo).LoadSnapshot(withCounts: true, CancellationToken.None), check,
-            Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.RebaseFinish(outcome, ReaderOf(repo).LoadSnapshot(withCounts: true, CancellationToken.None), check.Rows,
+            Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.True(f.Result.Success);
         Assert.Equal(RebaseText.DoneTitle, f.Result.Title);
@@ -80,7 +80,7 @@ public class RebaseFinishTests
         var done = new SequenceOutcome(SequenceOutcomeKind.Done, SequenceKind.Rebase, "feature", "main", check.Head, "newtip", null,
             [], [], [], [], [], [], message, []);
 
-        var f = BranchesTab.RebaseFinish(done, null, check, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.RebaseFinish(done, null, check.Rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.Contains((message, WarnB), f.Log);
         Assert.Equal("graftui: " + message, f.ExitLine);
@@ -99,7 +99,7 @@ public class RebaseFinishTests
         var outcome = op.Run(request, check);
         Assert.Equal(SequenceOutcomeKind.Refused, outcome.Kind);
 
-        var f = BranchesTab.RebaseFinish(outcome, null, check, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.RebaseFinish(outcome, null, check.Rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.False(f.Result.Success);
         Assert.Equal("Refused", f.Result.Title);
@@ -118,7 +118,7 @@ public class RebaseFinishTests
         var failed = new SequenceOutcome(SequenceOutcomeKind.Failed, SequenceKind.Rebase, "feature", "main", check.Head, null, null,
             [], [], [], [], [], [], "boom", []);
 
-        var f = BranchesTab.RebaseFinish(failed, null, check, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.RebaseFinish(failed, null, check.Rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.False(f.Result.Success);
         Assert.Equal("✕ Rebase failed: boom", f.Result.Caption.Text);
@@ -134,7 +134,7 @@ public class RebaseFinishTests
         using var repo = SequenceRepos.FeatureConflict();
         var (check, outcome) = Conflict(repo);
 
-        var f = BranchesTab.RebaseFinish(outcome, null, check, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.RebaseFinish(outcome, null, check.Rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.True(SequenceGit.RebaseInProgress(GitDir(repo)));
         Assert.True(File.Exists(StateFile(repo)));

@@ -1,4 +1,5 @@
 using graftui.Model;
+using graftui.Ui.App;
 using graftui.Ui.Scenes;
 using graftui.Ui.Text;
 
@@ -124,5 +125,32 @@ public class TodoAnimationTests
         Assert.True(anim.IsDone(500 + TodoScenes.Flash + TodoScenes.Ret));
         Assert.False(anim.IsDone(500 + TodoScenes.Flash));
         Assert.Equal("✕ Rebase aborted: feature unchanged", anim.Render(G, 500 + TodoScenes.Flash + TodoScenes.Ret).Caption!.Text);
+    }
+
+    [Fact]
+    public void A_resume_of_a_rebase_with_its_plan_plays_the_todo_scene_and_one_without_keeps_the_paused_picture()
+    {
+        var rows = Plan(RebaseAction.Edit, RebaseAction.Pick, RebaseAction.Pick);
+        var withPlan = ConflictAt(rows, 0) with { Pause = PauseKind.Edit };
+        var without = withPlan with { Rows = null };
+
+        var todo = BranchesTab.ResumeAnimation(withPlan, ResumeAction.AmendAndContinue, "running", Ink.Lane0, Ink.Lane1, Layout());
+        var paused = BranchesTab.ResumeAnimation(without, ResumeAction.AmendAndContinue, "running", Ink.Lane0, Ink.Lane1, Layout());
+
+        Assert.IsType<TodoAnimation>(todo);
+        Assert.IsType<PausedAnimation>(paused);
+    }
+
+    [Fact]
+    public void An_abort_of_a_paused_rebase_starts_the_scene_at_the_stopped_row_and_crosses_it()
+    {
+        var rows = Plan(RebaseAction.Pick, RebaseAction.Pick, RebaseAction.Pick);
+        var stop = ConflictAt(rows, 1);
+
+        var anim = (TodoAnimation)BranchesTab.ResumeAnimation(stop, ResumeAction.Abort, "running", Ink.Lane0, Ink.Lane1, Layout());
+        var frame = anim.Render(G, 0);
+
+        Assert.Equal("✕ Aborting the rebase…", frame.Caption!.Text);
+        Assert.Equal('✕', frame.Grid[34, 6].Ch);
     }
 }
