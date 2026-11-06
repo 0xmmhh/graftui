@@ -126,7 +126,8 @@ if (uiError is not null)
 
 // A conflict left paused exits 1, as a conflicted rebase does. An edit or a message pause exits 0. When the pause that set the change's
 // code is gone by exit, the code goes with it.
-var changeNow = paused is null && gui is not null && gui.ChangeLeftPause ? 0 : changeCode;
+var gone = ExitRule.ChangeGone(paused, read.Unreadable);
+var changeNow = gone && gui is not null && gui.ChangeLeftPause ? 0 : changeCode;
 var code = exitCode != 0 ? exitCode : changeNow;
 if (paused is not null && paused.Pause == PauseKind.Conflict && code == 0)
     return 1;

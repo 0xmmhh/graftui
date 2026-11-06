@@ -199,7 +199,8 @@ internal sealed partial class BranchesTab
             try
             {
                 var check = _app.ResumeOp.Check(request);
-                var fallback = !check.CanRun && action == ResumeAction.Abort && oldTip is not null
+                // The fallback is for a rebase only: a cherry-pick has no rebase folder for it to find.
+                var fallback = !check.CanRun && action == ResumeAction.Abort && oldTip is not null && stop.Kind == SequenceKind.Rebase
                     && SequenceGit.RebaseInProgress(check.GitDir);
                 if (!check.CanRun && !fallback)
                 {
@@ -208,7 +209,8 @@ internal sealed partial class BranchesTab
                     return null;
                 }
 
-                // Quitting: the step does not start, so the pause stays as it is and Program reports it.
+                // Quitting: the step does not start, so the pause stays as it is. Null means this change has no exit line of its own:
+                // Program reads the pause from the repo at exit and prints the line for what it finds there.
                 if (_app.Gate.IsQuitting)
                     return null;
 
@@ -308,9 +310,19 @@ internal sealed partial class BranchesTab
         {
             return SequenceReader.ConflictState(root, paths);
         }
-        catch (Exception)
+        catch (IOException)
         {
-            // Any failure reading a file (I/O, access, a bad path) only means this tick has no news.
+            // A file that cannot be read now only means this tick has no news.
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Same as above.
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            // A path git gave that the file system refuses: same as above.
             return null;
         }
     }

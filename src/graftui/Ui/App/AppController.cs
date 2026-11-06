@@ -618,21 +618,31 @@ public sealed class AppController
         var seq = SnapshotSeq;
         Task.Run(() =>
         {
+            RepoSnapshot? s = null;
+            Exception? failed = null;
             try
             {
-                var s = Reader.LoadSnapshot(withCounts: true, CancellationToken.None);
-                Ui(() =>
-                {
-                    if (!Busy && seq == SnapshotSeq)
-                        ApplySnapshot(s);
-                    then?.Invoke();
-                });
+                s = Reader.LoadSnapshot(withCounts: true, CancellationToken.None);
             }
             catch (Exception ex)
             {
-                Ui(() => ShowGitError(ex));
+                failed = ex;
             }
+            Ui(() => CountsRead(s, failed, seq, then));
         });
+    }
+
+    /// <summary>
+    /// The UI thread's part of a counts read. A failed read shows its error and leaves the snapshot as it was. <paramref name="then"/> runs
+    /// in both cases: a screen that depends on the snapshot (the pause screen) is still due, and the snapshot in place already says what it is.
+    /// </summary>
+    internal void CountsRead(RepoSnapshot? s, Exception? failed, int seq, Action? then)
+    {
+        if (failed is not null)
+            ShowGitError(failed);
+        else if (s is not null && !Busy && seq == SnapshotSeq)
+            ApplySnapshot(s);
+        then?.Invoke();
     }
 
     // ---------- helpers ----------

@@ -278,10 +278,13 @@ internal sealed partial class BranchesTab
     internal static BranchFinish AbortPausedFinish(SequenceStop stop, string oldTip, ResumeCheck check, RebaseEngine engine)
     {
         var commands = check.Commands.ToList();
-        var restored = RebaseAbort.Force(engine.Root, check.GitDir, stop.Branch, oldTip, commands);
+        var result = RebaseAbort.Force(engine.Root, check.GitDir, stop.Branch, oldTip, commands);
         var after = engine.ReadSnapshot();
-        if (!restored)
-            return FailedFinish("Rebase", RebaseText.NotAborted, commands, after, null, new CommandHints(Onto: stop.Onto)) with { ExitCode = 1 };
+        var hints = new CommandHints(Onto: stop.Onto);
+        if (result == RebaseAbortResult.NotInProgress)
+            return RefusedFinish(SequenceRefusals.NothingPaused, commands, after, stop.Branch, hints);
+        if (result == RebaseAbortResult.Failed)
+            return FailedFinish("Rebase", RebaseText.NotAborted, commands, after, null, hints) with { ExitCode = 1 };
 
         return AbortedFinish(stop.Branch, stop.Onto, commands, after, LayoutAfter(after, stop.Onto, engine.ReadLayout));
     }

@@ -29,7 +29,7 @@ internal static class SequenceOwnership
             return state.Kind == SequenceKind.Rebase && IsOurRebase(gitDir, state.Branch, state.OldTip) ? state : null;
 
         if (inProgress == "cherry-pick")
-            return state.Kind == SequenceKind.CherryPick && IsOurPick(gitDir, state.Picks) ? state : null;
+            return state.Kind == SequenceKind.CherryPick && IsOurPick(gitDir, state.Picks, state.OldTip) ? state : null;
 
         return null;
     }
@@ -46,11 +46,22 @@ internal static class SequenceOwnership
             && ReadLine(Path.Combine(folder, "orig-head")) == oldTip;
     }
 
-    /// <summary>True when the commit git is picking (CHERRY_PICK_HEAD) is one of the picks graftui started.</summary>
-    public static bool IsOurPick(string gitDir, IReadOnlyList<string> picks)
+    /// <summary>
+    /// True when git's cherry-pick is graftui's. The sequencer folder, when git has one, must have started from <paramref name="oldTip"/>
+    /// (its head file). A held pick (CHERRY_PICK_HEAD) must be one of the picks. With no held pick, the sequencer alone is enough: a
+    /// multi-commit pick whose current commit was committed by hand has no CHERRY_PICK_HEAD, but the folder still names the old tip.
+    /// </summary>
+    public static bool IsOurPick(string gitDir, IReadOnlyList<string> picks, string oldTip)
     {
+        var sequencer = Path.Combine(gitDir, "sequencer");
+        var sequencerHead = Path.Combine(sequencer, "head");
+        if (File.Exists(sequencerHead) && ReadLine(sequencerHead) != oldTip)
+            return false;
+
         var head = ReadLine(Path.Combine(gitDir, "CHERRY_PICK_HEAD"));
-        return head.Length > 0 && picks.Contains(head);
+        if (head.Length > 0)
+            return picks.Contains(head);
+        return oldTip.Length > 0 && File.Exists(sequencerHead);
     }
 
     /// <summary>The first line of a small git file, trimmed, or "" when it is missing or cannot be read.</summary>

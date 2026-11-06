@@ -8,6 +8,8 @@ internal static class RepoState
 {
     /// <summary>
     /// The operation that owns the index and is still in progress ("merge", "cherry-pick", "revert" or "rebase"), or null.
+    /// A multi-commit cherry-pick whose current pick was committed by hand has no CHERRY_PICK_HEAD, but git keeps its sequencer folder
+    /// until the last pick, so that folder counts as a cherry-pick in progress too.
     /// <paramref name="call"/> runs a git command and returns its result.
     /// </summary>
     public static string? InProgress(Func<string[], GitResult> call, string gitDir)
@@ -17,7 +19,9 @@ internal static class RepoState
             if (call([GitArgs.RevParse, "-q", GitArgs.Verify, name]).Success)
                 return kind;
         }
-        if (Directory.Exists(Path.Combine(gitDir, "rebase-merge")) || Directory.Exists(Path.Combine(gitDir, "rebase-apply")))
+        if (SequenceGit.PickInProgress(gitDir))
+            return "cherry-pick";
+        if (SequenceGit.RebaseInProgress(gitDir))
             return "rebase";
         return null;
     }

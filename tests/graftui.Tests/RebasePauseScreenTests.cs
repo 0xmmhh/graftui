@@ -371,4 +371,66 @@ public sealed class RebasePauseScreenTests : IDisposable
         Assert.False(app.IsPaused);
         Assert.False(app.Busy);
     }
+
+    /// <summary>A branch change's result that is not a pause of its own: the pause screen would take its caption as the note.</summary>
+    private static BranchResult FailedResult() => new(false, "Failed", new Caption("✕ Rebase failed: boom", new Style(Ink.Bad, true)), null);
+
+    [Fact]
+    public void A_pause_drawn_after_a_counts_read_waits_when_the_user_has_moved_to_the_changes_tab_first()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+        var seq = app.SnapshotSeq;
+        _ui.Keyboard.RaiseKeyDownEvent(Key.Tab);
+        Assert.Equal(AppController.TabKind.Changes, app.ActiveTab);
+        app.Art.Title = "Changes";
+
+        app.CountsRead(null, new InvalidOperationException("counts"), seq, () => app.BranchesTab.ShowPauseAfter(FailedResult()));
+
+        Assert.Equal("Changes", app.Art.Title);
+    }
+
+    [Fact]
+    public void A_pause_drawn_after_a_counts_read_waits_while_a_question_is_open()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+        var seq = app.SnapshotSeq;
+        _ui.Keyboard.RaiseKeyDownEvent(Key.X.WithShift);
+        Assert.Equal(BranchesMode.Ask, app.BranchesTab.Mode);
+        app.Art.Title = "question";
+
+        app.CountsRead(null, new InvalidOperationException("counts"), seq, () => app.BranchesTab.ShowPauseAfter(FailedResult()));
+
+        Assert.Equal("question", app.Art.Title);
+    }
+
+    [Fact]
+    public void A_pause_drawn_after_a_counts_read_waits_while_a_change_is_running()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+        var seq = app.SnapshotSeq;
+        app.Busy = true;
+        app.Art.Title = "running";
+
+        app.CountsRead(null, new InvalidOperationException("counts"), seq, () => app.BranchesTab.ShowPauseAfter(FailedResult()));
+
+        Assert.Equal("running", app.Art.Title);
+    }
+
+    [Fact]
+    public void A_counts_read_that_fails_shows_its_error_and_still_runs_the_pause_that_is_due()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+        var seq = app.SnapshotSeq;
+        app.Art.Title = "stale";
+
+        app.CountsRead(null, new InvalidOperationException("counts failed"), seq, () => app.BranchesTab.ShowPauseAfter(FailedResult()));
+
+        Assert.Equal("counts failed", app.Status.ErrorText);
+        Assert.Equal(RebaseText.PausedTitle, app.Art.Title);
+        Assert.True(app.IsPaused);
+    }
 }

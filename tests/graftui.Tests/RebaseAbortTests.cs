@@ -32,7 +32,7 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", before, log);
 
-        Assert.True(restored);
+        Assert.Equal(RebaseAbortResult.Aborted, restored);
         Assert.Equal(before, repo.Head);
         Assert.Equal("refs/heads/feature", repo.Run("symbolic-ref", "-q", "HEAD"));
         Assert.True(repo.IsClean);
@@ -51,7 +51,7 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", "0000000000000000000000000000000000000000", log);
 
-        Assert.False(restored);
+        Assert.Equal(RebaseAbortResult.Failed, restored);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", before, log);
 
-        Assert.False(restored);
+        Assert.Equal(RebaseAbortResult.Failed, restored);
         Assert.True(SequenceGit.RebaseInProgress(GitDir(repo)));
         Assert.Contains(log, r => r.Args.SequenceEqual(["rebase", "--abort"]));
     }
@@ -80,7 +80,7 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", before, log);
 
-        Assert.True(restored);
+        Assert.Equal(RebaseAbortResult.NotInProgress, restored);
         Assert.DoesNotContain(log, r => r.Args.Count > 0 && r.Args[0] == "rebase");
     }
 
@@ -97,7 +97,7 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, GitDir(repo), "feature", before, log);
 
-        Assert.False(restored);
+        Assert.Equal(RebaseAbortResult.Failed, restored);
         Assert.True(SequenceGit.RebaseInProgress(GitDir(repo)));
         Assert.DoesNotContain(log, r => r.Args.SequenceEqual(["rebase", "--abort"]));
     }
@@ -111,7 +111,7 @@ public class RebaseAbortTests
 
         var restored = RebaseAbort.Force(repo.Git, "", "feature", before, log);
 
-        Assert.False(restored);
+        Assert.Equal(RebaseAbortResult.Failed, restored);
         Assert.Empty(log);
     }
 }

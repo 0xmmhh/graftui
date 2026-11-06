@@ -98,6 +98,24 @@ internal static class SequenceRepos
     }
 
     /// <summary>
+    /// The picks of a three-commit feature (login, fix, remember). The fix conflicts with main's change to auth.ts, so a pick of all three
+    /// pauses on the second and leaves the third to come. HEAD is on main.
+    /// </summary>
+    public static TempRepo PickConflictThenMore()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("app.txt", "app\n", "Add app");
+        repo.Commit("auth.ts", "auth\n", "Add auth");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("login.ts", "login\n", "Add login screen");
+        repo.Commit("auth.ts", "auth fixed\n", "Fix null check in auth");
+        repo.Commit("remember.ts", "remember\n", "Add remember-me option");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("auth.ts", "auth main\n", "Change auth on main");
+        return repo;
+    }
+
+    /// <summary>
     /// Starts `git rebase -i onto` by hand with the given todo lines, the way graftui runs it (a sequence editor that copies the list).
     /// Returns git's result. The todo file is removed once git has copied it.
     /// </summary>

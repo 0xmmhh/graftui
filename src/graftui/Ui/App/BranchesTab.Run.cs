@@ -118,7 +118,9 @@ internal sealed partial class BranchesTab
     /// </summary>
     internal void ShowPauseAfter(BranchResult result)
     {
-        if (!_app.IsPaused)
+        // The counts read can finish after the user has moved on. On the Changes tab, or while a question or an input is open, the pause
+        // screen waits: returning to the Branches tab draws it (RequestPreview), and the tab change has forgotten the note already.
+        if (!_app.IsPaused || _app.Busy || _app.ActiveTab != AppController.TabKind.Branches || Mode != BranchesMode.Browse)
             return;
         if (!LeftPause(result))
             _pauseNote = result.Caption;

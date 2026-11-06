@@ -66,14 +66,10 @@ public sealed class RebaseOperation(GitClient git) : IGitOperation<RebaseRequest
         catch (Exception ex)
         {
             var message = ex.Message;
-            if (!started)
+            if (started && SequenceGit.RebaseInProgress(gitDir))
             {
-                // Nothing reached git: the state written for this run is not needed.
-                SequenceStateFile.Delete(gitDir);
-            }
-            else if (SequenceGit.RebaseInProgress(gitDir))
-            {
-                // Git holds a rebase that graftui started: abort it so the branch is exactly as before.
+                // Git holds a rebase that graftui started: abort it so the branch is exactly as before. Its state stays while git holds the
+                // rebase, so the rebase is still recognised as graftui's if the abort fails.
                 var abort = BranchGit.Call(git, log, "rebase", "--abort");
                 if (abort.Success)
                 {
@@ -84,6 +80,11 @@ public sealed class RebaseOperation(GitClient git) : IGitOperation<RebaseRequest
                 {
                     message += "; the rebase could not be aborted: check git status";
                 }
+            }
+            else
+            {
+                // Nothing reached git, or git no longer holds the rebase (it finished, or never ran): the state written for this run is over.
+                SequenceStateFile.Delete(gitDir);
             }
             return Failed(check, message, log);
         }
