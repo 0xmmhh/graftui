@@ -172,8 +172,8 @@ public static class CommandDisplay
     }
 
     /// <summary>
-    /// `git rebase main`, or `git rebase -i main` for an interactive rebase. Git runs both as `rebase -i` (the engine writes the todo
-    /// list itself), so this is the line the user would type, not the one that ran. `v` shows the exact one.
+    /// `git rebase main`, or `git rebase -i main` for an interactive rebase. Git runs both as `rebase -i` (the engine writes the list of
+    /// steps itself), so this is the line the user would type, not the one that ran. `v` shows the exact one.
     /// </summary>
     private static string RebaseLine(string onto, bool interactive)
     {

@@ -88,6 +88,6 @@ public static class SequenceLists
     private static CommitRow Row(Style dotStyle, string hash, string subject, Style subjectStyle, char dot = '●') =>
         new(dot, dotStyle, hash, new Style(Ink.Hash), subject, subjectStyle);
 
-    private static CommitPanel Group(GraphLayout L, IReadOnlyList<CommitRow> rows) =>
+    private static CommitPanel Group(GraphLayout L, List<CommitRow> rows) =>
         new(new CommitGroup([new Seg(L.Current, CurB(L)), new Seg(" (current)", Dim)], rows, rows.Count), null, []);
 }
