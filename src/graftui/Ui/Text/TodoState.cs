@@ -5,7 +5,7 @@ namespace graftui.Ui.Text;
 
 /// <summary>
 /// The interactive rebase's todo list: the plan the user is editing, the cursor on it, and whether it may start. The plan's first row runs
-/// first. The cursor wraps when it moves (as in the mock); a row moved with the keys stops at either end. Nothing here runs git.
+/// first. The cursor wraps when it moves; a row moved with the keys stops at either end. Nothing here runs git.
 /// </summary>
 public sealed class TodoState(IReadOnlyList<RebaseRow> rows, string branch)
 {
