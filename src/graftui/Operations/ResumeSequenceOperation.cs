@@ -174,15 +174,9 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         if (kind is null)
             return Refuse(SequenceRefusals.NothingPaused, op, gitDirPath);
 
-        // A state for another sequence, or none: graftui does not touch a sequence it did not start.
-        var state = SequenceStateFile.Load(gitDirPath);
-        var expected = kind switch
-        {
-            "rebase" => SequenceKind.Rebase,
-            "cherry-pick" => SequenceKind.CherryPick,
-            _ => (SequenceKind?)null,
-        };
-        if (state is null || expected is null || state.Kind != expected)
+        // Not graftui's sequence (no state, another kind, or git's files do not match the state): graftui does not touch it.
+        var state = SequenceOwnership.Owned(gitDirPath, kind);
+        if (state is null)
             return Refuse(ChangeRefusals.InProgress(kind), op, gitDirPath);
 
         var stop = state.Kind == SequenceKind.CherryPick

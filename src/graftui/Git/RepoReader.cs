@@ -44,23 +44,15 @@ public sealed class RepoReader(GitClient git)
         }
 
         ct.ThrowIfCancellationRequested();
-        var paused = new SequenceReader(RootClient()).ReadPaused();
+        var read = new SequenceReader(RootClient()).ReadSequence();
         return new RepoSnapshot(current, head, clean, branches, counts, git.HasUndoSteps())
         {
-            Paused = paused,
-            PausedOldTip = paused is not null && paused.Ours ? ReadOldTip() : null,
+            Paused = read.Stop,
+            PausedOldTip = read.Stop is { Ours: true } ? read.OldTip : null,
         };
     }
 
     private GitClient RootClient() => _root ??= new GitClient(git.GetTopLevel() ?? git.RepoPath);
-
-    /// <summary>The branch tip the paused sequence started from, from its state file. Null when the file cannot be read.</summary>
-    private string? ReadOldTip()
-    {
-        var gitDir = RepoState.GitDir(RootClient(), []);
-        var state = gitDir is null ? null : SequenceStateFile.Load(gitDir);
-        return state?.OldTip;
-    }
 
     public GraphLayout LoadLayout(RepoSnapshot snap, Branch sel, CancellationToken ct)
     {

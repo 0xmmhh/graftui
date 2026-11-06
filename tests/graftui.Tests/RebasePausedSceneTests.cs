@@ -111,6 +111,31 @@ public class RebasePausedSceneTests
         Assert.All(Enumerable.Range(0, grid.Height), y => Assert.DoesNotContain("●", RowText(grid, y), StringComparison.Ordinal));
     }
 
+    private static IReadOnlyList<RebaseRow> Eight() => Enumerable.Range(1, 8).Select(i => Row("a" + i)).ToList();
+
+    [Fact]
+    public void A_landing_longer_than_three_commits_is_drawn_as_three_and_a_dim_tail_and_the_stop_stays_on_the_art()
+    {
+        // Step 7 of 8: six commits have landed, so the stop's slot would be off the 60-column art if every landed commit were drawn.
+        var grid = Paint(Stop(PauseKind.Conflict, 7, Eight()));
+
+        Assert.Equal('●', grid[40, 6].Ch);
+        Assert.Equal('┄', grid[42, 6].Ch);
+        Assert.Equal(Dim, grid[42, 6].Style);
+        Assert.Equal('━', grid[44, 6].Ch);
+        Assert.Equal('✕', grid[45, 6].Ch);
+        Assert.Equal(BadB, grid[45, 6].Style);
+    }
+
+    [Fact]
+    public void A_warm_edit_stop_after_a_long_landing_sits_in_its_slot_on_the_art()
+    {
+        var grid = Paint(Stop(PauseKind.Edit, 8, Eight()));
+
+        Assert.Equal('●', grid[46, 6].Ch);
+        Assert.Equal(WarnB, grid[46, 6].Style);
+    }
+
     [Fact]
     public void The_running_art_is_the_paused_picture_with_the_running_caption_then_the_result()
     {

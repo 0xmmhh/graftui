@@ -11,7 +11,7 @@ namespace graftui.Operations;
 /// </summary>
 public sealed class CherryPickOperation(GitClient git) : IGitOperation<CherryPickRequest, CherryPickCheck, SequenceOutcome>
 {
-    /// <summary>Preconditions for picking the commits onto the current branch. Read-only; every call is logged.</summary>
+    /// <summary>Preconditions for picking the commits onto the current branch. Reads git, except that it removes a stale state file; every call is logged.</summary>
     public CherryPickCheck Check(CherryPickRequest request)
     {
         var log = new List<GitResult>();
@@ -91,6 +91,9 @@ public sealed class CherryPickOperation(GitClient git) : IGitOperation<CherryPic
         var inProgress = RepoState.InProgress(args => BranchGit.Call(git, log, args), gitDirPath);
         if (inProgress is not null)
             return Refuse(ChangeRefusals.InProgress(inProgress), gitDir: gitDirPath);
+
+        // A state file left by a sequence that is no longer in progress is stale: it goes before these picks start.
+        SequenceStateFile.Delete(gitDirPath);
 
         var symbolic = BranchGit.SymbolicHead(git, log);
         if (symbolic.Length == 0)

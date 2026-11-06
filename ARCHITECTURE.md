@@ -186,7 +186,7 @@ The table shows the main git command of each operation and the undo kind it save
 | `CherryPickOperation` | `cherry-pick` of the chosen commits, oldest first | `Merge`, when it finishes |
 | `ResumeSequenceOperation` | `rebase --continue`, `--skip` or `--abort`; `cherry-pick --continue`, `--skip` or `--abort` | `Merge`, when a resumed sequence finishes; none for an abort |
 
-A rebase that stops (a conflict, an edit, a reword or squash) leaves its state in `.git/GRAFTUI_SEQUENCE`, so the pause is read back from the repo on every snapshot and after a restart (`RepoReader` reads it from the top-level repo). `BranchesTab.Pause.cs` shows it and runs its keys through `ResumeSequenceOperation`. An abort whose state file is gone runs `RebaseAbort.Force` (git's own abort, checked against the old tip the snapshot read), so the repo is never left mid-rebase without the pause screen showing it.
+A rebase that stops (a conflict, an edit, a reword or squash) leaves its state in `.git/GRAFTUI_SEQUENCE`, so the pause is read back from the repo on every snapshot and after a restart (`RepoReader` reads it from the top-level repo). `BranchesTab.Pause.cs` shows it and runs its keys through `ResumeSequenceOperation`. A state file counts only while git's own files agree with it (`SequenceOwnership`). An abort whose state file is gone runs `RebaseAbort.Force`: git's own abort runs only on a rebase that git holds from the branch's old tip, and that is checked before the abort runs. A rebase graftui did not start is never aborted and never shown as a pause: when graftui's own sequence is still in progress but its stop cannot be read, the exit prints a `git status` line instead.
 
 ## 7. Undo
 

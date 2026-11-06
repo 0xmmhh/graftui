@@ -1,5 +1,6 @@
 using graftui.Git;
 using graftui.Model;
+using graftui.Operations;
 
 namespace graftui.Tests;
 
@@ -66,5 +67,54 @@ public class SequenceReaderTests
         var files = SequenceReader.ConflictState(repo.Dir, ["app.txt", "clean.txt"]);
 
         Assert.Equal(new[] { new ConflictFile("app.txt", false), new ConflictFile("clean.txt", true) }, files);
+    }
+
+    [Fact]
+    public void ReadSequence_reads_a_graftui_pause_with_its_old_tip_in_one_pass()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var before = repo.Head;
+        var op = new RebaseOperation(repo.Git);
+        var request = new RebaseRequest("main");
+        var check = op.Check(request);
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(request, check).Kind);
+
+        var read = new SequenceReader(repo.Git).ReadSequence();
+
+        Assert.NotNull(read.Stop);
+        Assert.True(read.Stop.Ours);
+        Assert.Equal(before, read.OldTip);
+        Assert.Null(read.Unreadable);
+    }
+
+    [Fact]
+    public void ReadSequence_reports_a_graftui_rebase_whose_stop_cannot_be_read_as_unreadable()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var op = new RebaseOperation(repo.Git);
+        var request = new RebaseRequest("main");
+        var check = op.Check(request);
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(request, check).Kind);
+        // Without the done list git's stop cannot be read, so the sequence is still graftui's but has no stop to show.
+        File.Delete(Path.Combine(repo.Dir, ".git", "rebase-merge", "done"));
+
+        var read = new SequenceReader(repo.Git).ReadSequence();
+
+        Assert.Null(read.Stop);
+        Assert.Null(read.OldTip);
+        Assert.Equal("rebase", read.Unreadable);
+    }
+
+    [Fact]
+    public void ReadSequence_of_a_clean_repo_holds_nothing()
+    {
+        using var repo = SequenceRepos.Feature4();
+
+        var read = new SequenceReader(repo.Git).ReadSequence();
+
+        Assert.Null(read.Stop);
+        Assert.Null(read.OldTip);
+        Assert.Null(read.Unreadable);
     }
 }

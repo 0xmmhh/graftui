@@ -81,20 +81,28 @@ public sealed class AppController
     internal void MarkChangeOutcomeShown() => _changeOutcomeShown = true;
 
     private volatile int _changeExitCode;
+    private volatile bool _changeLeftPause;
 
     /// <summary>
-    /// The exit code the latest change asks for: 1 when a stash-merge-pop conflicted or failed (as a failed merge exits 1), else 0.
-    /// Program reads it after the change's worker has finished.
+    /// The exit code the latest change asks for: 1 when a stash-merge-pop conflicted or failed, or a rebase stopped at a conflict (as a
+    /// failed merge exits 1), else 0. Program reads it after the change's worker has finished.
     /// </summary>
     public int ChangeExitCode => _changeExitCode;
 
-    internal void SetChangeExitCode(int code) => _changeExitCode = code;
+    /// <summary>True when <see cref="ChangeExitCode"/> was set by a rebase left paused: if the pause is gone at exit, its code goes too.</summary>
+    public bool ChangeLeftPause => _changeLeftPause;
+
+    internal void SetChangeExitCode(int code, bool leftPause = false)
+    {
+        _changeExitCode = code;
+        _changeLeftPause = leftPause;
+    }
 
     /// <summary>Called when a new change starts, so an outcome drawn for an earlier change does not count for this one.</summary>
     internal void BeginChangeOutcome()
     {
         _changeOutcomeShown = false;
-        _changeExitCode = 0;
+        SetChangeExitCode(0);
     }
 
     /// <summary>True once the outcome has been drawn in the UI (so the exit path need not print it again).</summary>
@@ -532,14 +540,10 @@ public sealed class AppController
     internal Caption? PauseCaption() => IsPaused ? SequenceStatus.Caption(Snapshot.Paused!) : null;
 
     /// <summary>
-    /// The pause as the repo holds it now, read after the UI has closed: a pause graftui started that is still there, else null. Program
-    /// prints its exit line and exits 1 for a conflict.
+    /// What the repo holds now, read after the UI has closed: a pause graftui started that is still there, or a sequence of graftui's that
+    /// is still in progress but cannot be read. Program prints the matching exit line and exits 1 for a conflict.
     /// </summary>
-    public SequenceStop? PausedAtExit()
-    {
-        var stop = new SequenceReader(RootGit).ReadPaused();
-        return stop is not null && stop.Ours ? stop : null;
-    }
+    public SequenceRead ReadSequenceAtExit() => new SequenceReader(RootGit).ReadSequence();
 
     /// <summary>Holds the branch list's width where it is, so the art does not reflow under a switch's last frame.</summary>
     internal void HoldBranchWidth() => _listWidth.Hold();
@@ -604,7 +608,12 @@ public sealed class AppController
         Log.SetNeedsDraw();
     }
 
-    internal void ReloadCountsAsync()
+    /// <summary>
+    /// Reads the snapshot with counts on a worker. On the UI thread it is applied, unless a merge or another snapshot has changed things
+    /// since the read started. <paramref name="then"/> runs there afterwards, once the read is applied or dropped: a screen that depends on
+    /// the snapshot (the pause screen) is then drawn from a fresh read.
+    /// </summary>
+    internal void ReloadCountsAsync(Action? then = null)
     {
         var seq = SnapshotSeq;
         Task.Run(() =>
@@ -614,9 +623,9 @@ public sealed class AppController
                 var s = Reader.LoadSnapshot(withCounts: true, CancellationToken.None);
                 Ui(() =>
                 {
-                    // Dropped when a merge or another snapshot has changed things since this read started.
                     if (!Busy && seq == SnapshotSeq)
                         ApplySnapshot(s);
+                    then?.Invoke();
                 });
             }
             catch (Exception ex)

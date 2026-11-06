@@ -95,6 +95,8 @@ internal sealed partial class BranchesTab
     /// </summary>
     internal void HandlePauseKey(Key e)
     {
+        // The last refusal's note goes with the next key, so the screen is drawn again without it.
+        var hadNote = _pauseNote is not null;
         _pauseNote = null;
         if (e == Key.Esc)
             return;
@@ -102,6 +104,9 @@ internal sealed partial class BranchesTab
         e.Handled = true;
         if (_app.Busy)
             return;
+
+        if (hadNote)
+            ShowPause();
 
         var stop = _app.Snapshot.Paused!;
         if (e == Key.Enter || e == Key.S.WithShift)
@@ -140,9 +145,14 @@ internal sealed partial class BranchesTab
         var curInk = _app.InkOf(stop.Branch);
         var ontoInk = _app.InkOf(stop.Onto);
         var question = new BranchQuestion(RebaseText.AbortTitle, RebaseText.AbortText(stop.Branch, _app.Snapshot.PausedOldTip),
-            'y', " abort", " keep going", RebaseText.StillPaused, PausedDirection(stop, curInk, ontoInk), null,
-            () => StartResume(ResumeAction.Abort), OnNo: ShowStillPaused,
-            Base: geo => RebaseScenes.Paused(geo, stop, curInk, ontoInk).Grid);
+            'y', () => StartResume(ResumeAction.Abort), PausedDirection(stop, curInk, ontoInk), null)
+        {
+            YesLabel = " abort",
+            NoLabel = " keep going",
+            CancelText = RebaseText.StillPaused,
+            OnNo = ShowStillPaused,
+            Base = geo => RebaseScenes.Paused(geo, stop, curInk, ontoInk).Grid,
+        };
         BeginQuestion(question);
         if (Mode == BranchesMode.Ask)
             SetPauseRows(stop);
@@ -158,20 +168,20 @@ internal sealed partial class BranchesTab
     /// <summary>
     /// Runs the paused sequence's next step: Continue, Skip, AmendAndContinue, Message (a reword or squash keeps its message) or Abort. The
     /// step runs on a worker and is checked first. A refusal keeps the pause screen and shows the refusal as its caption. An abort whose
-    /// state file is gone runs the fallback abort, so the repo is never left mid-rebase without the pause screen showing it.
+    /// state file is gone runs the fallback abort: it aborts only a rebase that git holds from this branch's old tip (RebaseAbort.Force).
+    /// Anything else is left as it is, and the pause screen (or the failure over it) says so.
     /// </summary>
     internal void StartResume(ResumeAction action, string? message = null)
     {
         // The pause can be gone by now (a question was open while the repo moved on): the preview is shown instead.
-        var pause = _app.Snapshot.Paused;
-        if (pause is null)
+        if (!_app.IsPaused)
         {
             _app.Result = null;
             RequestPreview();
             return;
         }
 
-        var stop = pause;
+        var stop = _app.Snapshot.Paused!;
         var oldTip = _app.Snapshot.PausedOldTip;
         var request = new ResumeRequest(action, message, stop.Commit);
         var curInk = _app.InkOf(stop.Branch);
@@ -198,6 +208,10 @@ internal sealed partial class BranchesTab
                     return null;
                 }
 
+                // Quitting: the step does not start, so the pause stays as it is and Program reports it.
+                if (_app.Gate.IsQuitting)
+                    return null;
+
                 _app.Ui(() =>
                 {
                     _app.LogCommands(check.Commands);
@@ -206,7 +220,7 @@ internal sealed partial class BranchesTab
                 var f = check.CanRun
                     ? SequenceFinish(_app.ResumeOp.Run(request, check), _app.TryLoadSnapshot(), stop.Rows ?? [], layout, engine)
                     : AbortPausedFinish(stop, oldTip!, check, engine);
-                _app.SetChangeExitCode(f.ExitCode);
+                _app.SetChangeExitCode(f.ExitCode, LeftPause(f.Result));
                 _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.Log, () => EndBranchChange(f), f.Hints));
                 return f.ExitLine;
             }
@@ -268,7 +282,10 @@ internal sealed partial class BranchesTab
         _app.IsPaused && _app.Snapshot.Paused!.Pause == PauseKind.Conflict && _app.ActiveTab == AppController.TabKind.Branches
         && Mode == BranchesMode.Browse;
 
-    /// <summary>Reads the conflicted files on a worker; the result is applied on the UI thread.</summary>
+    /// <summary>
+    /// Reads the conflicted files on a worker; the result is applied on the UI thread, tagged with the stop it was read for. The busy flag is
+    /// always cleared there, so a read that failed does not stop the poll.
+    /// </summary>
     private void ReadConflicts()
     {
         if (_pauseFiles is null)
@@ -276,28 +293,39 @@ internal sealed partial class BranchesTab
         _pollBusy = true;
         var paths = _pauseFiles.Select(f => f.Path).ToList();
         var root = _app.RootGit.RepoPath;
+        var commit = _app.Snapshot.Paused!.Commit;
         Task.Run(() =>
         {
-            IReadOnlyList<ConflictFile>? files = null;
-            try
-            {
-                files = SequenceReader.ConflictState(root, paths);
-            }
-            catch (IOException)
-            {
-                // The next tick reads again.
-            }
-            _app.Ui(() => ApplyConflictRead(files));
+            var files = ReadConflictFiles(root, paths);
+            _app.Ui(() => ApplyConflictRead(files, commit));
         });
     }
 
-    /// <summary>On the UI thread: the new read replaces the old one, and the rows are drawn again when a file was resolved.</summary>
-    internal void ApplyConflictRead(IReadOnlyList<ConflictFile>? files)
+    /// <summary>The files' conflict state read from the work tree, or null when a read fails: the next tick reads again.</summary>
+    internal static IReadOnlyList<ConflictFile>? ReadConflictFiles(string root, IReadOnlyList<string> paths)
+    {
+        try
+        {
+            return SequenceReader.ConflictState(root, paths);
+        }
+        catch (Exception)
+        {
+            // Any failure reading a file (I/O, access, a bad path) only means this tick has no news.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// On the UI thread: the new read replaces the old one, and the rows are drawn again when a file was resolved. A read for another stop
+    /// (the pause moved on while it ran) or for other files is dropped.
+    /// </summary>
+    internal void ApplyConflictRead(IReadOnlyList<ConflictFile>? files, string commit)
     {
         _pollBusy = false;
-        if (files is null || _pauseFiles is null || !_app.IsPaused)
+        if (files is null || _pauseFiles is null || !_app.IsPaused || _app.Snapshot.Paused!.Commit != commit)
             return;
-        if (!SequenceStatus.ResolvedChanged(_pauseFiles, files))
+        var samePaths = _pauseFiles.Select(f => f.Path).SequenceEqual(files.Select(f => f.Path));
+        if (!samePaths || !SequenceStatus.ResolvedChanged(_pauseFiles, files))
             return;
         _pauseFiles = files;
         _app.Art.SetNeedsDraw();

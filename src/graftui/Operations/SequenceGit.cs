@@ -369,7 +369,8 @@ internal static class SequenceGit
     /// that rev-parse reads, so it never throws and never needs a logged call.
     /// </summary>
     internal static bool PickInProgress(string gitDir) =>
-        File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")) || Directory.Exists(Path.Combine(gitDir, "sequencer"));
+        gitDir.Length > 0
+        && (File.Exists(Path.Combine(gitDir, "CHERRY_PICK_HEAD")) || Directory.Exists(Path.Combine(gitDir, "sequencer")));
 
     /// <summary>True when git no longer waits on <paramref name="commit"/>: it skipped that pick, or it moved on to a later one. Throws when git fails.</summary>
     internal static bool PickMovedOn(GitClient git, List<GitResult> log, string commit) =>
@@ -433,9 +434,13 @@ internal static class SequenceGit
             s?.Skipped ?? [], s?.Resolved ?? [], s?.Reworded ?? [], s?.Amended ?? [], s?.AlreadyApplied ?? [],
             message, [.. log], undo);
 
-    /// <summary>True while git holds a rebase (its folder exists), whichever backend made it.</summary>
+    /// <summary>
+    /// True while git holds a rebase (its folder exists), whichever backend made it. An empty git dir is no repo at all: it is never
+    /// read relative to the working directory.
+    /// </summary>
     internal static bool RebaseInProgress(string gitDir) =>
-        Directory.Exists(Path.Combine(gitDir, "rebase-merge")) || Directory.Exists(Path.Combine(gitDir, "rebase-apply"));
+        gitDir.Length > 0
+        && (Directory.Exists(Path.Combine(gitDir, "rebase-merge")) || Directory.Exists(Path.Combine(gitDir, "rebase-apply")));
 
     /// <summary>Hash and subject of each commit in a range, oldest first. Throws when git fails.</summary>
     internal static List<(string Hash, string Subject)> ReadPairs(GitClient git, List<GitResult> log, string range)

@@ -51,6 +51,12 @@ public static class SequenceStatus
         return $"graftui: rebase of {s.Branch} onto {s.Onto} is paused at {s.ShortCommit} ({s.Step}/{s.Total}): run graftui again to continue, skip or abort";
     }
 
+    /// <summary>
+    /// The line the terminal prints when graftui's own sequence is still in progress but its stop cannot be read. The word is "rebase" or
+    /// "cherry-pick". Nothing else is offered: the repo is left as it is, and git status shows it.
+    /// </summary>
+    public static string StillInProgressLine(string word) => $"graftui: a {word} is still in progress: run git status";
+
     /// <summary>True when any file's resolved flag differs between two reads, or the two reads list different files.</summary>
     public static bool ResolvedChanged(IReadOnlyList<ConflictFile> before, IReadOnlyList<ConflictFile> after)
     {

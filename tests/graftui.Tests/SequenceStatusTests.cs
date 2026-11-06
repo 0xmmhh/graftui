@@ -11,6 +11,14 @@ public class SequenceStatusTests
 {
     private static readonly Style BadB = new(Ink.Bad, true), WarnB = new(Ink.Warn, true);
 
+    [Theory]
+    [InlineData("rebase")]
+    [InlineData("cherry-pick")]
+    public void A_sequence_that_cannot_be_read_gets_the_run_git_status_line(string word)
+    {
+        Assert.Equal($"graftui: a {word} is still in progress: run git status", SequenceStatus.StillInProgressLine(word));
+    }
+
     private static SequenceStop Stop(PauseKind pause, SequenceKind kind = SequenceKind.Rebase, bool ours = true, int step = 1, int total = 1) =>
         new(kind, pause, "feature/conflict", "main", "c0ffee1234abc", "c0ffee1", "Change line 1 on branch",
             [new ConflictFile("app.txt", false)], step, total, "old message", [], ours);

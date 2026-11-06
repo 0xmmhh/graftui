@@ -50,8 +50,9 @@ public static class RebaseScenes
 
     /// <summary>
     /// A paused rebase, drawn from its stop alone: its plan rows are in the stop, so the picture is the same after a restart. Row A is the
-    /// base and the plan's commits as ghosts. Row B is the onto tip, the commits that have landed, and the stop: a conflict is a ✕ one cell
-    /// short of the next slot, an edit is a warm dot in that slot, and a reword or a squash is its own ghost on row A, turned warm.
+    /// base and the plan's commits as ghosts. Row B is the onto tip, the commits that have landed (at most MaxLanding are drawn, then a dim
+    /// tail), and the stop: a conflict is a ✕ one cell short of the next slot, an edit is a warm dot in that slot, and a reword or a squash
+    /// is its own ghost on row A, turned warm.
     /// </summary>
     public static SceneFrame Paused(ArtGeometry g, SequenceStop stop, Ink branchInk, Ink ontoInk)
     {
@@ -81,13 +82,15 @@ public static class RebaseScenes
         if (warmOnA && stopAt < ghosts)
             grid.Put(g.TipX(stopAt + 1), g.A, '●', WarnB);
 
-        // Row B: the line down from row A, the onto tip, then each landed commit in its branch's colour.
+        // Row B: the line down from row A, the onto tip, then the landed commits in their branch's colour. At most MaxLanding are drawn; a
+        // longer landing ends in a dim tail, so the stop's slot is still on the art.
         grid.VLine(g.XB, g.A + 1, g.B - 1, branch);
         grid.Put(g.XB, g.B, '╰', branch);
         MergeScenes.Label(grid, g, g.TipX(1), g.B, up: false, stop.Onto, null, ontoInk);
         grid.Put(g.TipX(1), g.B, '●', onto);
+        var drawn = Math.Min(landed, MaxLanding);
         var last = g.TipX(1);
-        for (var k = 1; k <= landed; k++)
+        for (var k = 1; k <= drawn; k++)
         {
             var x = g.TipX(k + 1);
             grid.HLine(last + 1, x - 1, g.B, branch);
@@ -95,17 +98,23 @@ public static class RebaseScenes
             last = x;
         }
 
-        var slot = g.TipX(landed + 2);
+        var slot = g.TipX(drawn + 2);
+        var truncated = landed > drawn;
+        if (truncated)
+            grid.HLine(last + 1, slot - 1, g.B, Dim, '┄');
+
+        // The stop's own line runs from the last landed commit to the stop, or, after a tail, only its last cell.
+        var from = truncated ? slot - 2 : last + 1;
         var labelX = warmOnA ? g.TipX(Math.Min(stopAt + 1, MaxGhosts)) : slot;
         if (stop.Pause == PauseKind.Conflict)
         {
-            grid.HLine(last + 1, slot - 2, g.B, Bad, '━');
+            grid.HLine(from, slot - 2, g.B, Bad, '━');
             grid.Put(slot - 1, g.B, '✕', BadB);
             labelX = slot - 1;
         }
         else if (stop.Pause == PauseKind.Edit)
         {
-            grid.HLine(last + 1, slot - 1, g.B, branch);
+            grid.HLine(truncated ? slot - 1 : last + 1, slot - 1, g.B, branch);
             grid.Put(slot, g.B, '●', WarnB);
         }
 

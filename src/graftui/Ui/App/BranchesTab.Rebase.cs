@@ -233,8 +233,10 @@ internal sealed partial class BranchesTab
         var landed = LayoutAfter(after, o.Onto, engine.ReadLayout);
         var result = new BranchResult(true, RebaseText.DoneTitle, new Caption(done, OkB), landed,
             Panel: SequenceLists.Rebased(o, rows, landed ?? L), Sequence: o);
-        return new BranchFinish(result, o.Commands, log, "graftui: " + o.Message, after, o.Onto,
-            Hints: new CommandHints(Onto: o.Onto));
+        return new BranchFinish(result, o.Commands, log, "graftui: " + o.Message, after, o.Onto)
+        {
+            Hints = new CommandHints(Onto: o.Onto),
+        };
     }
 
     /// <summary>
@@ -250,8 +252,11 @@ internal sealed partial class BranchesTab
         if (conflict)
             log.Add((RebaseText.ConflictLine(stop), BadB));
         var result = new BranchResult(true, RebaseText.PausedTitle, SequenceStatus.Caption(stop), null, Sequence: o);
-        return new BranchFinish(result, o.Commands, log, null, after, null, ExitCode: conflict ? 1 : 0,
-            Hints: new CommandHints(Onto: o.Onto));
+        return new BranchFinish(result, o.Commands, log, null, after, null)
+        {
+            ExitCode = conflict ? 1 : 0,
+            Hints = new CommandHints(Onto: o.Onto),
+        };
     }
 
     /// <summary>A rebase that was aborted: the branch is back on its old tip, and the selection stays where it was.</summary>
@@ -260,8 +265,10 @@ internal sealed partial class BranchesTab
     {
         var text = RebaseText.Aborted(cur);
         var result = new BranchResult(false, RebaseText.AbortedTitle, new Caption(text, BadB), landed);
-        return new BranchFinish(result, commands, [(text, BadB)], RebaseText.ExitAborted(cur, onto), after, null,
-            Hints: new CommandHints(Onto: onto));
+        return new BranchFinish(result, commands, [(text, BadB)], RebaseText.ExitAborted(cur, onto), after, null)
+        {
+            Hints = new CommandHints(Onto: onto),
+        };
     }
 
     /// <summary>

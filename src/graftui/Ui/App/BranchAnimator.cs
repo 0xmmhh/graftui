@@ -118,14 +118,18 @@ internal sealed class BranchAnimator(AppController app)
     internal static CommitPanel? FinishPanel(BranchResult r) =>
         r.Panel ?? (r.After is { } after ? CommitLists.Idle(after) : null);
 
-    /// <summary>The log jumps to the first command that moves the branch or the stash: a switch, a branch change, a stash push, a merge, a rebase or a cherry-pick.</summary>
+    /// <summary>
+    /// The log jumps to the first command that moves the branch or the stash: a switch, a branch change, a stash push, a merge, a rebase or a
+    /// cherry-pick. A paused conflict is resumed by staging the resolved file first, so that staging is where the step starts.
+    /// </summary>
     private static bool IsAnchor(GitResult r) =>
         Is(r, GitArgs.Switch)
         || (Is(r, "branch") && !r.Args.Contains("--contains"))
         || (Is(r, GitArgs.Stash) && Sub(r, "push"))
         || Is(r, "merge")
         || Is(r, "rebase")
-        || Is(r, "cherry-pick");
+        || Is(r, "cherry-pick")
+        || Is(r, "add");
 
     /// <summary>The anchors' output, the stash pop and the merge abort, and the output of any failed command.</summary>
     internal static bool ShowOutput(GitResult r) =>

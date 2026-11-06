@@ -13,14 +13,26 @@ namespace graftui.Ui.App;
 internal sealed partial class BranchesTab
 {
     /// <summary>
-    /// A question: its title, its text (in the overlay), the key that answers yes and the labels after the yes and n keys, the caption
-    /// for a cancel, the direction line, the layout under the overlay, what a yes does, and (optionally) the same question in fewer
-    /// words, for an art too short for the full text. <c>OnNo</c> replaces the flash of a cancel (the pause screen shows its own note);
-    /// <c>Base</c> draws the scene under the overlay in place of the layout's preview.
+    /// A question: its title, its text (in the overlay), the key that answers yes, what a yes does, the direction line and the layout under
+    /// the overlay. The rest is set with initialisers: the labels after the yes and n keys and the caption for a cancel (required), and
+    /// optionally the same question in fewer words for an art too short for the full text (<c>ShortText</c>). <c>OnNo</c> replaces the flash
+    /// of a cancel (the pause screen shows its own note); <c>Base</c> draws the scene under the overlay in place of the layout's preview.
     /// </summary>
-    private sealed record BranchQuestion(string Title, string Text, char YesKey, string YesLabel, string NoLabel, string CancelText,
-        Func<int, IReadOnlyList<Seg>> Direction, GraphLayout? Layout, Action OnYes, string? ShortText = null, Action? OnNo = null,
-        Func<ArtGeometry, ArtGrid>? Base = null);
+    private sealed record BranchQuestion(string Title, string Text, char YesKey, Action OnYes, Func<int, IReadOnlyList<Seg>> Direction,
+        GraphLayout? Layout)
+    {
+        public required string YesLabel { get; init; }
+
+        public required string NoLabel { get; init; }
+
+        public required string CancelText { get; init; }
+
+        public string? ShortText { get; init; }
+
+        public Action? OnNo { get; init; }
+
+        public Func<ArtGeometry, ArtGrid>? Base { get; init; }
+    }
 
     private BranchQuestion? _question;
 
@@ -29,8 +41,9 @@ internal sealed partial class BranchesTab
     {
         if (!_app.ArtFits())
         {
-            _app.LogMessage("Refused: widen the window to answer this question", WarnB);
-            ShowFlash(q.Layout, new Caption("Refused: widen the window to answer this question", Warn));
+            const string tooSmall = "Refused: widen the window to answer this question";
+            _app.LogMessage(tooSmall, WarnB);
+            ShowTooSmall(q, new Caption(tooSmall, Warn));
             return;
         }
 
@@ -55,6 +68,22 @@ internal sealed partial class BranchesTab
             return new SceneFrame(grid, new Caption($"{q.YesKey}{q.YesLabel} · n{q.NoLabel}", Warn));
         };
         art.SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// A question the art cannot hold: its caption goes over the picture the question would have drawn. A question with its own picture (the
+    /// pause's art) keeps that picture, so the art is never blanked; the others show the preview of their layout.
+    /// </summary>
+    private void ShowTooSmall(BranchQuestion q, Caption caption)
+    {
+        if (q.Base is null)
+        {
+            ShowFlash(q.Layout, caption);
+            return;
+        }
+
+        _app.Art.Scene = geo => new SceneFrame(q.Base(geo), caption);
+        _app.Art.SetNeedsDraw();
     }
 
     /// <summary>

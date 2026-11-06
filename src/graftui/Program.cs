@@ -111,9 +111,12 @@ var exitCode = FinishMerge();
 var changeCode = WaitForChanges();
 
 // A rebase or cherry-pick left paused is printed with what to run next. It is read from the repo now, since it may have ended.
-var paused = gui?.PausedAtExit();
+var read = gui?.ReadSequenceAtExit() ?? new SequenceRead(null, null, null);
+var paused = read.Stop is not null && read.Stop.Ours ? read.Stop : null;
 if (paused is not null)
     Console.WriteLine(SequenceStatus.ExitLine(paused));
+else if (read.Unreadable is { } word)
+    Console.WriteLine(SequenceStatus.StillInProgressLine(word));
 
 if (uiError is not null)
 {
@@ -121,8 +124,10 @@ if (uiError is not null)
     return 1;
 }
 
-// A conflict left paused exits 1, as a conflicted rebase does. An edit or a message pause exits 0.
-var code = exitCode != 0 ? exitCode : changeCode;
+// A conflict left paused exits 1, as a conflicted rebase does. An edit or a message pause exits 0. When the pause that set the change's
+// code is gone by exit, the code goes with it.
+var changeNow = paused is null && gui is not null && gui.ChangeLeftPause ? 0 : changeCode;
+var code = exitCode != 0 ? exitCode : changeNow;
 if (paused is not null && paused.Pause == PauseKind.Conflict && code == 0)
     return 1;
 return code;

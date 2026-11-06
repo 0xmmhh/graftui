@@ -2,6 +2,7 @@ using graftui.Git;
 using graftui.Model;
 using graftui.Operations;
 using graftui.Ui.App;
+using graftui.Ui.Scenes;
 using graftui.Ui.Text;
 using Terminal.Gui.App;
 using Terminal.Gui.Input;
@@ -67,7 +68,7 @@ public sealed class RebasePauseScreenTests : IDisposable
         using var repo = SequenceRepos.FeatureConflict();
         var app = OpenPaused(repo);
 
-        foreach (var key in new[] { Key.M, Key.S, Key.N, Key.R, Key.D, Key.U, Key.C, Key.I })
+        foreach (var key in new[] { Key.M, Key.S, Key.N, Key.R, Key.D.WithShift, Key.U, Key.C, Key.I })
         {
             _ui.Keyboard.RaiseKeyDownEvent(key);
 
@@ -126,6 +127,112 @@ public sealed class RebasePauseScreenTests : IDisposable
     }
 
     [Fact]
+    public void An_abort_question_that_does_not_fit_keeps_the_pause_art_under_its_caption()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        _ui.Driver!.SetScreenSize(40, 8);
+        var app = OpenPaused(repo);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.X.WithShift);
+
+        Assert.Equal(BranchesMode.Browse, app.BranchesTab.Mode);
+        var frame = app.Art.Scene!(ArtGeometry.For(60, 9)!);
+        Assert.Equal("Refused: widen the window to answer this question", frame.Caption!.Text);
+        var cells = Enumerable.Range(0, frame.Grid.Height).SelectMany(y => Enumerable.Range(0, frame.Grid.Width).Select(x => frame.Grid[x, y].Ch));
+        Assert.Contains('●', cells);
+    }
+
+    [Fact]
+    public void The_conflicted_file_read_for_another_stop_is_dropped()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+
+        app.BranchesTab.ApplyConflictRead([new ConflictFile("app.txt", true)], new string('0', 40));
+
+        Assert.Equal(new[] { "✖ app.txt  both modified" }, app.Art.BelowFor!(40, 3).Select(line => string.Concat(line.Select(s => s.Text))));
+    }
+
+    [Fact]
+    public async Task A_continue_asked_while_graftui_is_quitting_starts_nothing_and_the_pause_stays()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+        repo.Write("app.txt", "line 1 (resolved)\n");
+        app.MarkQuitting();
+
+        app.BranchesTab.StartResume(ResumeAction.Continue);
+
+        Assert.Null(await app.ChangesTask!);
+        Assert.False(app.BranchAnimator.Running);
+        Assert.True(SequenceGit.RebaseInProgress(GitDir(repo)));
+        // Nothing was staged: the file is still unmerged in the index.
+        Assert.NotEqual("", repo.Run("ls-files", "-u"));
+    }
+
+    [Fact]
+    public void A_refusal_note_goes_with_the_next_key_and_the_pause_screen_is_drawn_again()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.M);
+        Assert.Equal("Refused: a rebase is in progress: finish or abort it first", Caption(app));
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorDown);
+
+        Assert.Equal(RebaseText.PauseCaption(app.Snapshot.Paused!), Caption(app));
+    }
+
+    [Fact]
+    public void A_failed_step_that_leaves_the_pause_puts_its_failure_on_the_pause_screen()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+        var failed = new BranchResult(false, "Failed", new Caption("✕ Rebase failed: boom", new Style(Ink.Bad, true)), null);
+
+        app.BranchesTab.ShowPauseAfter(failed);
+
+        Assert.Equal(RebaseText.PausedTitle, app.Art.Title);
+        Assert.Equal("✕ Rebase failed: boom", Caption(app));
+    }
+
+    [Fact]
+    public void A_step_that_pauses_again_shows_the_stop_caption_and_no_note()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+        var stop = app.Snapshot.Paused!;
+        var outcome = new SequenceOutcome(SequenceOutcomeKind.Paused, SequenceKind.Rebase, "feature", "main", "", null, stop,
+            [], [], [], [], [], [], "paused", []);
+        var again = new BranchResult(true, RebaseText.PausedTitle, SequenceStatus.Caption(stop), null, Sequence: outcome);
+
+        app.BranchesTab.ShowPauseAfter(again);
+
+        Assert.Equal(RebaseText.PauseCaption(stop), Caption(app));
+    }
+
+    [Fact]
+    public void A_conflicted_file_that_cannot_be_read_gives_no_read_so_the_poll_carries_on()
+    {
+        // Needs file permissions that Windows does not have, and a root user reads any file.
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root")
+            return;
+
+        using var repo = TempRepo.Create();
+        var path = Path.Combine(repo.Dir, "locked.txt");
+        File.WriteAllText(path, "x\n");
+        File.SetUnixFileMode(path, UnixFileMode.None);
+        try
+        {
+            Assert.Null(BranchesTab.ReadConflictFiles(repo.Dir, ["locked.txt"]));
+        }
+        finally
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    [Fact]
     public async Task Continue_after_the_file_is_resolved_finishes_the_rebase_on_a_worker()
     {
         using var repo = SequenceRepos.FeatureConflict();
@@ -178,7 +285,7 @@ public sealed class RebasePauseScreenTests : IDisposable
         using var repo = SequenceRepos.FeatureConflict();
         var app = OpenPaused(repo);
 
-        app.BranchesTab.ApplyConflictRead([new ConflictFile("app.txt", true)]);
+        app.BranchesTab.ApplyConflictRead([new ConflictFile("app.txt", true)], app.Snapshot.Paused!.Commit);
 
         Assert.Equal(new[] { "✔ app.txt  resolved" }, app.Art.BelowFor!(40, 3).Select(line => string.Concat(line.Select(s => s.Text))));
     }

@@ -66,7 +66,7 @@ internal sealed partial class BranchesTab
         var caption = came is null ? $"✔ Switched to {name}" : $"✔ Switched to {name} · {came}";
         var exit = $"graftui: switched to {name}" + (came is null ? "" : $"; {came}");
         var result = new BranchResult(true, "Switched", new Caption(caption, OkB), null, Panel: CommitLists.Switched(before));
-        return new BranchFinish(result, o.Commands, [], exit, after, name, HoldWidth: true);
+        return new BranchFinish(result, o.Commands, [], exit, after, name) { HoldWidth = true };
     }
 
     /// <summary>
@@ -128,9 +128,10 @@ internal sealed partial class BranchesTab
             BeginQuestion(new BranchQuestion(
                 Title: DeleteTitle,
                 Text: $"Delete {name}? Everything on it is already in {into}, so nothing is lost; u brings it back.",
-                YesKey: 'y', YesLabel: " delete", NoLabel: " keep", CancelText: DeleteCancelled,
-                Direction: direction, Layout: loaded,
-                OnYes: () => StartDelete(check, force: false, loaded)));
+                YesKey: 'y', OnYes: () => StartDelete(check, force: false, loaded), Direction: direction, Layout: loaded)
+            {
+                YesLabel = " delete", NoLabel = " keep", CancelText = DeleteCancelled,
+            });
             return;
         }
 
@@ -139,10 +140,11 @@ internal sealed partial class BranchesTab
             Title: DeleteTitle,
             Text: $"{name} has {commits} that {into} doesn't have. Deleting it needs git branch -D; "
                 + "graftui records where it pointed, so u can bring it back.",
-            YesKey: 'y', YesLabel: " continue", NoLabel: " keep", CancelText: DeleteCancelled,
-            Direction: direction, Layout: loaded,
-            OnYes: () => AskDeleteForGood(check, loaded),
-            ShortText: $"{name}: {commits} {into} doesn't have. Needs git branch -D; u brings it back."));
+            YesKey: 'y', OnYes: () => AskDeleteForGood(check, loaded), Direction: direction, Layout: loaded)
+        {
+            YesLabel = " continue", NoLabel = " keep", CancelText = DeleteCancelled,
+            ShortText = $"{name}: {commits} {into} doesn't have. Needs git branch -D; u brings it back.",
+        });
     }
 
     /// <summary>The second question for an unmerged branch. It is answered with 1, so a held y cannot answer both.</summary>
@@ -155,9 +157,11 @@ internal sealed partial class BranchesTab
         BeginQuestion(new BranchQuestion(
             Title: "Delete for good?",
             Text: $"Really delete {name}? {lost}",
-            YesKey: '1', YesLabel: " delete", NoLabel: " keep", CancelText: DeleteCancelled,
-            Direction: cols => DirectionLine.Delete(name, cols), Layout: loaded,
-            OnYes: () => StartDelete(check, force: true, loaded)));
+            YesKey: '1', OnYes: () => StartDelete(check, force: true, loaded),
+            Direction: cols => DirectionLine.Delete(name, cols), Layout: loaded)
+        {
+            YesLabel = " delete", NoLabel = " keep", CancelText = DeleteCancelled,
+        });
     }
 
     /// <summary>
@@ -300,9 +304,11 @@ internal sealed partial class BranchesTab
         BeginQuestion(new BranchQuestion(
             Title: "Uncommitted changes",
             Text: $"You have {MergeScenes.Plural(changed, "uncommitted change")}. Stash them, merge {branch} into {into}, then pop them back?",
-            YesKey: 'y', YesLabel: " stash, merge, pop", NoLabel: " cancel", CancelText: "Merge cancelled: nothing changed",
-            Direction: cols => DirectionLine.StashMerge(branch, branchInk, into, intoInk, cols), Layout: layout,
-            OnYes: () => StartStashMerge(branch, into, layout, changed)));
+            YesKey: 'y', OnYes: () => StartStashMerge(branch, into, layout, changed),
+            Direction: cols => DirectionLine.StashMerge(branch, branchInk, into, intoInk, cols), Layout: layout)
+        {
+            YesLabel = " stash, merge, pop", NoLabel = " cancel", CancelText = "Merge cancelled: nothing changed",
+        });
     }
 
     /// <summary>
@@ -373,7 +379,7 @@ internal sealed partial class BranchesTab
                     : [];
                 return new BranchFinish(new BranchResult(true, "Aborted", new Caption(text, BadB), null, Merge: o.Merge), o.Commands, log,
                     $"graftui: merge of {branch} conflicted{(conflicts.Count > 0 ? $" in {conflicts[0]}" : "")}; aborted, your changes are back",
-                    after, branch, ExitCode: 1);
+                    after, branch) { ExitCode = 1 };
             }
 
             case StashMergeKind.PopConflict:
@@ -399,7 +405,7 @@ internal sealed partial class BranchesTab
                     : $"graftui: {o.Message}";
                 return new BranchFinish(
                     new BranchResult(true, "Pop conflict", new Caption(caption, undoable ? BadB : Warn), layout, "Pop conflict", overlay, o.Merge),
-                    o.Commands, log, exit, after, branch, ExitCode: 1);
+                    o.Commands, log, exit, after, branch) { ExitCode = 1 };
             }
 
             default:
