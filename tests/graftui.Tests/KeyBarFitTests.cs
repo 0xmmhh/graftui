@@ -20,6 +20,10 @@ public class KeyBarFitTests
 
     private static IEnumerable<string> Names(IEnumerable<(string Key, string Label, int Priority)> items) => items.Select(i => i.Key);
 
+    /// <summary>The bar of fitted items (key and label, no priority), as the screen words it.</summary>
+    private static string Pairs(IEnumerable<(string Key, string Label)> items) =>
+        string.Join("  ", items.Select(i => i.Key + i.Label));
+
     // ----- fitting a narrow bar -----
 
     [Fact]
@@ -347,5 +351,41 @@ public class KeyBarFitTests
         var bar = new KeyBarView { Mode = KeyBarMode.Confirm };
 
         Assert.Equal("Enter rebase  Esc cancel", Bar(bar.Items()));
+    }
+
+    [Fact]
+    public void Branches_bar_lists_i_interactive_with_r_rebase_and_only_when_rebase_is_offered()
+    {
+        var with = BranchesKeyState.Empty with { BranchCount = 3, CanRebase = true };
+        var without = BranchesKeyState.Empty with { BranchCount = 3, CanRebase = false };
+
+        Assert.Contains("r rebase  i interactive", Bar(KeyBarView.BranchesItems(with)));
+        Assert.DoesNotContain("i interactive", Bar(KeyBarView.BranchesItems(without)));
+    }
+
+    [Fact]
+    public void The_todo_bar_at_100_columns_drops_only_the_arrows_and_edit()
+    {
+        var bar = new KeyBarView { Mode = KeyBarMode.Todo };
+
+        var fitted = KeyBarView.FitItems(bar.Items(), 100, out var separator);
+
+        Assert.Equal(1, separator);
+        Assert.Equal("⇧↑↓ reorder  p pick  r reword  s squash  f fixup  d drop  Enter start  Esc cancel", Pairs(fitted));
+    }
+
+    [Fact]
+    public void The_todo_bar_at_64_columns_keeps_reorder_pick_drop_start_and_cancel()
+    {
+        var fitted = KeyBarView.FitItems(KeyBarView.TodoItems(), 64, out _);
+
+        Assert.Equal("⇧↑↓ reorder  p pick  d drop  Enter start  Esc cancel", Pairs(fitted));
+    }
+
+    [Fact]
+    public void The_todo_bar_lists_the_plan_keys_in_order_when_there_is_room()
+    {
+        Assert.Equal("↑↓ move  ⇧↑↓ reorder  p pick  r reword  e edit  s squash  f fixup  d drop  Enter start  Esc cancel",
+            Bar(KeyBarView.TodoItems()));
     }
 }

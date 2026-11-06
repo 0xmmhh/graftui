@@ -14,7 +14,7 @@ public sealed record ChangesKeyState(int RowCount, ChangeSide? SelectedSide, boo
 
 /// <summary>
 /// What the Branches tab's key bar needs: how many branches there are, whether m can merge the selected branch, and whether u has a step.
-/// CanRebase is whether r can rebase the current branch onto the selected one (see <see cref="RebaseOffered"/>). Pause is the kind of
+/// CanRebase is whether r or i can rebase the current branch onto the selected one (see <see cref="RebaseOffered"/>). Pause is the kind of
 /// paused sequence, when there is one: the bar then lists the pause's keys instead.
 /// </summary>
 public sealed record BranchesKeyState(int BranchCount, bool CanMerge, bool HasUndo, bool CanSwitch = false, bool CanCreate = false,
