@@ -9,9 +9,9 @@ public enum TodoEnd { Play, Stop, Abort, Halt }
 /// <summary>
 /// What the scene plays. Starts[j] is when row j starts its flight, in scene time; -1 for a row that is not played (a row before From, or
 /// the skipped row). From is the first row the scene plays; SkipAt is the row a resume skips (-1 for none). End says how the run stops:
-/// at StopAt (with the kind of stop in Stop), by an abort of the stop row, or to the end.
+/// at StopAt (with the kind of stop in Stop), by an abort of the stop row, or to the end. Fly is how long each flight takes in this run.
 /// </summary>
-public sealed record TodoRun(IReadOnlyList<long> Starts, int From, int SkipAt, TodoEnd End, int StopAt, PauseKind? Stop);
+public sealed record TodoRun(IReadOnlyList<long> Starts, int From, int SkipAt, TodoEnd End, int StopAt, PauseKind? Stop, long Fly);
 
 /// <summary>
 /// The interactive rebase's scene. The current branch's commits (row A) are cut loose at 600 ms and fly down to the
@@ -24,8 +24,17 @@ public static class TodoScenes
     /// <summary>The time before the first flight: row A is held whole while git answers.</summary>
     public const long Cut = 600;
 
-    /// <summary>One flight, and the gap before the next one.</summary>
+    /// <summary>One flight, and the gap before the next one, at full pace: a run of up to <see cref="FullPaceRows"/> rows keeps them.</summary>
     public const long Fly = 700, Gap = 140;
+
+    /// <summary>The rows that play at full pace. A longer run shrinks its flights and gaps so that its replay fits in <see cref="ReplayMs"/>.</summary>
+    public const int FullPaceRows = 5;
+
+    /// <summary>The longest replay after the cut: the flights of <see cref="FullPaceRows"/> rows at full pace, which ends at their last landing.</summary>
+    public const long ReplayMs = (FullPaceRows - 1) * (Fly + Gap) + Fly;
+
+    /// <summary>The scene time a halted run freezes at: just before the cut, so row A is still whole and nothing has flown.</summary>
+    public const long HaltAt = Cut - 1;
 
     /// <summary>The flash and the return of an aborted run.</summary>
     public const long Flash = 700, Ret = 500;
@@ -33,6 +42,9 @@ public static class TodoScenes
     private const long LandedMs = 260, FoldedMs = 320;
 
     private const int BlinkMs = 140;
+
+    /// <summary>The landing places on row B that each have their own slot. Later slots share the place after a dim ┄ tail.</summary>
+    private const int MaxLanding = 3;
 
     private static readonly Style Dim = new(Ink.Dim), Bad = new(Ink.Bad), BadB = new(Ink.Bad, true), FgB = new(Ink.Fg, true);
     private static readonly Style Mrg = new(Ink.Mrg), MrgB = new(Ink.Mrg, true), WarnB = new(Ink.Warn, true), OkB = new(Ink.Ok, true);
@@ -44,6 +56,14 @@ public static class TodoScenes
     /// </summary>
     public static TodoRun Plan(IReadOnlyList<RebaseRow> rows, int from, int skipAt)
     {
+        var played = 0;
+        for (var j = Math.Max(0, from); j < rows.Count; j++)
+        {
+            if (j != skipAt)
+                played++;
+        }
+
+        var pace = PaceOf(played);
         var starts = new long[rows.Count];
         var at = Cut;
         for (var j = 0; j < rows.Count; j++)
@@ -54,9 +74,23 @@ public static class TodoScenes
                 continue;
             }
             starts[j] = at;
-            at += Fly + Gap;
+            at += pace.Fly + pace.Gap;
         }
-        return new TodoRun(starts, from, skipAt, TodoEnd.Play, -1, null);
+        return new TodoRun(starts, from, skipAt, TodoEnd.Play, -1, null, pace.Fly);
+    }
+
+    /// <summary>
+    /// The flight and the gap of a run that plays <paramref name="played"/> rows. Up to <see cref="FullPaceRows"/> rows keep <see cref="Fly"/>
+    /// and <see cref="Gap"/>. A longer run shrinks both in the same 5 to 1 proportion, so its flights end within <see cref="ReplayMs"/> of the cut.
+    /// </summary>
+    private static (long Fly, long Gap) PaceOf(int played)
+    {
+        if (played <= FullPaceRows)
+            return (Fly, Gap);
+
+        var stride = ReplayMs * (Fly + Gap) / ((played - 1) * (Fly + Gap) + Fly);
+        var fly = Math.Max(1, stride * Fly / (Fly + Gap));
+        return (fly, Math.Max(0, stride - fly));
     }
 
     /// <summary>
@@ -85,19 +119,22 @@ public static class TodoScenes
         return run with { End = TodoEnd.Halt };
     }
 
-    /// <summary>The scene time the run has reached when it is over: its last flight's landing, or the stop's landing, or the abort's return.</summary>
+    /// <summary>
+    /// The scene time the run has reached when it is over: its last flight's landing, or the stop's landing, or the abort's return. A halted
+    /// run is over at <see cref="HaltAt"/>, before its first flight starts.
+    /// </summary>
     public static long Total(TodoRun run)
     {
         if (run.End == TodoEnd.Abort)
             return Flash + Ret;
         if (run.End == TodoEnd.Halt)
-            return Cut;
+            return HaltAt;
         if (run.End == TodoEnd.Stop)
-            return run.Starts[run.StopAt] + Fly;
+            return run.Starts[run.StopAt] + run.Fly;
 
         var end = Cut;
         foreach (var start in run.Starts.Where(s => s >= 0))
-            end = Math.Max(end, start + Fly);
+            end = Math.Max(end, start + run.Fly);
         return end;
     }
 
@@ -131,7 +168,8 @@ public static class TodoScenes
 
     /// <summary>
     /// The first row a resume plays. A conflict's commit is picked again (it is continued or skipped), and an abort starts at the stopped
-    /// row; an edit, reword or squash has landed already, so the rows after its stop are the ones that fly.
+    /// row; an edit, reword or squash has landed already, so the rows after its stop are the ones that fly. When the stop names no row of the
+    /// plan, the run starts at the stop's step.
     /// </summary>
     public static int ResumeFrom(IReadOnlyList<RebaseRow> rows, SequenceStop stop, ResumeAction action)
     {
@@ -194,7 +232,7 @@ public static class TodoScenes
     }
 
     // Row A: the current branch's commits, up to the ones the art has room for. A commit that has flown (or has been skipped) is a dim ghost.
-    private static void DrawRowA(ArtGrid grid, ArtGeometry g, IReadOnlyList<RebaseRow> rows, TodoRun run, long te, Style line, Style cur)
+    private static void DrawRowA(ArtGrid grid, ArtGeometry g, IReadOnlyList<RebaseRow> rows, TodoRun run, long te, Style line, Style curB)
     {
         var n = Math.Min(rows.Count, Visible(g));
         var px = g.XB;
@@ -202,12 +240,12 @@ public static class TodoScenes
         {
             var x = g.TipX(j + 1);
             grid.HLine(px + 1, x - 1, g.A, line);
-            DrawRowADot(grid, g, rows[j], j, x, run, te, cur);
+            DrawRowADot(grid, g, rows[j], j, x, run, te, curB);
             px = x;
         }
     }
 
-    private static void DrawRowADot(ArtGrid grid, ArtGeometry g, RebaseRow row, int j, int x, TodoRun run, long te, Style cur)
+    private static void DrawRowADot(ArtGrid grid, ArtGeometry g, RebaseRow row, int j, int x, TodoRun run, long te, Style curB)
     {
         if (j == run.SkipAt)
         {
@@ -223,7 +261,7 @@ public static class TodoScenes
                 return;
             }
             // A dropped commit blinks while its flight is on, then stays a dim ✕.
-            var flying = run.Starts[j] >= 0 && te < run.Starts[j] + Fly;
+            var flying = run.Starts[j] >= 0 && te < run.Starts[j] + run.Fly;
             grid.Put(x, g.A, '✕', flying ? MergeScenes.Blink(te, Bad, Dim) : Dim);
             return;
         }
@@ -235,7 +273,7 @@ public static class TodoScenes
         else if (row.Action == RebaseAction.Reword || row.Action == RebaseAction.Edit)
             grid.Put(x, g.A, '●', WarnB);
         else
-            grid.Put(x, g.A, '●', cur);
+            grid.Put(x, g.A, '●', curB);
     }
 
     // Whether row j has left row A by scene time te: it is before the first played row, it is the skipped row, or its flight has started.
@@ -255,7 +293,7 @@ public static class TodoScenes
         for (var j = 0; j < run.Starts.Count; j++)
         {
             var start = run.Starts[j];
-            if (start >= 0 && te >= start && te < start + Fly)
+            if (start >= 0 && te >= start && te < start + run.Fly)
                 return j;
         }
         return -1;
@@ -286,7 +324,7 @@ public static class TodoScenes
             if (j < run.From)
             {
                 if (!isFold)
-                    DrawLanded(grid, g, from, dest, cur, curB, bright: false);
+                    DrawLanded(grid, g, slot, from, dest, cur, curB, bright: false);
                 continue;
             }
 
@@ -294,9 +332,9 @@ public static class TodoScenes
             if (start < 0 || te < start)
                 continue;
 
-            if (te < start + Fly)
+            if (te < start + run.Fly)
             {
-                DrawFlight(grid, g, j, dest, start, te);
+                DrawFlight(grid, g, j, dest, start, te, run.Fly);
                 continue;
             }
 
@@ -306,29 +344,34 @@ public static class TodoScenes
                 continue;
             }
 
-            var since = te - (start + Fly);
+            var since = te - (start + run.Fly);
             if (isFold)
                 grid.Put(dest, g.B, '●', since < FoldedMs ? MrgB : curB);
             else
-                DrawLanded(grid, g, from, dest, cur, curB, bright: since < LandedMs);
+                DrawLanded(grid, g, slot, from, dest, cur, curB, bright: since < LandedMs);
         }
     }
 
-    // The slot's x on row B: the base's tip, then one step per slot. Slot -1 is the base's tip itself.
-    private static int Dest(ArtGeometry g, int sxTip, int slot) => sxTip + g.Step * (slot + 1);
+    // The place of a slot on row B: the base's tip, then one step per slot. Slot -1 is the base's tip itself. Slots past MaxLanding share the
+    // place after the tail, and no place is past the right edge, so a landing is always drawn on the art.
+    private static int Dest(ArtGeometry g, int sxTip, int slot) => Math.Min(sxTip + g.Step * (Math.Min(slot, MaxLanding) + 1), g.Width - 1);
 
-    // A landed commit: the line from the slot before, then its dot, bright for a moment after it lands.
-    private static void DrawLanded(ArtGrid grid, ArtGeometry g, int from, int dest, Style cur, Style curB, bool bright)
+    // A landed commit: the line from the slot before, then its dot, bright for a moment after it lands. A slot past the window is joined by a
+    // dim ┄ tail instead of a solid line.
+    private static void DrawLanded(ArtGrid grid, ArtGeometry g, int slot, int from, int dest, Style cur, Style curB, bool bright)
     {
-        grid.HLine(from + 1, dest - 1, g.B, cur);
+        if (slot >= MaxLanding)
+            grid.HLine(from + 1, dest - 1, g.B, Dim, '┄');
+        else
+            grid.HLine(from + 1, dest - 1, g.B, cur);
         grid.Put(dest, g.B, '●', bright ? OkB : curB);
     }
 
     // The flight of one row: a dot on its arc from its commit on row A to its slot on row B.
-    private static void DrawFlight(ArtGrid grid, ArtGeometry g, int j, int dest, long start, long te)
+    private static void DrawFlight(ArtGrid grid, ArtGeometry g, int j, int dest, long start, long te, long fly)
     {
         var sx = g.TipX(Math.Min(j + 1, Visible(g)));
-        Arc(grid, sx, g.A, dest, g.B, MergeScenes.Ease((te - start) / (double)Fly));
+        Arc(grid, sx, g.A, dest, g.B, MergeScenes.Ease((te - start) / (double)fly));
     }
 
     // The stop: a conflict is a cross one cell short of its slot (an abort flashes it while it returns); an edit, a reword or a squash

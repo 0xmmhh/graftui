@@ -247,7 +247,8 @@ internal sealed partial class BranchesTab
 
         var rows = stop.Rows;
         var from = TodoScenes.ResumeFrom(rows, stop, action);
-        var skipAt = action == ResumeAction.Skip ? from : -1;
+        // A skip marks the stopped row. A stop that names no row of the plan has none to mark, so no row is skipped.
+        var skipAt = action == ResumeAction.Skip && TodoScenes.StopIndex(rows, stop) >= 0 ? from : -1;
         var run = TodoScenes.Plan(rows, from, skipAt);
         if (action == ResumeAction.Abort)
             run = TodoScenes.Aborting(run, from, stop.Pause);

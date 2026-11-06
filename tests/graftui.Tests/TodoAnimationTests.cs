@@ -153,4 +153,32 @@ public class TodoAnimationTests
         Assert.Equal("✕ Aborting the rebase…", frame.Caption!.Text);
         Assert.Equal('✕', frame.Grid[34, 6].Ch);
     }
+
+    [Fact]
+    public void A_refused_run_freezes_before_the_cut_with_row_A_whole_and_nothing_flying()
+    {
+        var rows = Plan(RebaseAction.Pick, RebaseAction.Pick, RebaseAction.Pick);
+        var anim = new TodoAnimation(Layout(), rows, TodoScenes.Plan(rows, 0, -1));
+
+        anim.SetResult(Result("Refused", "refused caption", Outcome(SequenceOutcomeKind.Refused)), 1000);
+
+        Assert.True(anim.IsDone(9000));
+        var held = TodoScenes.Rebase(G, Layout(), rows, TodoScenes.Plan(rows, 0, -1), 0, 0, waiting: false).Grid;
+        var frame = anim.Render(G, 9000);
+        Assert.Equal(Dump(held), Dump(frame.Grid));
+        Assert.Equal("refused caption", frame.Caption!.Text);
+    }
+
+    [Fact]
+    public void A_skip_whose_stop_is_not_in_the_plan_marks_no_row_as_skipped()
+    {
+        var rows = Plan(RebaseAction.Pick, RebaseAction.Pick, RebaseAction.Pick);
+        var stop = ConflictAt(rows, 0) with { Commit = "ffffffff" };
+
+        var anim = BranchesTab.ResumeAnimation(stop, ResumeAction.Skip, "Skipping", Ink.Fg, Ink.Fg, Layout());
+
+        // The first row's dot is a dim cross when it is skipped; with no stopped row to skip, row A shows no cross at all.
+        var grid = anim.Render(G, 1000).Grid;
+        Assert.DoesNotContain('✕', Enumerable.Range(0, G.Width).Select(x => grid[x, G.A].Ch));
+    }
 }
