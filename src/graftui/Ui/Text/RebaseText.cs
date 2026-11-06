@@ -4,8 +4,8 @@ using graftui.Ui.Scenes;
 namespace graftui.Ui.Text;
 
 /// <summary>
-/// The words of the rebase screens. The CLI mock's words are used as they are, except where graftui does something else (noted at
-/// each text). The desktop's pause texts are here too, for the pauses that come later.
+/// The words of the rebase screens. The mock's words are used as they are, except where graftui does something else (noted at
+/// each text). The words of the pauses (a conflict, an edit, a message) are here too, for the pause screens.
 /// </summary>
 public static class RebaseText
 {
@@ -80,7 +80,7 @@ public static class RebaseText
     /// <summary>The commits that landed: every move with a new commit.</summary>
     private static int Replayed(SequenceOutcome o) => o.Moves.Count(m => m.New is not null);
 
-    // ----- the pauses (desktop texts), used from the pause screens on -----
+    // ----- the pauses: the words for each stop, used by the pause screens -----
 
     /// <summary>The log line for a conflict that stopped the rebase.</summary>
     public static string ConflictLine(SequenceStop stop) =>
