@@ -235,7 +235,7 @@ public sealed class GitClient(string repoPath)
     }
 
     // The committer date from %ct (Unix seconds). Null when the field is not a number.
-    private static DateTimeOffset? ParseDate(string unixSeconds)
+    internal static DateTimeOffset? ParseDate(string unixSeconds)
     {
         if (!long.TryParse(unixSeconds, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds))
             return null;

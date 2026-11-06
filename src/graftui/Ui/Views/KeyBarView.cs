@@ -160,7 +160,7 @@ public sealed class KeyBarView : View
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> TodoItems() =>
         [
-            ("↑↓", " move", 1),
+            ("↑↓←→", " move", 1),
             ("⇧↑↓", " reorder", 8),
             ("p", " pick", 7),
             ("r", " reword", 4),
