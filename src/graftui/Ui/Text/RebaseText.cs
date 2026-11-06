@@ -65,6 +65,74 @@ public static class RebaseText
     /// <summary>True when the rebase ran but its undo step could not be saved. The message then says why.</summary>
     public static bool UndoSaveFailed(SequenceOutcome o) => o.Message.Contains("could not save the undo step", StringComparison.Ordinal);
 
+    // ----- the interactive rebase (the todo list) -----
+
+    /// <summary>The title of the todo list's art.</summary>
+    public const string TodoTitle = "Interactive rebase";
+
+    /// <summary>The direction line's tail while the todo list is open.</summary>
+    public const string TodoTail = "   todo";
+
+    /// <summary>The todo list's caption while nothing is refused.</summary>
+    public const string TodoHint = "Top runs first. Enter starts, a backup is saved.";
+
+    /// <summary>Every row is dropped: at least one commit must be kept.</summary>
+    public const string KeepOne = "Keep at least one commit, or press Esc to cancel";
+
+    /// <summary>The first kept commit is a squash: nothing is above it to squash into.</summary>
+    public const string FirstSquash = "The first kept commit can't be a squash: there is nothing before it to squash into";
+
+    /// <summary>The first kept commit is a fixup: nothing is above it to fold into.</summary>
+    public const string FirstFixup = "The first kept commit can't be a fixup: there is nothing before it to fold into";
+
+    /// <summary>
+    /// The refusal of i on the current branch: the interactive edit of its own commits is not built yet, so the user picks another branch.
+    /// </summary>
+    public static string InteractiveOntoSelf(string cur) =>
+        $"select another branch to rebase {cur} onto; editing the last commits of {cur} comes later";
+
+    /// <summary>The running caption of a commit that is replayed (a pick, a reword or an edit), with its place in the plan.</summary>
+    public static string Replaying(RebaseRow row, int j, int n) => $"Replaying {row.ShortHash} {row.Subject}  ({j}/{n})";
+
+    /// <summary>The running caption of a commit that is folded into the one above it (a squash or a fixup).</summary>
+    public static string Squashing(RebaseRow row, int j, int n) => $"Squashing {row.ShortHash} {row.Subject}  ({j}/{n})";
+
+    /// <summary>The running caption of a dropped commit.</summary>
+    public static string Dropping(RebaseRow row) => $"Dropping {row.ShortHash} {row.Subject}";
+
+    /// <summary>The headline of an interactive rebase that ran: what was kept, squashed and dropped.</summary>
+    public static string InteractiveDone(string cur, int kept, int squashed, int dropped) =>
+        $"✔ Rebased {cur}: {kept} kept, {squashed} squashed, {dropped} dropped, backup saved";
+
+    /// <summary>
+    /// The done caption of an interactive rebase, with the counts read from the plan. A commit git skipped is not kept; the suffixes for
+    /// skipped commits and for a resolved conflict are the same as for a plain rebase.
+    /// </summary>
+    public static string Interactive(SequenceOutcome o, string cur, IReadOnlyList<RebaseRow> rows)
+    {
+        var kept = 0;
+        var squashed = 0;
+        var dropped = 0;
+        foreach (var row in rows)
+        {
+            if (row.Action == RebaseAction.Drop)
+                dropped++;
+            else if (o.Skipped.Contains(row.Hash))
+                continue;
+            else if (row.Action == RebaseAction.Squash || row.Action == RebaseAction.Fixup)
+                squashed++;
+            else
+                kept++;
+        }
+
+        var text = InteractiveDone(cur, kept, squashed, dropped);
+        if (o.Skipped.Count > 0)
+            text += $", {MergeScenes.Plural(o.Skipped.Count, "commit")} skipped";
+        if (o.Resolved.Count > 0)
+            text += " (conflict resolved)";
+        return text;
+    }
+
     /// <summary>The label of a plan action, as git names it.</summary>
     public static string ActionLabel(RebaseAction action)
     {

@@ -35,7 +35,7 @@ public sealed class RebaseConfirmScreenTests : IDisposable
         app.BuildWindow();
         var check = app.RebaseOp.Check(new RebaseRequest("main"));
         Assert.True(check.CanRun, check.Refusal);
-        app.BranchesTab.AfterRebaseCheck(check, Layouts.Diverged());
+        app.BranchesTab.AfterRebaseCheck(check, Layouts.Diverged(), interactive: false);
         return (app, check);
     }
 

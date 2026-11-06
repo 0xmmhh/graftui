@@ -185,4 +185,60 @@ public class RebaseTextTests
         Assert.Equal("", RebaseText.Files([]));
         Assert.Equal("0123456, abcdef1", RebaseText.Shorts(["0123456789", "abcdef1234"]));
     }
+
+    [Fact]
+    public void The_refusal_of_i_on_the_current_branch_names_the_branch_and_says_where_editing_goes()
+    {
+        Assert.Equal(
+            "select another branch to rebase feature/picks onto; editing the last commits of feature/picks comes later",
+            RebaseText.InteractiveOntoSelf("feature/picks"));
+    }
+
+    [Fact]
+    public void The_todo_texts_are_the_approved_wording()
+    {
+        Assert.Equal("Top runs first. Enter starts, a backup is saved.", RebaseText.TodoHint);
+        Assert.Equal("Keep at least one commit, or press Esc to cancel", RebaseText.KeepOne);
+        Assert.Equal("The first kept commit can't be a squash: there is nothing before it to squash into", RebaseText.FirstSquash);
+        Assert.Equal("The first kept commit can't be a fixup: there is nothing before it to fold into", RebaseText.FirstFixup);
+        Assert.Equal("Interactive rebase", RebaseText.TodoTitle);
+        Assert.Equal("   todo", RebaseText.TodoTail);
+    }
+
+    [Fact]
+    public void The_scene_captions_name_the_commit_and_its_place_in_the_plan()
+    {
+        var row = new RebaseRow("a1b2c3d4", "a1b2c3d", "Fix typo in README", RebaseAction.Pick);
+
+        Assert.Equal("Replaying a1b2c3d Fix typo in README  (2/3)", RebaseText.Replaying(row, 2, 3));
+        Assert.Equal("Squashing a1b2c3d Fix typo in README  (2/3)", RebaseText.Squashing(row, 2, 3));
+        Assert.Equal("Dropping a1b2c3d Fix typo in README", RebaseText.Dropping(row));
+    }
+
+    private static SequenceOutcome Done(params string[] skipped) =>
+        new(SequenceOutcomeKind.Done, SequenceKind.Rebase, "feature", "main", "old", "new", null, [], skipped, [], [], [], [], "rebased", []);
+
+    [Fact]
+    public void The_interactive_done_caption_counts_the_plan_kept_squashed_and_dropped()
+    {
+        var rows = new[]
+        {
+            new RebaseRow("h1", "h1", "one", RebaseAction.Pick),
+            new RebaseRow("h2", "h2", "two", RebaseAction.Squash),
+            new RebaseRow("h3", "h3", "three", RebaseAction.Drop),
+            new RebaseRow("h4", "h4", "four", RebaseAction.Reword),
+        };
+
+        Assert.Equal("✔ Rebased feature: 2 kept, 1 squashed, 1 dropped, backup saved",
+            RebaseText.Interactive(Done(), "feature", rows));
+    }
+
+    [Fact]
+    public void A_commit_git_skipped_is_not_counted_as_kept_and_the_skip_is_named()
+    {
+        var rows = new[] { new RebaseRow("h1", "h1", "one", RebaseAction.Pick), new RebaseRow("h2", "h2", "two", RebaseAction.Pick) };
+
+        Assert.Equal("✔ Rebased feature: 1 kept, 0 squashed, 0 dropped, backup saved, 1 commit skipped",
+            RebaseText.Interactive(Done("h2"), "feature", rows));
+    }
 }

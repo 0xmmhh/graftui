@@ -72,6 +72,79 @@ public static class SequenceLists
         return Group(L, list);
     }
 
+    /// <summary>
+    /// The todo list under the art: a ▸ on the cursor's row, the action in its colour, the short hash, then the
+    /// subject (dim for a drop), then the row's age in dim at the end. Only <paramref name="visible"/> rows are listed; the window keeps
+    /// the cursor in view. <paramref name="now"/> is the clock the ages are read against.
+    /// </summary>
+    public static IReadOnlyList<IReadOnlyList<Seg>> Todo(TodoState state, int cols, int visible, Ink curInk, DateTimeOffset now)
+    {
+        var rows = state.Rows;
+        var first = Window(rows.Count, state.Cursor, visible);
+        List<IReadOnlyList<Seg>> lines = [];
+        for (var i = first; i < rows.Count && lines.Count < visible; i++)
+            lines.Add(TodoLine(rows[i], i == state.Cursor, cols, curInk, now));
+        return lines;
+    }
+
+    /// <summary>
+    /// The first row the todo list shows: the cursor sits in the middle of the visible rows, and the list never shows past its end.
+    /// </summary>
+    public static int Window(int count, int cursor, int visible) => Math.Clamp(cursor - visible / 2, 0, Math.Max(0, count - visible));
+
+    // The fewest subject columns a todo row keeps for its age. A subject shorter than this keeps all of its text instead.
+    private const int MinTodoSubjectCols = 8;
+
+    // The age sits at the end of the row, after at least this many spaces.
+    private const int AgeGapCols = 2;
+
+    // The row is mark, action, short hash, then a space and the subject. The age goes in after the subject, right-aligned to cols.
+    private static IReadOnlyList<Seg> TodoLine(RebaseRow row, bool selected, int cols, Ink curInk, DateTimeOffset now)
+    {
+        var mark = selected ? "▸ " : "  ";
+        var label = RebaseText.ActionLabel(row.Action).PadRight(7);
+        var subjectStyle = row.Action == RebaseAction.Drop ? Dim : Fg;
+        var subject = TextFit.Sanitize(row.Subject);
+        // The columns after the hash: the space before the subject, the subject, then the age.
+        var room = Math.Max(0, cols - TextFit.Columns(mark + label + row.ShortHash) - 1);
+        var age = row.Date.HasValue ? RelativeTime.Short(row.Date.Value, now) : null;
+        var keep = Math.Min(TextFit.Columns(subject), MinTodoSubjectCols);
+
+        List<Seg> segs =
+        [
+            new Seg(mark, selected ? new Style(Ink.Fg, true) : Dim),
+            new Seg(label, new Style(TodoInk(row.Action, curInk), true)),
+            new Seg(row.ShortHash, new Style(Ink.Hash)),
+        ];
+
+        if (age is null || room < keep + AgeGapCols + TextFit.Columns(age))
+        {
+            segs.Add(new Seg(" " + TextFit.Fit(subject, room), subjectStyle));
+            return segs;
+        }
+
+        // The subject is cut to leave the gap and the age; the gap then fills the rest, so the age ends at cols.
+        var ageCols = TextFit.Columns(age);
+        var text = TextFit.Fit(subject, room - AgeGapCols - ageCols);
+        var gap = room - TextFit.Columns(text) - ageCols;
+        segs.Add(new Seg(" " + text, subjectStyle));
+        segs.Add(new Seg(new string(' ', gap), Dim));
+        segs.Add(new Seg(age, Dim));
+        return segs;
+    }
+
+    // The colour of a todo action: a pick takes the current branch's ink, an edit or reword the warning ink, a fold the merge ink, a drop the bad ink.
+    private static Ink TodoInk(RebaseAction action, Ink curInk)
+    {
+        if (action == RebaseAction.Reword || action == RebaseAction.Edit)
+            return Ink.Warn;
+        if (action == RebaseAction.Squash || action == RebaseAction.Fixup)
+            return Ink.Mrg;
+        if (action == RebaseAction.Drop)
+            return Ink.Bad;
+        return curInk;
+    }
+
     // One landed commit: its new hash, the subject, the hash it had, and the commits folded into it.
     private sealed record Landing(string Hash, string Subject, string Old, string Folded);
 

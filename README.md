@@ -156,6 +156,9 @@ graftui --version
 | `R` | Rename the selected branch, the current one included |
 | `D` | Delete the selected branch, after a question. An unmerged one asks twice |
 | `r` | Rebase the current branch onto the selected one, after a confirm screen (Enter runs it, Esc cancels) |
+| `i` | Interactive rebase onto the selected one: a todo list first, where you choose each commit's action. ↑/↓/←/→ move, ⇧↑↓ (or Alt+↑↓, J, K) move the commit, `p` pick, `r` reword, `e` edit, `s` squash, `f` fixup, `d` drop. Enter starts (a backup is saved), Esc cancels |
+
+The todo list runs the commits oldest at the top first, and each row ends with how long ago its commit was. A squash or fixup folds its commit into the one above it, so the first kept commit cannot be a squash or a fixup, and at least one commit must be kept. A reword or an edit stops the rebase on its commit: a reword keeps the message on Enter, and an edit is amended and continued on Enter after staging the change on the Changes tab.
 
 **While a rebase is paused** (a conflict, an edit or a reword stop), the Branches tab shows the pause and takes these keys:
 

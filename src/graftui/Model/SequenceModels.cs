@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using graftui.Git;
 
 namespace graftui.Model;
@@ -6,8 +7,11 @@ namespace graftui.Model;
 
 public enum RebaseAction { Pick, Reword, Edit, Squash, Fixup, Drop }
 
-/// <summary>One commit of a rebase plan. Hash is the full hash of the ORIGINAL commit.</summary>
-public sealed record RebaseRow(string Hash, string ShortHash, string Subject, RebaseAction Action);
+/// <summary>
+/// One commit of a rebase plan. Hash is the full hash of the ORIGINAL commit. Date is the committer date, for the todo list's age;
+/// it is null when the row came from a state file, which does not keep it (the state file ignores it both ways).
+/// </summary>
+public sealed record RebaseRow(string Hash, string ShortHash, string Subject, RebaseAction Action, [property: JsonIgnore] DateTimeOffset? Date = null);
 
 /// <summary>Plan is the user's plan (oldest first); null means the default plan (every commit a pick).</summary>
 public sealed record RebaseRequest(string Onto, IReadOnlyList<RebaseRow>? Plan = null, string? ExpectedHead = null);
