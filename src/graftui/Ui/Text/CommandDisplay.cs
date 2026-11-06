@@ -3,8 +3,11 @@ using graftui.Git;
 
 namespace graftui.Ui.Text;
 
-/// <summary>What the operation knows about a command that git does not: the commit message, for `git commit -m`.</summary>
-public sealed record CommandHints(string? Subject = null, string? Body = null)
+/// <summary>
+/// What the operation knows about a command that git does not: the commit message, for `git commit -m`; and for a rebase, the branch it
+/// is rebased onto and whether it was started as an interactive one.
+/// </summary>
+public sealed record CommandHints(string? Subject = null, string? Body = null, string? Onto = null, bool Interactive = false)
 {
     public static readonly CommandHints None = new();
 }
@@ -162,7 +165,23 @@ public static class CommandDisplay
         if (r.Args[0] == "commit")
             return CommitText(r.Args, h);
 
+        if (r.Args[0] == "rebase" && h.Onto is not null && r.Args.Contains("-i"))
+            return RebaseLine(h.Onto, h.Interactive);
+
         return GitCommandLine.Render(Tidy(r.Args));
+    }
+
+    /// <summary>
+    /// `git rebase main`, or `git rebase -i main` for an interactive rebase. Git runs both as `rebase -i` (the engine writes the list of
+    /// steps itself), so this is the line the user would type, not the one that ran. `v` shows the exact one.
+    /// </summary>
+    private static string RebaseLine(string onto, bool interactive)
+    {
+        List<string> words = ["rebase"];
+        if (interactive)
+            words.Add("-i");
+        words.Add(onto);
+        return GitCommandLine.Render(words);
     }
 
     /// <summary>`git commit [--amend] -m "subject" [-m "first body line[…]"]`. The message file is not shown.</summary>

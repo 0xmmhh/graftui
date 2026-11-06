@@ -49,6 +49,8 @@ public sealed class AppController
         RenameBranchOp = new RenameBranchOperation(rootGit);
         DeleteBranchOp = new DeleteBranchOperation(rootGit);
         StashMergeOp = new StashMergeOperation(rootGit);
+        RebaseOp = new RebaseOperation(rootGit);
+        ResumeOp = new ResumeSequenceOperation(rootGit);
         Snapshot = initial;
         _listWidth = new BranchListWidth(BranchesView.WantedWidth(initial.Branches, initial.Counts));
         _repoDisplay = repoDisplay;
@@ -116,6 +118,8 @@ public sealed class AppController
     internal RenameBranchOperation RenameBranchOp { get; }
     internal DeleteBranchOperation DeleteBranchOp { get; }
     internal StashMergeOperation StashMergeOp { get; }
+    internal RebaseOperation RebaseOp { get; }
+    internal ResumeSequenceOperation ResumeOp { get; }
     internal QuitGate Gate { get; } = new();
 
     /// <summary>The top-level repo. The Changes tab's paths are relative to it, so its reads and writes run here.</summary>
@@ -387,6 +391,13 @@ public sealed class AppController
             return;
         }
 
+        // The rebase's confirm screen takes every key but v, so Tab does not leave it.
+        if (ActiveTab == TabKind.Branches && BranchesTab.Mode == BranchesMode.Confirm)
+        {
+            BranchesTab.HandleConfirmKey(e);
+            return;
+        }
+
         if (e == Key.Tab)
         {
             e.Handled = true;
@@ -435,6 +446,11 @@ public sealed class AppController
         {
             e.Handled = true;
             BranchesTab.AskDelete();
+        }
+        else if (e == Key.R)
+        {
+            e.Handled = true;
+            BranchesTab.BeginRebase();
         }
         else if (e == Key.U)
         {

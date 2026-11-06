@@ -7,9 +7,10 @@ namespace graftui.Ui.Scenes;
 /// What a branch change shows once git has answered. <c>After</c> is the layout drawn at the end (null = keep the scene's own last
 /// frame). <c>Overlay</c>, when set, is drawn as a message box over the final frame. <c>Merge</c> is set only for a stash-merge-pop.
 /// <c>Panel</c>, when set, replaces the commit panel as soon as the result is in (a switch moves its "(current)" header with the label).
+/// <c>Sequence</c> is set for a rebase: what git did, for the rebase screens.
 /// </summary>
 public sealed record BranchResult(bool Success, string Title, Caption Caption, GraphLayout? After, string? OverlayTitle = null,
-    string? Overlay = null, MergeOutcome? Merge = null, CommitPanel? Panel = null);
+    string? Overlay = null, MergeOutcome? Merge = null, CommitPanel? Panel = null, SequenceOutcome? Sequence = null);
 
 /// <summary>
 /// One branch change's animation: switch, create, rename, delete, or stash-merge-pop. Held at its hold point until git answers, then

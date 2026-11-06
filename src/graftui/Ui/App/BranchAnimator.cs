@@ -14,7 +14,8 @@ internal sealed class BranchAnimator(AppController app)
 {
     private IBranchAnimation? _anim;
     private Stopwatch? _clock;
-    private (BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log, Action OnDone)? _pending;
+    private (BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log, Action OnDone,
+        CommandHints? Hints)? _pending;
 
     /// <summary>True from <see cref="Begin"/> until the animation has finished.</summary>
     internal bool Running => _anim is not null;
@@ -48,8 +49,9 @@ internal sealed class BranchAnimator(AppController app)
     /// Records git's answer. <paramref name="log"/> is the lines the change adds to the log, each with its style (a refusal's
     /// lines are warnings, a failure's are bad). The animation ends once it has played out past this point.
     /// </summary>
-    internal void SetPending(BranchResult r, IReadOnlyList<GitResult> commands, IReadOnlyList<(string Text, Style Style)> log, Action onDone) =>
-        _pending = (r, commands, log, onDone);
+    internal void SetPending(BranchResult r, IReadOnlyList<GitResult> commands, IReadOnlyList<(string Text, Style Style)> log, Action onDone,
+        CommandHints? hints = null) =>
+        _pending = (r, commands, log, onDone, hints);
 
     private bool Tick()
     {
@@ -85,10 +87,11 @@ internal sealed class BranchAnimator(AppController app)
         // Freeze the scene at its final time so the art stops moving.
         app.Art.Scene = geo => anim.Render(geo, final);
         app.Art.Title = anim.Title(final);
-        if (pending.Result.After is { } after)
-            app.Art.Panel = CommitLists.Idle(after);
+        // The result's panel is applied even without an After (a rebase whose snapshot failed keeps its list).
+        if (FinishPanel(pending.Result) is { } panel)
+            app.Art.Panel = panel;
 
-        var anchor = app.LogCommands(pending.Commands, ShowOutput, IsAnchor);
+        var anchor = app.LogCommands(pending.Commands, ShowOutput, AnchorFor(pending.Commands), pending.Hints);
         foreach (var (text, style) in pending.Log)
             app.LogMessage(text, style);
         if (anchor >= 0)
@@ -108,19 +111,42 @@ internal sealed class BranchAnimator(AppController app)
         pending.OnDone();
     }
 
-    /// <summary>The log jumps to the first command that moves the branch or the stash: a switch, a branch change, a stash push or a merge.</summary>
+    /// <summary>
+    /// The panel under the art once a change has finished: the result's own panel, else the idle list of its snapshot. Null keeps the
+    /// panel as it is.
+    /// </summary>
+    internal static CommitPanel? FinishPanel(BranchResult r) =>
+        r.Panel ?? (r.After is { } after ? CommitLists.Idle(after) : null);
+
+    /// <summary>The log jumps to the first command that moves the branch or the stash: a switch, a branch change, a stash push, a merge, a rebase or a cherry-pick.</summary>
     private static bool IsAnchor(GitResult r) =>
         Is(r, GitArgs.Switch)
         || (Is(r, "branch") && !r.Args.Contains("--contains"))
         || (Is(r, GitArgs.Stash) && Sub(r, "push"))
-        || Is(r, "merge");
+        || Is(r, "merge")
+        || Is(r, "rebase")
+        || Is(r, "cherry-pick");
 
     /// <summary>The anchors' output, the stash pop and the merge abort, and the output of any failed command.</summary>
-    private static bool ShowOutput(GitResult r) =>
+    internal static bool ShowOutput(GitResult r) =>
         IsAnchor(r)
         || (Is(r, GitArgs.Stash) && Sub(r, "pop"))
         || (Is(r, "merge") && r.Args.Contains("--abort"))
+        || IsRebaseAbort(r)
         || !r.Success;
+
+    /// <summary>
+    /// The command the log jumps to. After a rebase that was aborted, that is its abort: a conflicting rebase prints a long failure before
+    /// it, and the abort is what the change ended on. Otherwise the first anchor, as always.
+    /// </summary>
+    internal static Func<GitResult, bool> AnchorFor(IReadOnlyList<GitResult> commands)
+    {
+        if (commands.Any(IsRebaseAbort))
+            return IsRebaseAbort;
+        return IsAnchor;
+    }
+
+    private static bool IsRebaseAbort(GitResult r) => Is(r, "rebase") && Sub(r, "--abort");
 
     private static bool Is(GitResult r, string verb) => r.Args.Count > 0 && r.Args[0] == verb;
 

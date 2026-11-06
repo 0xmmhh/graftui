@@ -14,16 +14,18 @@ namespace graftui.Ui.App;
 internal sealed partial class BranchesTab
 {
     /// <summary>What a change shows when it starts: its animation, its direction line and the panel under the art.</summary>
-    private sealed record BranchStart(IBranchAnimation Anim, Func<int, IReadOnlyList<Seg>> Direction, CommitPanel? Commits);
+    internal sealed record BranchStart(IBranchAnimation Anim, Func<int, IReadOnlyList<Seg>> Direction, CommitPanel? Commits);
 
     /// <summary>
     /// What a change shows when git has answered: the result, the commands it ran, the lines it adds to the log, the exit line,
     /// the snapshot read after it (null when that read failed), the branch to select afterwards, and the process exit code the change
     /// asks for (1 when it conflicted or failed after a merge; 0 otherwise). <c>HoldWidth</c> keeps the art's width where it is when
-    /// the snapshot is applied (a switch: its last frame must not reflow).
+    /// the snapshot is applied (a switch: its last frame must not reflow). <c>Hints</c> tells the Commands pane what the commands were for
+    /// (a rebase's target). <c>Then</c> runs last, after the snapshot and the selection are applied (a paused rebase shows its screen).
     /// </summary>
     internal sealed record BranchFinish(BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log,
-        string ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0, bool HoldWidth = false);
+        string ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0, bool HoldWidth = false, CommandHints? Hints = null,
+        Action? Then = null);
 
     /// <summary>Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now.</summary>
     private void StartWork()
@@ -75,7 +77,7 @@ internal sealed partial class BranchesTab
 
                 var f = finish(o, _app.TryLoadSnapshot());
                 _app.SetChangeExitCode(f.ExitCode);
-                _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.Log, () => EndBranchChange(f)));
+                _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.Log, () => EndBranchChange(f), f.Hints));
                 return f.ExitLine;
             }
             catch (Exception ex)
@@ -97,6 +99,7 @@ internal sealed partial class BranchesTab
             SelectName(name);
         _app.Result = SelectedName();
         _app.ReloadCountsAsync();
+        f.Then?.Invoke();
     }
 
     /// <summary>An exception on the worker: shown on the status bar; the change's animation ends as a failure when one was running.</summary>
@@ -161,16 +164,18 @@ internal sealed partial class BranchesTab
     private static BranchResult RefusedResult(string reason) =>
         new(false, "Refused", new Caption(RefusalText.Caption(reason), WarnB), null, "Refused", RefusalText.Overlay(reason));
 
-    private static BranchFinish RefusedFinish(string reason, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string select) =>
+    private static BranchFinish RefusedFinish(string reason, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string select,
+        CommandHints? hints = null) =>
         new(RefusedResult(reason), commands, RefusalText.LogLines(reason).Select(l => (Text: l, Style: WarnB)).ToList(),
-            $"graftui: refused: {reason}", after, select);
+            $"graftui: refused: {reason}", after, select, Hints: hints);
 
     /// <summary>A change that failed: the failure is the result. A null <paramref name="select"/> keeps the selection where it is.</summary>
-    private static BranchFinish FailedFinish(string verb, string message, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string? select)
+    private static BranchFinish FailedFinish(string verb, string message, IReadOnlyList<GitResult> commands, RepoSnapshot? after, string? select,
+        CommandHints? hints = null)
     {
         var text = $"{verb} failed: {message}";
         return new BranchFinish(new BranchResult(false, "Failed", new Caption($"✕ {text}", BadB), null), commands, [(text, BadB)],
-            $"graftui: {verb.ToLowerInvariant()} failed: {message}", after, select);
+            $"graftui: {verb.ToLowerInvariant()} failed: {message}", after, select, Hints: hints);
     }
 
     /// <summary>The commit panel of a layout (the commit rows under the art), or null without a layout.</summary>

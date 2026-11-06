@@ -5,8 +5,8 @@ using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace graftui.Ui.Views;
 
-/// <summary>Which keys the bar lists: the branches, the changes, a commit message form, a yes/no question, or a one-line message box.</summary>
-public enum KeyBarMode { Branches, Changes, Input, Ask, Message }
+/// <summary>Which keys the bar lists: the branches, the changes, a commit message form, a yes/no question, a one-line message box, or a rebase's confirm screen.</summary>
+public enum KeyBarMode { Branches, Changes, Input, Ask, Message, Confirm }
 
 /// <summary>
 /// Bottom row: the keys that work right now. While a merge or another git call runs, only quit is offered.
@@ -74,11 +74,12 @@ public sealed class KeyBarView : View
     }
 
     /// <summary>The (key, label, priority) items for the current mode. Labels start with a space.</summary>
-    private IReadOnlyList<(string Key, string Label, int Priority)> Items() => Mode switch
+    internal IReadOnlyList<(string Key, string Label, int Priority)> Items() => Mode switch
     {
         KeyBarMode.Changes => ChangesItems(ChangesState),
         KeyBarMode.Input => InputItems(BodyFocused),
         KeyBarMode.Message => MessageItems(MessageEnterLabel),
+        KeyBarMode.Confirm => ConfirmItems(),
         KeyBarMode.Ask =>
         [
             (AskKey, AskYesLabel, 4),
@@ -145,28 +146,34 @@ public sealed class KeyBarView : View
             ("Esc", CancelLabel, 5),
         ];
 
+    /// <summary>The confirm screen's keys: Enter runs the rebase, Esc goes back to the preview.</summary>
+    internal static IReadOnlyList<(string Key, string Label, int Priority)> ConfirmItems() =>
+        [("Enter", " rebase", 5), ("Esc", CancelLabel, 6)];
+
     /// <summary>
     /// The Branches tab's keys that act now, in the order they are listed. Priority decides what is dropped first when the bar is
-    /// narrow (higher is kept): Esc, Tab, m, s, u, n, R, D, ↑↓.
+    /// narrow (higher is kept): Esc, Tab, m, s, u, r, n, R, D, ↑↓.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s)
     {
-        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " changes", 8) };
+        var items = new List<(string Key, string Label, int Priority)> { ("Tab", " changes", 11) };
         if (s.BranchCount >= 2)
             items.Add(("↑↓", " select", 1));
         if (s.CanMerge)
-            items.Add(("m", " merge", 7));
+            items.Add(("m", " merge", 10));
         if (s.CanSwitch)
-            items.Add(("s", " switch", 6));
+            items.Add(("s", " switch", 9));
         if (s.CanCreate)
             items.Add(("n", " new", 4));
         if (s.CanRename)
             items.Add(("R", " rename", 3));
         if (s.CanDelete)
             items.Add(("D", " delete", 2));
+        if (s.CanRebase)
+            items.Add(("r", " rebase", 7));
         if (s.HasUndo)
-            items.Add(("u", " undo", 5));
-        items.Add(("Esc", " quit", 9));
+            items.Add(("u", " undo", 8));
+        items.Add(("Esc", " quit", 12));
         return items;
     }
 
