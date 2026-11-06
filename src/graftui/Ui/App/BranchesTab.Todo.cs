@@ -120,8 +120,9 @@ internal sealed partial class BranchesTab
             todo.Up();
         else if (e == Key.CursorDown || e == Key.CursorRight)
             todo.Down();
-        else
+        else if (!e.IsCtrl && !e.IsAlt)
         {
+            // Only a plain letter sets an action: Ctrl+D or Alt+S must not drop or squash the row.
             var action = RebasePlan.ActionForKey(ChangesTab.CharOf(e));
             if (action is not null)
                 todo.Set(action.Value);

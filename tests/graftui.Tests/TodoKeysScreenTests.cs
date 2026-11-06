@@ -95,6 +95,19 @@ public sealed class TodoKeysScreenTests : IDisposable
     }
 
     [Fact]
+    public void Ctrl_and_alt_with_a_letter_leave_the_row_action_alone()
+    {
+        using var repo = SequenceRepos.Feature4();
+        var app = OpenTodo(repo);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.D.WithCtrl);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.S.WithAlt);
+
+        Assert.Equal(RebaseAction.Pick, app.BranchesTab.TodoPlan!.Rows[0].Action);
+        Assert.Equal(BranchesMode.Todo, app.BranchesTab.Mode);
+    }
+
+    [Fact]
     public void Left_and_right_move_the_cursor_like_up_and_down_and_wrap_and_do_not_move_a_row()
     {
         using var repo = SequenceRepos.Feature4();
