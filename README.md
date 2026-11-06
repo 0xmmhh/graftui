@@ -157,6 +157,17 @@ graftui --version
 | `D` | Delete the selected branch, after a question. An unmerged one asks twice |
 | `r` | Rebase the current branch onto the selected one, after a confirm screen (Enter runs it, Esc cancels) |
 
+**While a rebase is paused** (a conflict, an edit or a reword stop), the Branches tab shows the pause and takes these keys:
+
+| Key | Action |
+|---|---|
+| `Enter` | Continue. A conflict continues once its file is resolved in your editor (the list updates by itself); an edit stop is amended and continued; a reword or squash keeps its message |
+| `S` | Skip the conflicted commit (conflicts only) |
+| `X` | Abort the rebase, after a question (`y` aborts, `n` keeps going). The branch goes back to its old tip |
+| `Tab` / `Esc` | Changes tab / quit. Quitting leaves the rebase paused: the terminal says what to run next, and exits 1 for a conflict |
+
+The other branch keys are refused until the rebase is finished or aborted. On the Changes tab you can still stage and unstage (for an edit stop, stage the change first), but commit, amend, discard, stash, pop and undo wait for the pause to end.
+
 **Changes**
 
 | Key | Action |
@@ -184,7 +195,7 @@ graftui --version
 - **Switch** (`s`) checks out the selected branch with `git switch --no-guess`. Uncommitted changes come along when git can carry them. A change that git would overwrite (the same file changed on both sides) is refused before anything moves, and the file is named. A switch is not undoable.
 - **New** (`n`) creates a branch at the current tip and switches to it (`git switch -c`). A box asks for the name: Enter creates it, Esc cancels. An invalid or existing name keeps the box open with the reason. It is refused on a detached HEAD or in a repo with no commit.
 - **Rename** (`R`) renames any branch, the current one included (`git branch -m`). The box starts with the old name. A branch's upstream follows the new name.
-- **Rebase** (`r`) puts the current branch's own commits onto the selected branch. The confirm screen lists the commits that will get new hashes. Enter runs `git rebase`, which graftui writes as a todo list so no editor opens, and a backup is saved as an undo step, so `u` brings the old tip back. A fast-forward has nothing to rebase, and the current branch itself can't be rebased onto itself; git's own refusals (a dirty tree, a merge commit in the range, unrelated history) are shown as they are. A conflict aborts the rebase at once, so the branch is left as it was.
+- **Rebase** (`r`) puts the current branch's own commits onto the selected branch. The confirm screen lists the commits that will get new hashes. Enter runs `git rebase`, which graftui writes as a todo list so no editor opens, and a backup is saved as an undo step, so `u` brings the old tip back. A fast-forward has nothing to rebase, and the current branch itself can't be rebased onto itself; git's own refusals (a dirty tree, a merge commit in the range, unrelated history) are shown as they are. A conflict pauses the rebase on its screen: resolve the file in your editor, then Enter continues, or X aborts and the branch is left as it was. A paused rebase is still paused after a restart.
 - **Delete** (`D`) refuses the current branch. A branch that is already in the current branch gets one question and `git branch -d`. An unmerged one gets two questions, answered `y` and then `1`, and `git branch -D`. Its tip is recorded, so `u` brings it back at the same commit. Undoing a delete restores the branch's commit, not its config (for example its upstream).
 - **Stash, merge, pop** (`m` over uncommitted changes): "You have 3 uncommitted changes. Stash them, merge feature/x into main, then pop them back?" `y` stashes everything (untracked files included), merges, and pops the changes back with `git stash pop --index`, so staged changes stay staged. If the merge conflicts, it is aborted and your changes are put back exactly as they were. If the pop conflicts, the merge stands and your changes stay in `stash@{0}`; `Z` tries the pop again and `u` undoes the merge.
 - **Undo** (`u`) covers branch create, rename and delete and the stash-merge-pop, like the other steps.

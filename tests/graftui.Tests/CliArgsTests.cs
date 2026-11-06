@@ -266,6 +266,8 @@ public class CliArgsTests
         Assert.Contains(lines, l => l.StartsWith("Changes: ", StringComparison.Ordinal) && l.Contains("Space stage/unstage"));
         // v and Esc work on both tabs, so they are not on either tab's line.
         Assert.Contains("Both tabs: v all commands · Esc quit", lines);
+        // A paused rebase takes its own keys line.
+        Assert.Contains(lines, l => l.StartsWith("Paused rebase: ", StringComparison.Ordinal) && l.Contains("X abort"));
         Assert.DoesNotContain(lines, l => l.StartsWith("Changes: ", StringComparison.Ordinal) && l.Contains("Esc quit"));
     }
 }
