@@ -53,7 +53,7 @@ internal sealed partial class BranchesTab
         art.Scene = geo => RebaseScenes.Preview(geo, L, todo.Rows, todo.Cursor);
         RefreshTodoArt();
         art.FallbackCaption = _todoNote ?? new Caption(RebaseText.TodoHint, Muted);
-        art.BelowFor = (cols, rows) => SequenceLists.Todo(todo, cols, rows, BranchInks.Current(L));
+        art.BelowFor = (cols, rows) => SequenceLists.Todo(todo, cols, rows, BranchInks.Current(L), DateTimeOffset.UtcNow);
         art.SetNeedsDraw();
     }
 
@@ -77,8 +77,9 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>
-    /// The keys of the todo list. The arrows move the cursor, Shift or Alt with them (or J and K) moves the row, a letter sets the row's
-    /// action, Enter starts the rebase and Esc closes the list. Every other key is taken and ignored, so Tab does not leave the list.
+    /// The keys of the todo list. The arrows move the cursor (← and ↑ up, → and ↓ down), Shift or Alt with them (or J and K) moves the row,
+    /// a letter sets the row's action, Enter starts the rebase and Esc closes the list. Every other key is taken and ignored, so Tab does
+    /// not leave the list.
     /// </summary>
     internal void HandleTodoKey(Key e)
     {
@@ -105,16 +106,19 @@ internal sealed partial class BranchesTab
         ShowTodo();
     }
 
-    /// <summary>Moves the cursor or a row, or sets the cursor row's action, for a key that does one of those.</summary>
+    /// <summary>
+    /// Moves the cursor or a row, or sets the cursor row's action, for a key that does one of those. Plain ← and ↑ move the cursor up,
+    /// plain → and ↓ down; with Shift or Alt the arrows move the row instead, and the left and right arrows do nothing extra then.
+    /// </summary>
     private static void TodoEdit(TodoState todo, Key e)
     {
         if (e == Key.CursorUp.WithShift || e == Key.CursorUp.WithAlt || e == Key.K.WithShift)
             todo.MoveUp();
         else if (e == Key.CursorDown.WithShift || e == Key.CursorDown.WithAlt || e == Key.J.WithShift)
             todo.MoveDown();
-        else if (e == Key.CursorUp)
+        else if (e == Key.CursorUp || e == Key.CursorLeft)
             todo.Up();
-        else if (e == Key.CursorDown)
+        else if (e == Key.CursorDown || e == Key.CursorRight)
             todo.Down();
         else
         {

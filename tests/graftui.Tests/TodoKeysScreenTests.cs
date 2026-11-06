@@ -95,6 +95,34 @@ public sealed class TodoKeysScreenTests : IDisposable
     }
 
     [Fact]
+    public void Left_and_right_move_the_cursor_like_up_and_down_and_wrap_and_do_not_move_a_row()
+    {
+        using var repo = SequenceRepos.Feature4();
+        var app = OpenTodo(repo);
+        var plan = app.BranchesTab.TodoPlan!;
+        var order = string.Join("|", plan.Rows.Select(r => r.Subject));
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorLeft);
+        Assert.Equal(3, plan.Cursor);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorRight);
+        Assert.Equal(0, plan.Cursor);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorRight);
+        Assert.Equal(1, plan.Cursor);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorLeft);
+        Assert.Equal(0, plan.Cursor);
+
+        // Shift and Alt with the left and right arrows do nothing: the rows keep their order and the cursor stays.
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorRight.WithShift);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorLeft.WithShift);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorRight.WithAlt);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorLeft.WithAlt);
+
+        Assert.Equal(order, string.Join("|", app.BranchesTab.TodoPlan!.Rows.Select(r => r.Subject)));
+        Assert.Equal(0, app.BranchesTab.TodoPlan!.Cursor);
+        Assert.Equal(BranchesMode.Todo, app.BranchesTab.Mode);
+    }
+
+    [Fact]
     public void The_todo_art_is_hidden_on_a_short_pane_and_drawn_again_when_the_pane_grows()
     {
         using var repo = SequenceRepos.Feature4();

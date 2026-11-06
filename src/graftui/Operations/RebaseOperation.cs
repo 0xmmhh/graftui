@@ -166,17 +166,20 @@ public sealed class RebaseOperation(GitClient git) : IGitOperation<RebaseRequest
         return new RebaseCheck(null, branch, onto, ontoTip, head, request.Plan ?? rows, gitDirPath, log);
     }
 
-    /// <summary>The commits of a range, oldest first, each a pick. These are the default plan. Throws when git fails.</summary>
+    /// <summary>
+    /// The commits of a range, oldest first, each a pick, with the committer date for the todo list's age. These are the default plan.
+    /// The date is the last field before the subject, so a subject that holds the separator still parses. Throws when git fails.
+    /// </summary>
     private List<RebaseRow> ReadRows(string range, List<GitResult> log)
     {
-        var r = BranchGit.Call(git, log, "log", "--reverse", "--no-show-signature", "--format=%H%x1f%h%x1f%s", range, "--");
+        var r = BranchGit.Call(git, log, "log", "--reverse", "--no-show-signature", "--format=%H%x1f%h%x1f%ct%x1f%s", range, "--");
         if (!r.Success)
             throw new InvalidOperationException(GitClient.Describe(r));
         return r.StdOut
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => line.Split('\x1f', 3))
-            .Where(f => f.Length == 3)
-            .Select(f => new RebaseRow(f[0], f[1], f[2], RebaseAction.Pick))
+            .Select(line => line.Split('\x1f', 4))
+            .Where(f => f.Length == 4)
+            .Select(f => new RebaseRow(f[0], f[1], f[3], RebaseAction.Pick, GitClient.ParseDate(f[2])))
             .ToList();
     }
 

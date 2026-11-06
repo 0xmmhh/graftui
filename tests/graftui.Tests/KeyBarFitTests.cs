@@ -385,7 +385,7 @@ public class KeyBarFitTests
     [Fact]
     public void The_todo_bar_lists_the_plan_keys_in_order_when_there_is_room()
     {
-        Assert.Equal("↑↓ move  ⇧↑↓ reorder  p pick  r reword  e edit  s squash  f fixup  d drop  Enter start  Esc cancel",
+        Assert.Equal("↑↓←→ move  ⇧↑↓ reorder  p pick  r reword  e edit  s squash  f fixup  d drop  Enter start  Esc cancel",
             Bar(KeyBarView.TodoItems()));
     }
 }
