@@ -1,3 +1,4 @@
+using System.Drawing;
 using graftui.Git;
 using graftui.Model;
 using graftui.Operations;
@@ -91,6 +92,26 @@ public sealed class TodoKeysScreenTests : IDisposable
         Assert.Equal("Fix typo in form", plan.Rows[0].Subject);
         Assert.Equal(RebaseAction.Drop, plan.Rows[0].Action);
         Assert.Equal(0, plan.Cursor);
+    }
+
+    [Fact]
+    public void The_todo_art_is_hidden_on_a_short_pane_and_drawn_again_when_the_pane_grows()
+    {
+        using var repo = SequenceRepos.Feature4();
+        _ui.Driver!.SetScreenSize(80, 40);
+        var app = OpenTodo(repo);
+        var window = app.Art.SuperView!;
+        window.Layout(new Size(80, 40));
+        Assert.False(app.Art.HideArt);
+
+        _ui.Driver.SetScreenSize(80, 22);
+        window.Layout(new Size(80, 22));
+        Assert.True(app.Art.HideArt);
+
+        _ui.Driver.SetScreenSize(80, 40);
+        window.Layout(new Size(80, 40));
+        Assert.False(app.Art.HideArt);
+        Assert.Equal(ArtPaneView.ListNeedsWholePane(app.Art.Viewport.Height, compact: true), app.Art.HideArt);
     }
 
     [Fact]

@@ -1,73 +1,15 @@
 using graftui.Model;
-using graftui.Operations;
 using graftui.Ui.Text;
 
 namespace graftui.Tests;
 
-/// <summary>The todo list's plan reads and edits: the port of the desktop plan, which must refuse what the engine refuses.</summary>
+/// <summary>The todo list's plan edits (a move, an action) and the key that names an action.</summary>
 public class RebasePlanTests
 {
     private static RebaseRow Row(string name, RebaseAction action = RebaseAction.Pick) => new(name + "0000000", name, "subject " + name, action);
 
     private static IReadOnlyList<RebaseRow> Plan(params RebaseAction[] actions) =>
         actions.Select((a, i) => Row(((char)('a' + i)).ToString(), a)).ToList();
-
-    [Fact]
-    public void An_all_pick_plan_keeps_every_row_and_has_no_error()
-    {
-        var analysis = RebasePlan.Analyze(Plan(RebaseAction.Pick, RebaseAction.Pick), "feature");
-
-        Assert.Equal(new[] { 0, 1 }, analysis.Kept);
-        Assert.Empty(analysis.Dropped);
-        Assert.All(analysis.Groups, g => Assert.Empty(g.Folds));
-        Assert.Equal("", analysis.Error);
-    }
-
-    [Fact]
-    public void A_fixup_folds_into_the_kept_row_above_it_and_a_squash_marks_the_group_as_a_message_pause()
-    {
-        var fixup = RebasePlan.Analyze(Plan(RebaseAction.Pick, RebaseAction.Fixup), "feature");
-        var squash = RebasePlan.Analyze(Plan(RebaseAction.Pick, RebaseAction.Squash), "feature");
-
-        Assert.Equal(new[] { 1 }, fixup.Groups[0].Folds);
-        Assert.False(fixup.Groups[0].HasSquash);
-        Assert.True(squash.Groups[0].HasSquash);
-        Assert.Equal("", fixup.Error);
-    }
-
-    [Fact]
-    public void A_dropped_row_is_listed_and_never_kept()
-    {
-        var analysis = RebasePlan.Analyze(Plan(RebaseAction.Pick, RebaseAction.Drop, RebaseAction.Reword), "feature");
-
-        Assert.Equal(new[] { 0, 2 }, analysis.Kept);
-        Assert.Equal(new[] { 1 }, analysis.Dropped);
-    }
-
-    [Fact]
-    public void A_squash_with_nothing_above_it_is_refused_in_the_engine_words()
-    {
-        var analysis = RebasePlan.Analyze(Plan(RebaseAction.Squash, RebaseAction.Pick), "feature");
-
-        Assert.Equal(SequenceRefusals.FoldFirst("squash"), analysis.Error);
-        Assert.Equal("squash needs a commit above it to fold into", analysis.Error);
-    }
-
-    [Fact]
-    public void A_fixup_after_only_drops_is_refused_as_a_fixup()
-    {
-        var analysis = RebasePlan.Analyze(Plan(RebaseAction.Drop, RebaseAction.Fixup, RebaseAction.Pick), "feature");
-
-        Assert.Equal("fixup needs a commit above it to fold into", analysis.Error);
-    }
-
-    [Fact]
-    public void A_plan_that_drops_every_row_is_refused_as_empty()
-    {
-        var analysis = RebasePlan.Analyze(Plan(RebaseAction.Drop, RebaseAction.Drop), "feature");
-
-        Assert.Equal(SequenceRefusals.EmptyPlan("feature"), analysis.Error);
-    }
 
     [Fact]
     public void Move_puts_the_row_at_the_new_index_and_leaves_the_original_list_alone()

@@ -1,5 +1,4 @@
 using graftui.Model;
-using graftui.Operations;
 
 namespace graftui.Ui.Text;
 
@@ -7,18 +6,13 @@ namespace graftui.Ui.Text;
 /// The interactive rebase's todo list: the plan the user is editing, the cursor on it, and whether it may start. The plan's first row runs
 /// first. The cursor wraps when it moves; a row moved with the keys stops at either end. Nothing here runs git.
 /// </summary>
-public sealed class TodoState(IReadOnlyList<RebaseRow> rows, string branch)
+public sealed class TodoState(IReadOnlyList<RebaseRow> rows)
 {
-    public IReadOnlyList<RebaseRow> Original { get; } = rows;
-
     /// <summary>The plan as it is now, oldest first: the first row runs first.</summary>
     public IReadOnlyList<RebaseRow> Rows { get; private set; } = rows;
 
     /// <summary>The row the cursor is on. Zero when the plan is empty.</summary>
     public int Cursor { get; private set; }
-
-    /// <summary>The engine's reading of the plan: what it keeps, drops and folds, and its first refusal.</summary>
-    public PlanAnalysis Analysis => RebasePlan.Analyze(Rows, branch);
 
     /// <summary>Moves the cursor up one row, wrapping from the top to the bottom.</summary>
     public void Up()
@@ -61,7 +55,8 @@ public sealed class TodoState(IReadOnlyList<RebaseRow> rows, string branch)
 
     /// <summary>
     /// Why the plan may not start, or null when it may. The first row that is not a drop decides: when every row is dropped that is
-    /// KeepOne; when it is a squash or a fixup, nothing is above it to fold into. The engine's own check agrees (see the tests).
+    /// KeepOne; when it is a squash or a fixup, nothing is above it to fold into. The engine refuses exactly these plans (see
+    /// TodoRebaseRunTests).
     /// </summary>
     public string? StartRefusal()
     {

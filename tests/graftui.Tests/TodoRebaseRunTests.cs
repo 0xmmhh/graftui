@@ -138,4 +138,25 @@ public class TodoRebaseRunTests
         Assert.Equal("dropping every commit would leave feature empty: keep at least one", refused.Refusal);
         Assert.Equal(head, repo.Head);
     }
+
+    [Theory]
+    [InlineData("dddd")]
+    [InlineData("ddfp")]
+    [InlineData("sppp")]
+    [InlineData("fppp")]
+    [InlineData("dspp")]
+    [InlineData("dfpd")]
+    [InlineData("pddd")]
+    [InlineData("ppsd")]
+    [InlineData("pppp")]
+    public void The_start_refusal_agrees_with_the_engines_plan_check(string codes)
+    {
+        using var repo = SequenceRepos.Feature4();
+        var check = CheckOf(repo);
+        var plan = Plan(check, codes.Select(c => RebasePlan.ActionForKey(c)!.Value).ToArray());
+
+        var engineRefuses = !CheckOf(repo, plan).CanRun;
+
+        Assert.Equal(engineRefuses, new TodoState(plan).StartRefusal() is not null);
+    }
 }
