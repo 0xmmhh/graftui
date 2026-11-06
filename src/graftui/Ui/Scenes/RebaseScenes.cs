@@ -12,8 +12,11 @@ public static class RebaseScenes
     /// <summary>The most landing ghosts drawn on row B; a longer landing ends in a dim ┄ tail instead.</summary>
     private const int MaxLanding = 3;
 
+    /// <summary>The most ghosts drawn on row A of a paused rebase: the screen has four steps to the right of the base.</summary>
+    private const int MaxGhosts = 4;
+
     private static readonly Style Dim = new(Ink.Dim), FgB = new(Ink.Fg, true);
-    private static readonly Style Bad = new(Ink.Bad), MrgB = new(Ink.Mrg, true), WarnB = new(Ink.Warn, true);
+    private static readonly Style Bad = new(Ink.Bad), BadB = new(Ink.Bad, true), MrgB = new(Ink.Mrg, true), WarnB = new(Ink.Warn, true);
 
     /// <summary>
     /// The branches before a rebase. Row A is the current branch's own commits, and each dot takes its row's action: a drop is ✕, a fold a
@@ -43,6 +46,85 @@ public static class RebaseScenes
         MergeScenes.CurLabel(grid, g, spots.CurX, spots.CurRow, L);
         MergeScenes.SelLabel(grid, g, spots.SelX, spots.SelRow, L);
         return new SceneFrame(grid, null);
+    }
+
+    /// <summary>
+    /// A paused rebase, drawn from its stop alone: its plan rows are in the stop, so the picture is the same after a restart. Row A is the
+    /// base and the plan's commits as ghosts. Row B is the onto tip, the commits that have landed, and the stop: a conflict is a ✕ one cell
+    /// short of the next slot, an edit is a warm dot in that slot, and a reword or a squash is its own ghost on row A, turned warm.
+    /// </summary>
+    public static SceneFrame Paused(ArtGeometry g, SequenceStop stop, Ink branchInk, Ink ontoInk)
+    {
+        var grid = new ArtGrid(g.Width, g.Height);
+        var rows = stop.Rows ?? [];
+        if (rows.Count == 0)
+            return new SceneFrame(grid, null);
+
+        var branch = new Style(branchInk);
+        var onto = new Style(ontoInk);
+        var stopAt = Math.Clamp(stop.Step - 1, 0, rows.Count - 1);
+        var landed = LandedBefore(rows, stopAt);
+        var ghosts = Math.Min(rows.Count, MaxGhosts);
+
+        // Row A: the base, then each planned commit as a dim ghost on a dashed line.
+        grid.Put(g.XB, g.A, '●', Dim);
+        var px = g.XB;
+        for (var i = 0; i < ghosts; i++)
+        {
+            var x = g.TipX(i + 1);
+            grid.HLine(px + 1, x - 1, g.A, Dim, '┄');
+            grid.Put(x, g.A, '◌', Dim);
+            px = x;
+        }
+
+        var warmOnA = stop.Pause == PauseKind.Reword || stop.Pause == PauseKind.Squash;
+        if (warmOnA && stopAt < ghosts)
+            grid.Put(g.TipX(stopAt + 1), g.A, '●', WarnB);
+
+        // Row B: the line down from row A, the onto tip, then each landed commit in its branch's colour.
+        grid.VLine(g.XB, g.A + 1, g.B - 1, branch);
+        grid.Put(g.XB, g.B, '╰', branch);
+        MergeScenes.Label(grid, g, g.TipX(1), g.B, up: false, stop.Onto, null, ontoInk);
+        grid.Put(g.TipX(1), g.B, '●', onto);
+        var last = g.TipX(1);
+        for (var k = 1; k <= landed; k++)
+        {
+            var x = g.TipX(k + 1);
+            grid.HLine(last + 1, x - 1, g.B, branch);
+            grid.Put(x, g.B, '●', branch);
+            last = x;
+        }
+
+        var slot = g.TipX(landed + 2);
+        var labelX = warmOnA ? g.TipX(Math.Min(stopAt + 1, MaxGhosts)) : slot;
+        if (stop.Pause == PauseKind.Conflict)
+        {
+            grid.HLine(last + 1, slot - 2, g.B, Bad, '━');
+            grid.Put(slot - 1, g.B, '✕', BadB);
+            labelX = slot - 1;
+        }
+        else if (stop.Pause == PauseKind.Edit)
+        {
+            grid.HLine(last + 1, slot - 1, g.B, branch);
+            grid.Put(slot, g.B, '●', WarnB);
+        }
+
+        var labelRow = warmOnA ? g.A : g.B;
+        MergeScenes.Label(grid, g, labelX, labelRow, up: true, stop.Branch, " " + RebaseText.Rebasing(stop.Step, stop.Total), branchInk);
+        return new SceneFrame(grid, null);
+    }
+
+    // How many commits before the stop have landed on the onto tip: the ones git replays as picks, rewords and edits.
+    private static int LandedBefore(IReadOnlyList<RebaseRow> rows, int stopAt)
+    {
+        var n = 0;
+        for (var i = 0; i < stopAt; i++)
+        {
+            var action = rows[i].Action;
+            if (action == RebaseAction.Pick || action == RebaseAction.Reword || action == RebaseAction.Edit)
+                n++;
+        }
+        return n;
     }
 
     // Each commit of row A takes the colour of its action. The drop's dot becomes ✕; a pick keeps the row's own dot.
