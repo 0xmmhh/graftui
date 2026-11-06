@@ -21,11 +21,10 @@ internal sealed partial class BranchesTab
     /// the snapshot read after it (null when that read failed), the branch to select afterwards, and the process exit code the change
     /// asks for (1 when it conflicted or failed after a merge; 0 otherwise). <c>HoldWidth</c> keeps the art's width where it is when
     /// the snapshot is applied (a switch: its last frame must not reflow). <c>Hints</c> tells the Commands pane what the commands were for
-    /// (a rebase's target). <c>Then</c> runs last, after the snapshot and the selection are applied (a paused rebase shows its screen).
+    /// (a rebase's target). The exit line is null when a pause is left: the terminal's line is then read from the repo at exit.
     /// </summary>
     internal sealed record BranchFinish(BranchResult Result, IReadOnlyList<GitResult> Commands, IReadOnlyList<(string Text, Style Style)> Log,
-        string ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0, bool HoldWidth = false, CommandHints? Hints = null,
-        Action? Then = null);
+        string? ExitLine, RepoSnapshot? After, string? Select, int ExitCode = 0, bool HoldWidth = false, CommandHints? Hints = null);
 
     /// <summary>Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now.</summary>
     private void StartWork()
@@ -88,8 +87,11 @@ internal sealed partial class BranchesTab
         }, CancellationToken.None);
     }
 
-    /// <summary>Runs on the UI thread when a change's final frame is drawn: the new snapshot, the selection, and the counts.</summary>
-    private void EndBranchChange(BranchFinish f)
+    /// <summary>
+    /// Runs on the UI thread when a change's final frame is drawn: the new snapshot, the selection, and the counts. A rebase that stopped
+    /// at a pause then shows the pause screen (the finish itself is static, so the screen is shown here).
+    /// </summary>
+    internal void EndBranchChange(BranchFinish f)
     {
         if (f.HoldWidth)
             _app.HoldBranchWidth();
@@ -99,7 +101,8 @@ internal sealed partial class BranchesTab
             SelectName(name);
         _app.Result = SelectedName();
         _app.ReloadCountsAsync();
-        f.Then?.Invoke();
+        if (f.Result.Sequence?.Kind == SequenceOutcomeKind.Paused && _app.IsPaused)
+            ShowPause();
     }
 
     /// <summary>An exception on the worker: shown on the status bar; the change's animation ends as a failure when one was running.</summary>

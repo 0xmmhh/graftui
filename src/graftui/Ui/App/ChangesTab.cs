@@ -477,8 +477,9 @@ internal sealed partial class ChangesTab
         {
             var diff = row is null ? null : _diff;
             art.FallbackCaption = null;
-            // The flash (a refusal or a notice) is the only caption; it goes at the next key.
-            art.Scene = geo => new SceneFrame(AreasScenes.Diff(geo, diff).Grid, _flash);
+            // The flash (a refusal or a notice) comes first; while a rebase is paused, its caption is the one shown.
+            // The flash goes at the next key.
+            art.Scene = geo => new SceneFrame(AreasScenes.Diff(geo, diff).Grid, _flash ?? _app.PauseCaption());
         }
         art.SetNeedsDraw();
     }
@@ -502,7 +503,8 @@ internal sealed partial class ChangesTab
             HasStaged: snap.Status.Staged.Count > 0,
             HasHead: snap.Head.HeadHash is not null,
             HasStash: snap.Stash.Count > 0,
-            HasUndo: snap.HasUndo);
+            HasUndo: snap.HasUndo,
+            Paused: _app.IsPaused);
         if (_app.Keys.ChangesState == state)
             return;
         _app.Keys.ChangesState = state;

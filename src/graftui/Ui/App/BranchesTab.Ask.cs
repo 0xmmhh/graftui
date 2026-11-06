@@ -15,10 +15,12 @@ internal sealed partial class BranchesTab
     /// <summary>
     /// A question: its title, its text (in the overlay), the key that answers yes and the labels after the yes and n keys, the caption
     /// for a cancel, the direction line, the layout under the overlay, what a yes does, and (optionally) the same question in fewer
-    /// words, for an art too short for the full text.
+    /// words, for an art too short for the full text. <c>OnNo</c> replaces the flash of a cancel (the pause screen shows its own note);
+    /// <c>Base</c> draws the scene under the overlay in place of the layout's preview.
     /// </summary>
     private sealed record BranchQuestion(string Title, string Text, char YesKey, string YesLabel, string NoLabel, string CancelText,
-        Func<int, IReadOnlyList<Seg>> Direction, GraphLayout? Layout, Action OnYes, string? ShortText = null);
+        Func<int, IReadOnlyList<Seg>> Direction, GraphLayout? Layout, Action OnYes, string? ShortText = null, Action? OnNo = null,
+        Func<ArtGeometry, ArtGrid>? Base = null);
 
     private BranchQuestion? _question;
 
@@ -48,7 +50,7 @@ internal sealed partial class BranchesTab
         art.FallbackCaption = null;
         art.Scene = geo =>
         {
-            var grid = q.Layout is null ? new ArtGrid(geo.Width, geo.Height) : MergeScenes.Preview(geo, q.Layout).Grid;
+            var grid = QuestionBase(q, geo);
             MergeScenes.MessageOverlay(grid, q.Title, q.Text, q.ShortText);
             return new SceneFrame(grid, new Caption($"{q.YesKey}{q.YesLabel} · n{q.NoLabel}", Warn));
         };
@@ -81,8 +83,19 @@ internal sealed partial class BranchesTab
         {
             CloseQuestion();
             _app.LogMessage(q.CancelText, Muted);
-            ShowFlash(q.Layout, new Caption(q.CancelText, Muted));
+            if (q.OnNo is not null)
+                q.OnNo();
+            else
+                ShowFlash(q.Layout, new Caption(q.CancelText, Muted));
         }
+    }
+
+    /// <summary>The scene under a question: its own base when it gives one, else the layout's preview, else an empty art.</summary>
+    private static ArtGrid QuestionBase(BranchQuestion q, ArtGeometry geo)
+    {
+        if (q.Base is not null)
+            return q.Base(geo);
+        return q.Layout is null ? new ArtGrid(geo.Width, geo.Height) : MergeScenes.Preview(geo, q.Layout).Grid;
     }
 
     /// <summary>Closes the question and gives the keys back to the Branches tab. The caller decides what shows next.</summary>

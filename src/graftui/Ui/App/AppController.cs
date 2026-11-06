@@ -229,6 +229,7 @@ public sealed class AppController
         BranchList.Branches = Snapshot.Branches;
         BranchList.Counts = Snapshot.Counts;
         BranchList.Selected = BranchesTab.Selected;
+        BranchList.PausedBranch = SequenceStatus.PausedBranch(Snapshot);
         _tooSmall.Cols = App.Screen.Width;
         _tooSmall.Rows = App.Screen.Height;
         Art.ScreenCols = App.Screen.Width;
@@ -412,6 +413,13 @@ public sealed class AppController
             return;
         }
 
+        // A paused rebase takes the Branches keys: Enter, S and X continue or abort it, the other branch keys are refused.
+        if (IsPaused)
+        {
+            BranchesTab.HandlePauseKey(e);
+            return;
+        }
+
         if (e == Key.CursorUp)
         {
             e.Handled = true;
@@ -463,6 +471,7 @@ public sealed class AppController
     private void ToggleTab()
     {
         Result = null;
+        BranchesTab.ForgetPauseNote();
         ReleaseBranchWidth();
         ActiveTab = ActiveTab == TabKind.Branches ? TabKind.Changes : TabKind.Branches;
         var onChanges = ActiveTab == TabKind.Changes;
@@ -512,7 +521,24 @@ public sealed class AppController
         BranchList.Branches = s.Branches;
         BranchList.Counts = s.Counts;
         BranchList.Selected = BranchesTab.Selected;
+        BranchList.PausedBranch = SequenceStatus.PausedBranch(s);
         BranchList.SetNeedsDraw();
+    }
+
+    /// <summary>True while a rebase or cherry-pick that graftui started is paused. Only that pause is shown as one.</summary>
+    internal bool IsPaused => SequenceStatus.IsPaused(Snapshot);
+
+    /// <summary>The pause's caption for the Changes tab, or null when nothing is paused.</summary>
+    internal Caption? PauseCaption() => IsPaused ? SequenceStatus.Caption(Snapshot.Paused!) : null;
+
+    /// <summary>
+    /// The pause as the repo holds it now, read after the UI has closed: a pause graftui started that is still there, else null. Program
+    /// prints its exit line and exits 1 for a conflict.
+    /// </summary>
+    public SequenceStop? PausedAtExit()
+    {
+        var stop = new SequenceReader(RootGit).ReadPaused();
+        return stop is not null && stop.Ours ? stop : null;
     }
 
     /// <summary>Holds the branch list's width where it is, so the art does not reflow under a switch's last frame.</summary>

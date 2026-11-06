@@ -1,0 +1,305 @@
+using graftui.Git;
+using graftui.Model;
+using graftui.Operations;
+using graftui.Ui.Scenes;
+using graftui.Ui.Text;
+using graftui.Ui.Views;
+using Terminal.Gui.Input;
+
+namespace graftui.Ui.App;
+
+/// <summary>
+/// The pause of a rebase on the Branches tab: the screen a paused rebase shows, its keys, the question before an abort, the resume itself
+/// (through the resume operation, which checks first), and the poll that notices a conflicted file being resolved in the editor.
+/// While the pause lasts the branch keys are refused, Esc quits and the pause stays.
+/// </summary>
+internal sealed partial class BranchesTab
+{
+    private static readonly Style Ok = new(Ink.Ok), Bad = new(Ink.Bad);
+
+    // The caption of the last refusal or the cancelled question. It is shown until the next key.
+    private Caption? _pauseNote;
+
+    // The conflicted files as the last poll read them; the pause screen draws their rows from these.
+    private IReadOnlyList<ConflictFile>? _pauseFiles;
+    private bool _pollArmed;
+    private bool _pollBusy;
+
+    /// <summary>
+    /// The paused screen: the rebase's art with the progress in its direction line, the caption that says what stopped it (or the last
+    /// refusal), and the conflicted files under the rule. Called only while a pause graftui started is in the snapshot.
+    /// </summary>
+    internal void ShowPause()
+    {
+        // A question can outlive the pause (the repo may have moved on): the normal preview is shown then.
+        if (!_app.IsPaused)
+        {
+            RequestPreview();
+            return;
+        }
+
+        var stop = _app.Snapshot.Paused!;
+        var curInk = _app.InkOf(stop.Branch);
+        var ontoInk = _app.InkOf(stop.Onto);
+        var art = _app.Art;
+        art.Title = RebaseText.PausedTitle;
+        art.Direction = PausedDirection(stop, curInk, ontoInk);
+        art.Panel = null;
+        art.Below = null;
+        art.Scene = geo => RebaseScenes.Paused(geo, stop, curInk, ontoInk);
+        art.FallbackCaption = _pauseNote ?? SequenceStatus.Caption(stop);
+        SetPauseRows(stop);
+        _app.Result = null;
+        _app.SyncBranchKeys();
+        art.SetNeedsDraw();
+        if (stop.Pause == PauseKind.Conflict)
+            ArmConflictPoll();
+    }
+
+    /// <summary>The direction line of a paused rebase: the branches, then the progress as a dim tail.</summary>
+    private static Func<int, IReadOnlyList<Seg>> PausedDirection(SequenceStop stop, Ink curInk, Ink ontoInk)
+    {
+        var tail = RebaseText.PausedTail(stop);
+        return cols => DirectionLine.WithTail(DirectionLine.Rebase(stop.Branch, curInk, stop.Onto, ontoInk, cols), tail, cols);
+    }
+
+    /// <summary>The rows under the rule: a conflict lists its files; the other stops have none.</summary>
+    private void SetPauseRows(SequenceStop stop)
+    {
+        if (stop.Pause == PauseKind.Conflict)
+        {
+            _pauseFiles = stop.Files;
+            _app.Art.BelowFor = ConflictLines;
+            return;
+        }
+        _app.Art.Below = [];
+    }
+
+    /// <summary>One row per conflicted file, cut to the pane's width and shown only as many as the pane has rows for.</summary>
+    private IReadOnlyList<IReadOnlyList<Seg>> ConflictLines(int cols, int rows)
+    {
+        List<IReadOnlyList<Seg>> lines = [];
+        if (_pauseFiles is null)
+            return lines;
+        foreach (var f in _pauseFiles)
+            lines.Add([new Seg(TextFit.Fit(RebaseText.ConflictRow(f), cols), f.Resolved ? Ok : Bad)]);
+        return lines.Take(rows).ToList();
+    }
+
+    /// <summary>Forgets the pause's note, so a refusal from before a tab switch is not shown again.</summary>
+    internal void ForgetPauseNote() => _pauseNote = null;
+
+    /// <summary>
+    /// The keys of a paused rebase on the Branches tab. Enter continues, S skips, and X asks first. The branch keys are refused with the
+    /// engine's in-progress text. Esc is not handled: it quits, and the pause stays. The arrows do nothing.
+    /// </summary>
+    internal void HandlePauseKey(Key e)
+    {
+        _pauseNote = null;
+        if (e == Key.Esc)
+            return;
+
+        e.Handled = true;
+        if (_app.Busy)
+            return;
+
+        var stop = _app.Snapshot.Paused!;
+        if (e == Key.Enter || e == Key.S.WithShift)
+        {
+            var enter = e == Key.Enter;
+            var action = PauseKeys.ActionFor(stop.Pause, enter ? '\0' : 'S', enter);
+            if (action is not null)
+                StartResume(action.Value, action == ResumeAction.Message ? stop.Message : null);
+            return;
+        }
+
+        if (e == Key.X.WithShift)
+            AskAbort(stop);
+        else if (IsRefusedPauseKey(e))
+            RefusePauseKey(stop);
+    }
+
+    /// <summary>The branch keys that a paused sequence refuses: merge, switch, new, rename, delete, rebase, interactive, cherry-pick, undo.</summary>
+    private static bool IsRefusedPauseKey(Key e) =>
+        e == Key.M || e == Key.S || e == Key.N || e == Key.R || e == Key.R.WithShift || e == Key.D.WithShift || e == Key.I || e == Key.C
+        || e == Key.U;
+
+    /// <summary>A refused key: the engine's words for a sequence in progress, in the log and as the caption of the pause screen.</summary>
+    private void RefusePauseKey(SequenceStop stop)
+    {
+        var reason = ChangeRefusals.InProgress(stop.Kind == SequenceKind.CherryPick ? "cherry-pick" : "rebase");
+        foreach (var line in RefusalText.LogLines(reason))
+            _app.LogMessage(line, WarnB);
+        _pauseNote = new Caption(RefusalText.Caption(reason), WarnB);
+        ShowPause();
+    }
+
+    /// <summary>X asks before it aborts. The question is drawn over the pause, and n returns to it with "Still paused".</summary>
+    private void AskAbort(SequenceStop stop)
+    {
+        var curInk = _app.InkOf(stop.Branch);
+        var ontoInk = _app.InkOf(stop.Onto);
+        var question = new BranchQuestion(RebaseText.AbortTitle, RebaseText.AbortText(stop.Branch, _app.Snapshot.PausedOldTip),
+            'y', " abort", " keep going", RebaseText.StillPaused, PausedDirection(stop, curInk, ontoInk), null,
+            () => StartResume(ResumeAction.Abort), OnNo: ShowStillPaused,
+            Base: geo => RebaseScenes.Paused(geo, stop, curInk, ontoInk).Grid);
+        BeginQuestion(question);
+        if (Mode == BranchesMode.Ask)
+            SetPauseRows(stop);
+    }
+
+    /// <summary>The question was answered no: the pause screen comes back, with the "Still paused" note.</summary>
+    private void ShowStillPaused()
+    {
+        _pauseNote = new Caption(RebaseText.StillPaused, Muted);
+        ShowPause();
+    }
+
+    /// <summary>
+    /// Runs the paused sequence's next step: Continue, Skip, AmendAndContinue, Message (a reword or squash keeps its message) or Abort. The
+    /// step runs on a worker and is checked first. A refusal keeps the pause screen and shows the refusal as its caption. An abort whose
+    /// state file is gone runs the fallback abort, so the repo is never left mid-rebase without the pause screen showing it.
+    /// </summary>
+    internal void StartResume(ResumeAction action, string? message = null)
+    {
+        // The pause can be gone by now (a question was open while the repo moved on): the preview is shown instead.
+        var pause = _app.Snapshot.Paused;
+        if (pause is null)
+        {
+            _app.Result = null;
+            RequestPreview();
+            return;
+        }
+
+        var stop = pause;
+        var oldTip = _app.Snapshot.PausedOldTip;
+        var request = new ResumeRequest(action, message, stop.Commit);
+        var curInk = _app.InkOf(stop.Branch);
+        var ontoInk = _app.InkOf(stop.Onto);
+        var direction = PausedDirection(stop, curInk, ontoInk);
+        var running = action == ResumeAction.Abort ? RebaseText.Aborting : RebaseText.Running(stop.Branch, stop.Onto);
+        var engine = new RebaseEngine(_app.RootGit, _app.TryLoadSnapshot, _app.TryLoadLayout);
+        var layout = Or(null, _app.Snapshot, stop.Onto, TipOf(stop.Onto));
+        var animator = _app.BranchAnimator;
+
+        StartWork();
+        _app.BeginChangeOutcome();
+        _app.ChangesTask = Task.Run<string?>(() =>
+        {
+            try
+            {
+                var check = _app.ResumeOp.Check(request);
+                var fallback = !check.CanRun && action == ResumeAction.Abort && oldTip is not null
+                    && SequenceGit.RebaseInProgress(check.GitDir);
+                if (!check.CanRun && !fallback)
+                {
+                    var fresh = _app.TryLoadSnapshot();
+                    _app.Ui(() => ResumeRefused(check, fresh));
+                    return null;
+                }
+
+                _app.Ui(() =>
+                {
+                    _app.LogCommands(check.Commands);
+                    animator.Begin(new PausedAnimation(stop, running, curInk, ontoInk), direction, null);
+                });
+                var f = check.CanRun
+                    ? SequenceFinish(_app.ResumeOp.Run(request, check), _app.TryLoadSnapshot(), stop.Rows ?? [], layout, engine)
+                    : AbortPausedFinish(stop, oldTip!, check, engine);
+                _app.SetChangeExitCode(f.ExitCode);
+                _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.Log, () => EndBranchChange(f), f.Hints));
+                return f.ExitLine;
+            }
+            catch (Exception ex)
+            {
+                _app.Ui(() => FailBranchChange(ex, "Rebase"));
+                return "graftui: rebase failed: " + ex.Message;
+            }
+        }, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// A step git refused before it ran: its commands and the reason are logged, the reason is the pause's caption, and the pause screen
+    /// comes back. When the pause may have ended meanwhile (the sequence is gone, or another one is in progress), the snapshot is applied
+    /// first, so the screen shows what is there now.
+    /// </summary>
+    internal void ResumeRefused(ResumeCheck check, RepoSnapshot? fresh)
+    {
+        var reason = check.Refusal!;
+        _app.LogCommands(check.Commands);
+        foreach (var line in RefusalText.LogLines(reason))
+            _app.LogMessage(line, WarnB);
+        _pauseNote = new Caption(RefusalText.Caption(reason), WarnB);
+        if (fresh is not null)
+            _app.ApplySnapshot(fresh);
+        EndWork();
+        RequestPreview();
+    }
+
+    /// <summary>The tip of a listed branch, or "" when it is not listed (the layout then has a stub tip).</summary>
+    private string TipOf(string name) => _app.Snapshot.Branches.FirstOrDefault(b => b.Name == name)?.Hash ?? "";
+
+    // ----- the conflict poll -----
+
+    // The pause screen notices a conflicted file being resolved in the editor: every second, while the pause screen is the one shown,
+    // the files are read (no git, nothing logged) and the screen is drawn again when one of them became resolved.
+    private void ArmConflictPoll()
+    {
+        if (_pollArmed)
+            return;
+        _pollArmed = true;
+        _app.App.AddTimeout(TimeSpan.FromSeconds(1), PollConflicts);
+    }
+
+    /// <summary>The timer's tick. It stops (and re-arms on the next pause screen) once the pause screen is not the one shown.</summary>
+    private bool PollConflicts()
+    {
+        if (!PollWanted())
+        {
+            _pollArmed = false;
+            return false;
+        }
+        if (!_pollBusy && !_app.Busy)
+            ReadConflicts();
+        return true;
+    }
+
+    private bool PollWanted() =>
+        _app.IsPaused && _app.Snapshot.Paused!.Pause == PauseKind.Conflict && _app.ActiveTab == AppController.TabKind.Branches
+        && Mode == BranchesMode.Browse;
+
+    /// <summary>Reads the conflicted files on a worker; the result is applied on the UI thread.</summary>
+    private void ReadConflicts()
+    {
+        if (_pauseFiles is null)
+            return;
+        _pollBusy = true;
+        var paths = _pauseFiles.Select(f => f.Path).ToList();
+        var root = _app.RootGit.RepoPath;
+        Task.Run(() =>
+        {
+            IReadOnlyList<ConflictFile>? files = null;
+            try
+            {
+                files = SequenceReader.ConflictState(root, paths);
+            }
+            catch (IOException)
+            {
+                // The next tick reads again.
+            }
+            _app.Ui(() => ApplyConflictRead(files));
+        });
+    }
+
+    /// <summary>On the UI thread: the new read replaces the old one, and the rows are drawn again when a file was resolved.</summary>
+    internal void ApplyConflictRead(IReadOnlyList<ConflictFile>? files)
+    {
+        _pollBusy = false;
+        if (files is null || _pauseFiles is null || !_app.IsPaused)
+            return;
+        if (!SequenceStatus.ResolvedChanged(_pauseFiles, files))
+            return;
+        _pauseFiles = files;
+        _app.Art.SetNeedsDraw();
+    }
+}
