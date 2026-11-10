@@ -25,6 +25,9 @@ internal sealed partial class BranchesTab
     private bool _pollArmed;
     private bool _pollBusy;
 
+    // The marker-less files the open question asks about. Its yes key resumes with exactly these, so the engine checks the answer against them.
+    private IReadOnlyList<KeptFile>? _askedKeep;
+
     /// <summary>
     /// The paused screen: the rebase's art with the progress in its direction line, the caption that says what stopped it (or the last
     /// refusal), and the conflicted files under the rule. Called only while a pause graftui started is in the snapshot.
@@ -79,10 +82,10 @@ internal sealed partial class BranchesTab
     private IReadOnlyList<IReadOnlyList<Seg>> ConflictLines(int cols, int rows)
     {
         List<IReadOnlyList<Seg>> lines = [];
-        if (_pauseFiles is null)
+        if (_pauseFiles is null || !_app.IsPaused)
             return lines;
         foreach (var f in _pauseFiles)
-            lines.Add([new Seg(TextFit.Fit(RebaseText.ConflictRow(f), cols), f.Resolved ? Ok : Bad)]);
+            lines.Add([new Seg(TextFit.Fit(RebaseText.ConflictRow(f, _app.Snapshot.Paused!), cols), f.Resolved ? Ok : Bad)]);
         return lines.Take(rows).ToList();
     }
 
@@ -166,12 +169,47 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>
+    /// Asks which version to keep of the marker-less files, over the pause. y keeps the version the work tree holds and continues; n goes back
+    /// to the pause with "Still paused".
+    /// </summary>
+    private void AskKeep(IReadOnlyList<KeptFile> files)
+    {
+        if (!_app.IsPaused)
+        {
+            RequestPreview();
+            return;
+        }
+
+        var stop = _app.Snapshot.Paused!;
+        var curInk = _app.InkOf(stop.Branch);
+        var ontoInk = _app.InkOf(stop.Onto);
+        var question = new BranchQuestion(RebaseText.KeepTitle, RebaseText.KeepText(stop, files), 'y', KeepAndContinue,
+            PausedDirection(stop, curInk, ontoInk), null)
+        {
+            YesLabel = " keep & continue",
+            NoLabel = " back",
+            CancelText = RebaseText.StillPaused,
+            ShortText = RebaseText.KeepShort(files),
+            OnNo = ShowStillPaused,
+            Base = geo => RebaseScenes.Paused(geo, stop, curInk, ontoInk).Grid,
+        };
+        _askedKeep = files;
+        BeginQuestion(question);
+        if (Mode == BranchesMode.Ask)
+            SetPauseRows(stop);
+    }
+
+    /// <summary>The yes key of the keep question: continue, keeping the files the question asked about.</summary>
+    private void KeepAndContinue() => StartResume(ResumeAction.Continue, null, _askedKeep);
+
+    /// <summary>
     /// Runs the paused sequence's next step: Continue, Skip, AmendAndContinue, Message (a reword or squash keeps its message) or Abort. The
     /// step runs on a worker and is checked first. A refusal keeps the pause screen and shows the refusal as its caption. An abort whose
     /// state file is gone runs the fallback abort: it aborts only a rebase that git holds from this branch's old tip (RebaseAbort.Force).
-    /// Anything else is left as it is, and the pause screen (or the failure over it) says so.
+    /// Keep is the answer to the question about marker-less files (null when there is none). Anything else is left as it is, and the pause
+    /// screen (or the failure over it) says so.
     /// </summary>
-    internal void StartResume(ResumeAction action, string? message = null)
+    internal void StartResume(ResumeAction action, string? message = null, IReadOnlyList<KeptFile>? keep = null)
     {
         // The pause can be gone by now (a question was open while the repo moved on): the preview is shown instead.
         if (!_app.IsPaused)
@@ -183,7 +221,7 @@ internal sealed partial class BranchesTab
 
         var stop = _app.Snapshot.Paused!;
         var oldTip = _app.Snapshot.PausedOldTip;
-        var request = new ResumeRequest(action, message, stop.Commit);
+        var request = new ResumeRequest(action, message, stop.Commit, keep);
         var curInk = _app.InkOf(stop.Branch);
         var ontoInk = _app.InkOf(stop.Onto);
         var direction = PausedDirection(stop, curInk, ontoInk);
@@ -278,6 +316,17 @@ internal sealed partial class BranchesTab
     /// </summary>
     internal void ResumeRefused(ResumeCheck check, RepoSnapshot? fresh)
     {
+        // The one obstacle is marker-less files: that is a question, not a refusal, so nothing goes into the log as one.
+        if (check.Keep is not null && check.Keep.Count > 0)
+        {
+            _app.LogCommands(check.Commands);
+            if (fresh is not null)
+                _app.ApplySnapshot(fresh);
+            EndWork();
+            AskKeep(check.Keep);
+            return;
+        }
+
         var reason = check.Refusal!;
         _app.LogCommands(check.Commands);
         foreach (var line in RefusalText.LogLines(reason))
@@ -330,22 +379,22 @@ internal sealed partial class BranchesTab
         if (_pauseFiles is null)
             return;
         _pollBusy = true;
-        var paths = _pauseFiles.Select(f => f.Path).ToList();
+        var files = _pauseFiles;
         var root = _app.RootGit.RepoPath;
         var commit = _app.Snapshot.Paused!.Commit;
         Task.Run(() =>
         {
-            var files = ReadConflictFiles(root, paths);
-            _app.Ui(() => ApplyConflictRead(files, commit));
+            var read = ReadConflictFiles(root, files);
+            _app.Ui(() => ApplyConflictRead(read, commit));
         });
     }
 
-    /// <summary>The files' conflict state read from the work tree, or null when a read fails: the next tick reads again.</summary>
-    internal static IReadOnlyList<ConflictFile>? ReadConflictFiles(string root, IReadOnlyList<string> paths)
+    /// <summary>The files' resolved state read again from the work tree, or null when a read fails: the next tick reads again.</summary>
+    internal static IReadOnlyList<ConflictFile>? ReadConflictFiles(string root, IReadOnlyList<ConflictFile> files)
     {
         try
         {
-            return SequenceReader.ConflictState(root, paths);
+            return SequenceReader.Recheck(root, files);
         }
         catch (IOException)
         {

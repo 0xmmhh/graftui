@@ -58,6 +58,10 @@ public static class SequenceRefusals
 
     public static string Unresolved(IReadOnlyList<string> paths) => $"{Named(paths)} still has conflict markers: resolve them before continuing";
 
+    /// <summary>A conflicted file with no markers (binary, or a delete on one side): the user says which version to keep.</summary>
+    public static string NoMarkers(IReadOnlyList<string> paths) =>
+        $"{Named(paths)} has no conflict markers: say which version to keep before continuing";
+
     public static string StageFirst(string file) => $"{file} has unstaged changes: stage it first, then Amend & continue";
 
     public const string SkipOnlyConflict = "only a conflicted commit can be skipped";

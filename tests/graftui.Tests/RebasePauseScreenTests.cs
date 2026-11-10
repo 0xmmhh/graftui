@@ -224,7 +224,7 @@ public sealed class RebasePauseScreenTests : IDisposable
         File.SetUnixFileMode(path, UnixFileMode.None);
         try
         {
-            Assert.Null(BranchesTab.ReadConflictFiles(repo.Dir, ["locked.txt"]));
+            Assert.Null(BranchesTab.ReadConflictFiles(repo.Dir, [new ConflictFile("locked.txt", false)]));
         }
         finally
         {
@@ -353,6 +353,64 @@ public sealed class RebasePauseScreenTests : IDisposable
         Assert.Equal(before, repo.Head);
         Assert.True(repo.IsClean);
         Assert.False(SequenceGit.RebaseInProgress(GitDir(repo)));
+    }
+
+    [Fact]
+    public void A_binary_conflict_is_drawn_as_binary_and_not_resolved()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        var app = OpenPaused(repo);
+
+        Assert.Equal(new[] { "✖ logo.bin  binary · not resolved" }, app.Art.BelowFor!(60, 3).Select(line => string.Concat(line.Select(s => s.Text))));
+    }
+
+    [Fact]
+    public void Enter_on_a_binary_conflict_asks_which_version_to_keep_and_n_goes_back_to_the_pause()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        var app = OpenPaused(repo);
+        var stop = app.Snapshot.Paused!;
+
+        app.BranchesTab.ResumeRefused(app.ResumeOp.Check(new ResumeRequest(ResumeAction.Continue, null, stop.Commit)), null);
+
+        Assert.Equal(BranchesMode.Ask, app.BranchesTab.Mode);
+        Assert.Equal(RebaseText.KeepTitle, app.Art.Title);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.N);
+
+        Assert.Equal(BranchesMode.Browse, app.BranchesTab.Mode);
+        Assert.Equal(RebaseText.StillPaused, Caption(app));
+        Assert.True(SequenceGit.RebaseInProgress(GitDir(repo)));
+        Assert.Contains("logo.bin", repo.Run("ls-files", "-u"));
+    }
+
+    [Fact]
+    public async Task Y_on_the_keep_question_keeps_the_version_the_tree_holds_and_finishes_the_rebase()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        var app = OpenPaused(repo);
+        var stop = app.Snapshot.Paused!;
+        app.BranchesTab.ResumeRefused(app.ResumeOp.Check(new ResumeRequest(ResumeAction.Continue, null, stop.Commit)), null);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.Y);
+        await app.ChangesTask!;
+
+        Assert.False(SequenceGit.RebaseInProgress(GitDir(repo)));
+        Assert.Equal(0, app.ChangeExitCode);
+        Assert.True(repo.IsClean);
+    }
+
+    [Fact]
+    public void A_binary_file_read_again_from_the_work_tree_stays_not_resolved_on_the_pause_screen()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        var app = OpenPaused(repo);
+        var stop = app.Snapshot.Paused!;
+
+        var read = BranchesTab.ReadConflictFiles(repo.Dir, stop.Files);
+        app.BranchesTab.ApplyConflictRead(read, stop.Commit);
+
+        Assert.Equal(new[] { "✖ logo.bin  binary · not resolved" }, app.Art.BelowFor!(60, 3).Select(line => string.Concat(line.Select(s => s.Text))));
     }
 
     [Fact]

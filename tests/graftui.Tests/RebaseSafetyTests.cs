@@ -327,7 +327,7 @@ public class RebaseSafetyTests
         Assert.Equal(SequenceOutcomeKind.Paused, outcome.Kind);
         Assert.NotNull(outcome.Stop);
         Assert.Equal(PauseKind.Conflict, outcome.Stop.Pause);
-        Assert.Equal(new[] { new ConflictFile("app.txt", false) }, outcome.Stop.Files);
+        Assert.Equal(new[] { ("app.txt", false, ConflictKind.Text) }, outcome.Stop.Files.Select(f => (f.Path, f.Resolved, f.Kind)));
         Assert.Equal("Add password check", outcome.Stop.Subject);
         Assert.Equal(3, outcome.Stop.Step);
         Assert.Equal(4, outcome.Stop.Total);

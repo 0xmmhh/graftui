@@ -14,8 +14,9 @@ public class SequenceGitTests
 
     [Theory]
     [InlineData("<<<<<<< HEAD")]
-    [InlineData("=======")]
+    [InlineData("<<<<<<<")]
     [InlineData(">>>>>>> feature")]
+    [InlineData(">>>>>>>\r")]
     public void HasMarkers_detects_each_marker_line(string markerLine)
     {
         using var repo = TempRepo.Create();
@@ -23,6 +24,19 @@ public class SequenceGitTests
         File.WriteAllText(path, "one\n" + markerLine + "\ntwo\n");
 
         Assert.True(SequenceGit.HasMarkers(path));
+    }
+
+    [Theory]
+    [InlineData("=======")]
+    [InlineData("<<<<<<<<")]
+    [InlineData(">>>>>>>x")]
+    public void HasMarkers_ignores_a_lone_separator_and_runs_that_are_not_exactly_seven(string line)
+    {
+        using var repo = TempRepo.Create();
+        var path = Path.Combine(repo.Dir, "app.txt");
+        File.WriteAllText(path, "one\n" + line + "\ntwo\n");
+
+        Assert.False(SequenceGit.HasMarkers(path));
     }
 
     [Fact]

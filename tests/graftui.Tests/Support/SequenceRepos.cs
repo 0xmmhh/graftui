@@ -135,6 +135,103 @@ internal static class SequenceRepos
     }
 
     /// <summary>
+    /// main has logo.bin ("Add logo"). feature changes it ("Feature logo") and main changes it too ("Main logo"): a binary conflict. HEAD is on
+    /// feature.
+    /// </summary>
+    public static TempRepo BinaryConflict() => BinaryPair(headOnMain: false);
+
+    /// <summary>BinaryConflict with HEAD on main: picking "Feature logo" onto main conflicts the same way.</summary>
+    public static TempRepo PickBinary() => BinaryPair(headOnMain: true);
+
+    /// <summary>
+    /// BinaryConflict's logo.bin, and app.txt changed on both sides by the same feature commit, so a rebase onto main pauses with two
+    /// conflicted files: app.txt with markers, logo.bin without. HEAD is on feature.
+    /// </summary>
+    public static TempRepo BinaryAndTextConflict()
+    {
+        var repo = TempRepo.Create();
+        CommitBoth(repo, Blob("base", 1), "line 1\n", "Add logo and app");
+        repo.Run("switch", "-q", "-c", "feature");
+        CommitBoth(repo, Blob("feat", 2), "feature line 1\n", "Feature logo and app");
+        repo.Run("switch", "-q", "main");
+        CommitBoth(repo, Blob("main", 3), "main line 1\n", "Main logo and app");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>
+    /// gone.txt is edited on feature ("Edit gone", content "feature") and deleted on main ("Delete gone"): a modify/delete conflict where
+    /// the main side deleted the file. HEAD is on feature.
+    /// </summary>
+    public static TempRepo ModifyDelete()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("gone.txt", "d\n", "Add gone");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("gone.txt", "feature\n", "Edit gone");
+        repo.Run("switch", "-q", "main");
+        repo.Run("rm", "-q", "gone.txt");
+        repo.Run("commit", "-q", "-m", "Delete gone");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>
+    /// gone.txt is deleted on feature ("Delete gone") and edited on main ("Edit gone on main"): a delete/modify conflict where the feature
+    /// side deleted the file. HEAD is on feature.
+    /// </summary>
+    public static TempRepo DeleteModify()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("gone.txt", "d\n", "Add gone");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Run("rm", "-q", "gone.txt");
+        repo.Run("commit", "-q", "-m", "Delete gone");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("gone.txt", "main\n", "Edit gone on main");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>The two logo.bin commits, with HEAD on main or on feature.</summary>
+    private static TempRepo BinaryPair(bool headOnMain)
+    {
+        var repo = TempRepo.Create();
+        CommitBytes(repo, "logo.bin", Blob("base", 1), "Add logo");
+        repo.Run("switch", "-q", "-c", "feature");
+        CommitBytes(repo, "logo.bin", Blob("feat", 2), "Feature logo");
+        repo.Run("switch", "-q", "main");
+        CommitBytes(repo, "logo.bin", Blob("main", 3), "Main logo");
+        if (!headOnMain)
+            repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>Bytes that are not text: the head as ASCII, a NUL and a tail byte.</summary>
+    private static byte[] Blob(string head, byte tail)
+    {
+        var text = Encoding.ASCII.GetBytes(head);
+        return [.. text, 0, tail];
+    }
+
+    /// <summary>Writes the bytes to a file, stages it and commits it.</summary>
+    private static void CommitBytes(TempRepo repo, string file, byte[] bytes, string message)
+    {
+        File.WriteAllBytes(Path.Combine(repo.Dir, file), bytes);
+        repo.Run("add", file);
+        repo.Run("commit", "-q", "-m", message);
+    }
+
+    /// <summary>Writes logo.bin and app.txt, stages both and commits them together.</summary>
+    private static void CommitBoth(TempRepo repo, byte[] logo, string app, string message)
+    {
+        File.WriteAllBytes(Path.Combine(repo.Dir, "logo.bin"), logo);
+        repo.Write("app.txt", app);
+        repo.Run("add", "logo.bin", "app.txt");
+        repo.Run("commit", "-q", "-m", message);
+    }
+
+    /// <summary>
     /// Starts `git rebase -i onto` by hand with the given todo lines, the way graftui runs it (a sequence editor that copies the list).
     /// Returns git's result. The todo file is removed once git has copied it.
     /// </summary>

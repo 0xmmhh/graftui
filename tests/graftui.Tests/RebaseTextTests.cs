@@ -156,8 +156,119 @@ public class RebaseTextTests
     [Fact]
     public void ConflictRow_says_whether_the_file_is_resolved()
     {
-        Assert.Equal("✖ app.txt  both modified", RebaseText.ConflictRow(new ConflictFile("app.txt", false)));
-        Assert.Equal("✔ app.txt  resolved", RebaseText.ConflictRow(new ConflictFile("app.txt", true)));
+        var stop = Conflict("app.txt");
+
+        Assert.Equal("✖ app.txt  both modified", RebaseText.ConflictRow(new ConflictFile("app.txt", false), stop));
+        Assert.Equal("✔ app.txt  resolved", RebaseText.ConflictRow(new ConflictFile("app.txt", true), stop));
+    }
+
+    /// <summary>A rebase of feature onto main that stopped on a file: ours is main, theirs is feature.</summary>
+    private static SequenceStop RebaseStop() =>
+        new(SequenceKind.Rebase, PauseKind.Conflict, "feature", "main", H40, "0123456", "Add gone", [], 1, 1, "", [], Ours: true);
+
+    /// <summary>A pick that stopped on a commit: ours is the branch picked onto, theirs is the commit.</summary>
+    private static SequenceStop PickStop(string branch, string shortCommit) =>
+        new(SequenceKind.CherryPick, PauseKind.Conflict, branch, "", H40, shortCommit, "Add logo", [], 1, 1, "", [], Ours: true);
+
+    [Fact]
+    public void A_rebase_names_the_onto_branch_as_ours_and_the_replayed_branch_as_theirs()
+    {
+        Assert.Equal("main", RebaseText.OursName(RebaseStop()));
+        Assert.Equal("feature", RebaseText.TheirsName(RebaseStop()));
+    }
+
+    [Fact]
+    public void A_pick_names_the_branch_as_ours_and_the_picked_commit_as_theirs()
+    {
+        var stop = PickStop("main", "abc1234");
+
+        Assert.Equal("main", RebaseText.OursName(stop));
+        Assert.Equal("abc1234", RebaseText.TheirsName(stop));
+    }
+
+    [Fact]
+    public void A_binary_file_and_a_deleted_file_are_rows_that_say_they_are_not_resolved()
+    {
+        var stop = RebaseStop();
+
+        Assert.Equal("✖ logo.bin  binary · not resolved", RebaseText.ConflictRow(new ConflictFile("logo.bin", false, ConflictKind.Binary), stop));
+        Assert.Equal("✖ gone.txt  deleted on main · not resolved",
+            RebaseText.ConflictRow(new ConflictFile("gone.txt", false, ConflictKind.DeletedOurs), stop));
+        Assert.Equal("✖ gone.txt  deleted on feature · not resolved",
+            RebaseText.ConflictRow(new ConflictFile("gone.txt", false, ConflictKind.DeletedTheirs), stop));
+    }
+
+    [Fact]
+    public void A_pick_row_names_the_picked_commit_for_a_file_it_deleted()
+    {
+        var stop = PickStop("main", "abc1234");
+
+        Assert.Equal("✖ gone.txt  deleted on abc1234 · not resolved",
+            RebaseText.ConflictRow(new ConflictFile("gone.txt", false, ConflictKind.DeletedTheirs), stop));
+        Assert.Equal("holds abc1234's version", RebaseText.TreeText(stop, new KeptFile("logo.bin", ConflictKind.Binary, TreeSide.Theirs)));
+    }
+
+    [Fact]
+    public void The_tree_text_says_which_version_the_work_tree_holds()
+    {
+        var stop = RebaseStop();
+
+        Assert.Equal("holds main's version", RebaseText.TreeText(stop, new KeptFile("logo.bin", ConflictKind.Binary, TreeSide.Ours)));
+        Assert.Equal("holds feature's version", RebaseText.TreeText(stop, new KeptFile("logo.bin", ConflictKind.Binary, TreeSide.Theirs)));
+        Assert.Equal("holds your edited version", RebaseText.TreeText(stop, new KeptFile("logo.bin", ConflictKind.Binary, TreeSide.Edited)));
+        Assert.Equal("has it deleted", RebaseText.TreeText(stop, new KeptFile("gone.txt", ConflictKind.DeletedOurs, TreeSide.Deleted)));
+    }
+
+    [Fact]
+    public void The_keep_question_for_one_file_says_which_version_the_tree_holds()
+    {
+        var text = RebaseText.KeepText(RebaseStop(), [new KeptFile("logo.bin", ConflictKind.Binary, TreeSide.Ours)]);
+
+        Assert.Equal("logo.bin has no conflict markers. The working tree holds main's version. Keep it and continue?", text);
+    }
+
+    [Fact]
+    public void The_keep_question_for_a_deleted_file_keeps_it_deleted()
+    {
+        var text = RebaseText.KeepText(RebaseStop(), [new KeptFile("gone.txt", ConflictKind.DeletedOurs, TreeSide.Deleted)]);
+
+        Assert.Equal("gone.txt has no conflict markers. The working tree has it deleted. Keep it deleted and continue?", text);
+    }
+
+    [Fact]
+    public void The_keep_question_for_several_files_says_each_version()
+    {
+        var files = new[]
+        {
+            new KeptFile("logo.bin", ConflictKind.Binary, TreeSide.Ours),
+            new KeptFile("gone.txt", ConflictKind.DeletedOurs, TreeSide.Theirs),
+        };
+
+        Assert.Equal("2 files have no conflict markers: logo.bin holds main's version; gone.txt holds feature's version. Keep them and continue?",
+            RebaseText.KeepText(RebaseStop(), files));
+    }
+
+    [Fact]
+    public void The_short_keep_question_names_the_files_and_the_tree_holds_them()
+    {
+        Assert.Equal("Keep logo.bin as the working tree holds it and continue?",
+            RebaseText.KeepShort([new KeptFile("logo.bin", ConflictKind.Binary, TreeSide.Ours)]));
+    }
+
+    [Fact]
+    public void A_pause_with_only_files_without_markers_says_enter_asks_first()
+    {
+        var stop = RebaseStop() with { Files = [new ConflictFile("logo.bin", false, ConflictKind.Binary)] };
+
+        Assert.Equal("✕ CONFLICT in logo.bin: no conflict markers, so Enter asks before keeping the working tree's version, or press X to abort",
+            RebaseText.PauseCaption(stop));
+    }
+
+    [Fact]
+    public void A_pause_with_a_text_file_keeps_the_resolve_caption()
+    {
+        Assert.Equal("✕ CONFLICT in app.txt: resolve it in your editor, then Enter continues, or press X to abort",
+            RebaseText.PauseCaption(Conflict("app.txt")));
     }
 
     [Fact]
