@@ -41,6 +41,7 @@ public sealed class ArtPaneView : PaneView
         {
             _scene = value;
             SingleLine = false;
+            HideArt = false;
         }
     }
 
@@ -58,7 +59,14 @@ public sealed class ArtPaneView : PaneView
     {
         _scene = scene;
         SingleLine = singleLine;
+        HideArt = false;
     }
+
+    /// <summary>
+    /// True when no art is drawn: the caption moves up to the art's row, and the rows under the rule get the space the art had. The todo
+    /// list uses it on a short pane, where the list needs every row. Reset whenever <see cref="Scene"/> or <see cref="ShowScene"/> is set.
+    /// </summary>
+    public bool HideArt { get; set; }
 
     /// <summary>Direction line for a given width. Built on demand so names can be cut to the pane.</summary>
     public Func<int, IReadOnlyList<Seg>> Direction { get; set; } = _ => [];
@@ -117,8 +125,10 @@ public sealed class ArtPaneView : PaneView
     public bool CompactArt { get; set; }
 
     // The art's height in a pane with ih inner rows.
-    private static int ArtRows(int ih, bool compact, bool singleLine)
+    private static int ArtRows(int ih, bool compact, bool singleLine, bool hidden = false)
     {
+        if (hidden)
+            return 0;
         if (compact && singleLine)
             return SingleLineRows;
         if (compact)
@@ -172,15 +182,21 @@ public sealed class ArtPaneView : PaneView
     /// Where the art, the caption, the rule and the rows under them sit in a pane of height <paramref name="paneH"/>, in the pane's own
     /// rows. A two-line caption takes one commit row, and only when a commit row is free; otherwise it falls back to one line.
     /// </summary>
-    public static PaneRows Rows(int paneH, bool twoLines, bool compact = false, bool singleLine = false)
+    public static PaneRows Rows(int paneH, bool twoLines, bool compact = false, bool singleLine = false, bool hidden = false)
     {
         var ih = paneH - 2;
-        var ah = ArtRows(ih, compact, singleLine);
+        var ah = ArtRows(ih, compact, singleLine, hidden);
         var commitRows = Math.Max(0, ih - 4 - ah);
         if (twoLines && commitRows > 0)
             return new PaneRows(ah, 3 + ah, 2, 5 + ah, 6 + ah, commitRows - 1);
         return new PaneRows(ah, 3 + ah, 1, 4 + ah, 5 + ah, commitRows);
     }
+
+    /// <summary>
+    /// Whether a pane of this height keeps fewer than three rows under the caption with the art drawn. The todo list then hides the art
+    /// (<see cref="HideArt"/>), so the list gets the rows: 64×22 gets nine.
+    /// </summary>
+    public static bool ListNeedsWholePane(int paneH, bool compact) => Rows(paneH, false, compact).BelowRows < 3;
 
     /// <summary>The caption's rows, the rule's row and the rows under the rule, as <see cref="Rows"/> gives them.</summary>
     public static (int CaptionRows, int RuleRow, int BelowTop, int BelowRows) CaptionLayout(int paneH, bool twoLines, bool compact = false,
@@ -206,7 +222,7 @@ public sealed class ArtPaneView : PaneView
         if (DirectionRule)
             DrawRule(2, 2, cw);
 
-        var area = ArtArea(pw, ph, CompactArt, SingleLine);
+        var area = HideArt ? null : ArtArea(pw, ph, CompactArt, SingleLine);
         SceneFrame? frame = null;
         if (area is { } scene && Scene is not null)
             frame = Scene(ArtGeometry.For(scene.W, scene.H)!);
@@ -222,7 +238,7 @@ public sealed class ArtPaneView : PaneView
                 }
         }
 
-        var caption = area is null
+        var caption = area is null && !HideArt
             ? new Caption("art needs a wider pane", Dim)
             : frame?.Caption ?? FallbackCaption;
         (string First, string? Second) split;
@@ -233,7 +249,7 @@ public sealed class ArtPaneView : PaneView
         else
             split = TextFit.Wrap2(caption.Text, cw);
         var (first, second) = split;
-        var layout = Rows(ph, second != null, CompactArt, SingleLine);
+        var layout = Rows(ph, second != null, CompactArt, SingleLine, HideArt);
         if (caption is not null)
         {
             if (layout.CaptionRows == 2)

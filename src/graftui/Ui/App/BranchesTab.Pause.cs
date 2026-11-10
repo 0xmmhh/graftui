@@ -189,7 +189,8 @@ internal sealed partial class BranchesTab
         var direction = PausedDirection(stop, curInk, ontoInk);
         var running = action == ResumeAction.Abort ? RebaseText.Aborting : RebaseText.Running(stop.Branch, stop.Onto);
         var engine = new RebaseEngine(_app.RootGit, _app.TryLoadSnapshot, _app.TryLoadLayout);
-        var layout = Or(null, _app.Snapshot, stop.Onto, TipOf(stop.Onto));
+        var snap = _app.Snapshot;
+        var bare = Or(null, snap, stop.Onto, TipOf(stop.Onto));
         var animator = _app.BranchAnimator;
 
         StartWork();
@@ -214,13 +215,17 @@ internal sealed partial class BranchesTab
                 if (_app.Gate.IsQuitting)
                     return null;
 
+                // The layout is read here, on the worker, once the step is known to run: a rebase's branch is read from its old tip, since
+                // HEAD is detached while it runs.
+                var layout = ResumeLayout(stop, oldTip, snap, bare);
                 _app.Ui(() =>
                 {
                     _app.LogCommands(check.Commands);
-                    animator.Begin(new PausedAnimation(stop, running, curInk, ontoInk), direction, null);
+                    animator.Begin(ResumeAnimation(stop, action, running, curInk, ontoInk, layout), direction, null);
                 });
+                var rows = stop.Rows ?? [];
                 var f = check.CanRun
-                    ? SequenceFinish(_app.ResumeOp.Run(request, check), _app.TryLoadSnapshot(), stop.Rows ?? [], layout, engine)
+                    ? SequenceFinish(_app.ResumeOp.Run(request, check), _app.TryLoadSnapshot(), rows, layout, engine, RebasePlan.IsEdited(rows))
                     : AbortPausedFinish(stop, oldTip!, check, engine);
                 _app.SetChangeExitCode(f.ExitCode, LeftPause(f.Result));
                 _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.Log, () => EndBranchChange(f), f.Hints));
@@ -232,6 +237,38 @@ internal sealed partial class BranchesTab
                 return "graftui: rebase failed: " + ex.Message;
             }
         }, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// The layout a resume animates from, read on the worker. A rebase's branch is read from its old tip against its onto, so the commits and
+    /// the lanes are the ones the rebase started from. When the stop has no old tip (not graftui's own pause, or a cherry-pick), or the read
+    /// fails, the bare pair is used, as it was before: the resume never fails or waits because of its art.
+    /// </summary>
+    internal GraphLayout ResumeLayout(SequenceStop stop, string? oldTip, RepoSnapshot snap, GraphLayout bare)
+    {
+        if (oldTip is null || stop.Kind != SequenceKind.Rebase)
+            return bare;
+        return _app.TryLoadRebaseLayout(snap, stop.Branch, oldTip, stop.Onto) ?? bare;
+    }
+
+    /// <summary>
+    /// The art while a resume runs. A rebase that has its plan plays the todo scene from the stopped row (continue, skip or abort); anything
+    /// else keeps the paused picture with the running caption.
+    /// </summary>
+    internal static IBranchAnimation ResumeAnimation(SequenceStop stop, ResumeAction action, string running, Ink curInk, Ink ontoInk,
+        GraphLayout layout)
+    {
+        if (stop.Rows is null || stop.Rows.Count == 0)
+            return new PausedAnimation(stop, running, curInk, ontoInk);
+
+        var rows = stop.Rows;
+        var from = TodoScenes.ResumeFrom(rows, stop, action);
+        // A skip marks the stopped row. A stop that names no row of the plan has none to mark, so no row is skipped.
+        var skipAt = action == ResumeAction.Skip && TodoScenes.StopIndex(rows, stop) >= 0 ? from : -1;
+        var run = TodoScenes.Plan(rows, from, skipAt);
+        if (action == ResumeAction.Abort)
+            run = TodoScenes.Aborting(run, from, stop.Pause);
+        return new TodoAnimation(layout, rows, run);
     }
 
     /// <summary>

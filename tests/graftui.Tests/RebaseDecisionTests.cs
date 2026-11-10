@@ -96,7 +96,7 @@ public class RebaseDecisionTests
         var check = new RebaseOperation(repo.Git).Check(new RebaseRequest("main"));
 
         var start = BranchesTab.RebaseStart(Layouts.Diverged(), reader.LoadSnapshot(withCounts: true, CancellationToken.None), check,
-            _ => Ink.Fg);
+            _ => Ink.Fg, interactive: false);
 
         Assert.IsType<RebaseAnimation>(start.Anim);
         Assert.Equal(4, start.Commits!.Left.Rows.Count);

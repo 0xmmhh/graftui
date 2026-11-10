@@ -116,6 +116,25 @@ internal static class SequenceRepos
     }
 
     /// <summary>
+    /// The picks of a user's branch: feature has three commits in three different files (README.md, log.txt, VERSION), oldest first.
+    /// Fix typo in README, Add logging, Bump version to 0.3. main has one commit of its own (main.txt). HEAD is on feature.
+    /// </summary>
+    public static TempRepo TypoLogVersion()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("README.md", "hello\n", "Initial");
+        repo.Commit("VERSION", "0.2\n", "Add version");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("README.md", "hallo\n", "Fix typo in README");
+        repo.Commit("log.txt", "log\n", "Add logging");
+        repo.Commit("VERSION", "0.3\n", "Bump version to 0.3");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("main.txt", "main\n", "Add main file");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>
     /// Starts `git rebase -i onto` by hand with the given todo lines, the way graftui runs it (a sequence editor that copies the list).
     /// Returns git's result. The todo file is removed once git has copied it.
     /// </summary>

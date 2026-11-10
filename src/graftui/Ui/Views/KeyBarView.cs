@@ -5,8 +5,11 @@ using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace graftui.Ui.Views;
 
-/// <summary>Which keys the bar lists: the branches, the changes, a commit message form, a yes/no question, a one-line message box, or a rebase's confirm screen.</summary>
-public enum KeyBarMode { Branches, Changes, Input, Ask, Message, Confirm }
+/// <summary>
+/// Which keys the bar lists: the branches, the changes, a commit message form, a yes/no question, a one-line message box, a rebase's confirm
+/// screen, or an interactive rebase's todo list.
+/// </summary>
+public enum KeyBarMode { Branches, Changes, Input, Ask, Message, Confirm, Todo }
 
 /// <summary>
 /// Bottom row: the keys that work right now. While a merge or another git call runs, only quit is offered.
@@ -80,6 +83,7 @@ public sealed class KeyBarView : View
         KeyBarMode.Input => InputItems(BodyFocused),
         KeyBarMode.Message => MessageItems(MessageEnterLabel),
         KeyBarMode.Confirm => ConfirmItems(),
+        KeyBarMode.Todo => TodoItems(),
         KeyBarMode.Ask =>
         [
             (AskKey, AskYesLabel, 4),
@@ -152,8 +156,25 @@ public sealed class KeyBarView : View
         [("Enter", " rebase", 5), ("Esc", CancelLabel, 6)];
 
     /// <summary>
+    /// The todo list's keys. Reorder, the actions and Enter start are kept longest; the arrows and edit go first when the bar is narrow.
+    /// </summary>
+    internal static IReadOnlyList<(string Key, string Label, int Priority)> TodoItems() =>
+        [
+            ("↑↓←→", " move", 1),
+            ("⇧↑↓", " reorder", 8),
+            ("p", " pick", 7),
+            ("r", " reword", 4),
+            ("e", " edit", 2),
+            ("s", " squash", 5),
+            ("f", " fixup", 3),
+            ("d", " drop", 6),
+            ("Enter", " start", 9),
+            ("Esc", CancelLabel, 10),
+        ];
+
+    /// <summary>
     /// The Branches tab's keys that act now, in the order they are listed. Priority decides what is dropped first when the bar is
-    /// narrow (higher is kept): Esc, Tab, m, s, u, r, n, R, D, ↑↓.
+    /// narrow (higher is kept): Esc, Tab, m, s, u, r, i, n, R, D, ↑↓.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s)
     {
@@ -175,6 +196,8 @@ public sealed class KeyBarView : View
             items.Add(("D", " delete", 2));
         if (s.CanRebase)
             items.Add(("r", " rebase", 7));
+        if (s.CanRebase)
+            items.Add(("i", " interactive", 5));
         if (s.HasUndo)
             items.Add(("u", " undo", 8));
         items.Add(("Esc", " quit", 12));

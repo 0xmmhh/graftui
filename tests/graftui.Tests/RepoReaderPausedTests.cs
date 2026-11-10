@@ -54,6 +54,29 @@ public class RepoReaderPausedTests
     }
 
     [Fact]
+    public void A_paused_rebase_layout_is_read_from_the_branch_old_tip_not_from_the_detached_head()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var before = repo.Head;
+        Pause(repo);
+        var snap = Load(repo.Git);
+
+        var layout = new RepoReader(repo.Git).LoadRebaseLayout("feature", before, "main", snap, CancellationToken.None);
+
+        Assert.Equal("", snap.CurrentBranch);
+        Assert.Equal("feature", layout.Current);
+        Assert.False(layout.Detached);
+        Assert.Equal(before, layout.CurrentTip);
+        Assert.Equal("main", layout.Selected);
+        Assert.Equal(new[] { "Fix typo in form", "Add password check", "WIP debug logging" }, layout.CurrentOwn.Select(c => c.Subject));
+        Assert.True(layout.CurrentOwnMore);
+        Assert.Equal(new[] { "Change line 1 on main" }, layout.SelectedOwn.Select(c => c.Subject));
+        Assert.Equal(new[] { "Add app" }, layout.Shared.Select(c => c.Subject));
+        Assert.Equal(BranchLanes.LaneOf(snap.Branches, "feature"), layout.CurrentLane);
+        Assert.Equal(BranchLanes.LaneOf(snap.Branches, "main"), layout.SelectedLane);
+    }
+
+    [Fact]
     public void A_reader_started_in_a_subfolder_finds_the_conflicted_file_and_its_resolved_flag()
     {
         using var repo = SequenceRepos.FeatureConflict();

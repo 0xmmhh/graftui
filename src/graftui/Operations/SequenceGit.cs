@@ -113,7 +113,8 @@ internal static class SequenceGit
     /// <summary>
     /// What a paused rebase waits for, read from git's rebase-merge folder and the state. Null when git cannot say: the done list is
     /// missing (a rebase started with a todo git rejected) or git fails. Otherwise a conflict, an edit stop, a reword pause (an edit stop
-    /// whose row is a reword that has not been reworded yet) or a squash pause (a break after a fold group).
+    /// whose row is a reword that has not been reworded yet) or a squash pause (a break after a fold group). Null too when the stop is not
+    /// a row of the plan, or a break has no fold group before it: such a stop cannot be placed, so it is unreadable, never a conflict.
     /// </summary>
     internal static SequenceStop? ReadRebaseStop(GitClient git, string gitDir, SequenceState s, List<GitResult> log)
     {
@@ -136,14 +137,20 @@ internal static class SequenceGit
 
         if (cmd is "edit" or "e")
         {
-            var row = s.Rows.FirstOrDefault(r => r.Hash == hash);
+            var commit = FullOrGiven(s, hash ?? "");
+            var row = s.Rows.FirstOrDefault(r => r.Hash == commit);
             if (row is not null && row.Action == RebaseAction.Reword && !s.Reworded.Contains(row.Hash))
                 return RebaseStop(s, PauseKind.Reword, row.Hash, [], FullMessage(git, log, row.Hash), []);
-            return RebaseStop(s, PauseKind.Edit, FullOrGiven(s, hash ?? ""), [], "", []);
+            return RebaseStop(s, PauseKind.Edit, commit, [], "", []);
         }
 
-        if ((cmd is "break" or "b") && TryFoldGroup(done, out var target, out var folded))
-            return SquashStop(git, log, s, target, folded);
+        // A break is graftui's squash stop. A break with no fold group before it is not a stop graftui can show: it is unreadable, not a conflict.
+        if (cmd is "break" or "b")
+        {
+            if (TryFoldGroup(done, out var target, out var folded))
+                return SquashStop(git, log, s, target, folded);
+            return null;
+        }
 
         return RebaseStop(s, PauseKind.Conflict, FullOrGiven(s, stopCommit), [], "", []);
     }
@@ -151,7 +158,7 @@ internal static class SequenceGit
     /// <summary>
     /// What a paused cherry-pick waits for: always a conflict, on the commit in CHERRY_PICK_HEAD. The files are read from the work tree.
     /// Null when no commit is held: the sequencer is left between two picks (the current one was committed by hand), and there is no
-    /// stop to show. The sequence is then still in progress, but its stop cannot be read.
+    /// stop to show. Null too when the held commit is not one of the picks. The sequence is then still in progress, but its stop cannot be read.
     /// </summary>
     internal static SequenceStop? ReadPickStop(GitClient git, SequenceState s, List<GitResult> log)
     {
@@ -160,22 +167,33 @@ internal static class SequenceGit
         if (commit.Length == 0)
             return null;
 
-        var files = UnmergedFiles(git, log);
+        // A commit that is not one of graftui's picks has no place in the sequence, so there is no stop to show (Step is never 0).
         var step = IndexOfHash(s.Picks, commit);
+        if (step < 0)
+            return null;
+
+        var files = UnmergedFiles(git, log);
         return new SequenceStop(SequenceKind.CherryPick, PauseKind.Conflict, s.Branch, s.Onto, commit, BranchGit.Short(commit),
             Subject(git, log, commit), ConflictState(git.RepoPath, files), step + 1, s.Picks.Count, "", [], Ours: true);
     }
 
-    private static SequenceStop RebaseStop(SequenceState s, PauseKind pause, string commit, IReadOnlyList<ConflictFile> files,
+    /// <summary>
+    /// The stop at a plan row, numbered from 1 (Step is never 0). Null when the commit is not a row of the plan: graftui cannot show a stop
+    /// it cannot place in the plan, so the caller reports the stop as unreadable instead.
+    /// </summary>
+    private static SequenceStop? RebaseStop(SequenceState s, PauseKind pause, string commit, IReadOnlyList<ConflictFile> files,
         string message, IReadOnlyList<string> folded)
     {
-        var row = s.Rows.FirstOrDefault(r => r.Hash == commit);
+        var index = IndexOfRow(s.Rows, commit);
+        if (index < 0)
+            return null;
+
         return new SequenceStop(SequenceKind.Rebase, pause, s.Branch, s.Onto, commit, BranchGit.Short(commit),
-            row?.Subject ?? "", files, IndexOfRow(s.Rows, commit) + 1, s.Rows.Count, message, folded, Ours: true, Rows: s.Rows);
+            s.Rows[index].Subject, files, index + 1, s.Rows.Count, message, folded, Ours: true, Rows: s.Rows);
     }
 
-    /// <summary>The squash pause for a fold group: the target's message, then each squash row's message.</summary>
-    private static SequenceStop SquashStop(GitClient git, List<GitResult> log, SequenceState s, string target, IReadOnlyList<string> folded)
+    /// <summary>The squash pause for a fold group: the target's message, then each squash row's message. Null when the target is not a row.</summary>
+    private static SequenceStop? SquashStop(GitClient git, List<GitResult> log, SequenceState s, string target, IReadOnlyList<string> folded)
     {
         var message = FullMessage(git, log, "HEAD");
         foreach (var hash in folded)
@@ -189,27 +207,40 @@ internal static class SequenceGit
 
     /// <summary>
     /// Walks the done list back from the break (the last line) to the commit the group folds into. Folded is the group's fixup hashes,
-    /// oldest first. False when the lines do not form a group.
+    /// oldest first. A drop between the fold and its target is passed over, since git folds into the last commit it kept. An earlier break
+    /// (the end of a fold group before this one) is passed over with the fixups above it, which belong to that group; the walk goes on to
+    /// the commit the earlier group folded into. False when the lines do not form a group.
     /// </summary>
     private static bool TryFoldGroup(IReadOnlyList<(string Cmd, string? Hash)> done, out string target, out List<string> folded)
     {
         folded = [];
         target = "";
+        var inOwnGroup = true;
         for (var i = done.Count - 2; i >= 0; i--)
         {
             var (cmd, hash) = done[i];
-            if (cmd is "fixup" or "f")
+            if (cmd is "break" or "b")
             {
-                folded.Add(hash ?? "");
+                inOwnGroup = false;
                 continue;
             }
-            if ((cmd is "pick" or "p" or "edit" or "e" or "reword" or "r") && hash is not null)
+            if (cmd is "drop" or "d")
+                continue;
+            if (cmd is "fixup" or "f")
             {
+                if (inOwnGroup)
+                    folded.Add(hash ?? "");
+                continue;
+            }
+            if (cmd is "pick" or "p" or "edit" or "e" or "reword" or "r")
+            {
+                if (hash is null)
+                    return false;
                 target = hash;
                 folded.Reverse();
                 return folded.Count > 0 && folded.All(h => h.Length > 0);
             }
-            break;
+            return false;
         }
         return false;
     }

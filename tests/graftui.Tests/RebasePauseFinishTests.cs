@@ -52,7 +52,7 @@ public class RebasePauseFinishTests
         using var repo = SequenceRepos.Feature4();
         var (check, outcome) = Pause(repo, PlanOf(repo, (2, RebaseAction.Edit)));
 
-        var f = BranchesTab.RebaseFinish(outcome, Snap(repo), check, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.RebaseFinish(outcome, Snap(repo), check.Rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.Equal(RebaseText.PausedTitle, f.Result.Title);
         Assert.Equal(RebaseText.EditStop(outcome.Stop!), f.Result.Caption.Text);
@@ -67,7 +67,7 @@ public class RebasePauseFinishTests
         using var repo = SequenceRepos.Feature4();
         var (check, outcome) = Pause(repo, PlanOf(repo, (0, RebaseAction.Reword)));
 
-        var f = BranchesTab.RebaseFinish(outcome, Snap(repo), check, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.RebaseFinish(outcome, Snap(repo), check.Rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.Equal(RebaseText.MessagePause(outcome.Stop!), f.Result.Caption.Text);
         Assert.Equal(WarnB, f.Result.Caption.Style);
@@ -84,7 +84,7 @@ public class RebasePauseFinishTests
         var request = new ResumeRequest(ResumeAction.Continue, null, outcome.Stop!.Commit);
         var resumed = op.Run(request, op.Check(request));
 
-        var f = BranchesTab.SequenceFinish(resumed, Snap(repo), rows, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.SequenceFinish(resumed, Snap(repo), rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.Equal(SequenceOutcomeKind.Done, resumed.Kind);
         Assert.True(f.Result.Success);
@@ -103,7 +103,7 @@ public class RebasePauseFinishTests
         var request = new ResumeRequest(ResumeAction.Message, outcome.Stop!.Message, outcome.Stop.Commit);
 
         var resumed = op.Run(request, op.Check(request));
-        var f = BranchesTab.SequenceFinish(resumed, Snap(repo), rows, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.SequenceFinish(resumed, Snap(repo), rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.Equal(SequenceOutcomeKind.Done, resumed.Kind);
         Assert.Equal(RebaseText.DoneTitle, f.Result.Title);
@@ -119,7 +119,7 @@ public class RebasePauseFinishTests
         var request = new ResumeRequest(ResumeAction.Skip, null, outcome.Stop!.Commit);
         var resumed = new ResumeSequenceOperation(repo.Git).Run(request, new ResumeSequenceOperation(repo.Git).Check(request));
 
-        var f = BranchesTab.SequenceFinish(resumed, Snap(repo), rows, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.SequenceFinish(resumed, Snap(repo), rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.Equal(SequenceOutcomeKind.Done, resumed.Kind);
         Assert.Contains("1 commit skipped", f.Result.Caption.Text, StringComparison.Ordinal);
@@ -136,7 +136,7 @@ public class RebasePauseFinishTests
         var request = new ResumeRequest(ResumeAction.Abort, null, outcome.Stop!.Commit);
         var aborted = new ResumeSequenceOperation(repo.Git).Run(request, new ResumeSequenceOperation(repo.Git).Check(request));
 
-        var f = BranchesTab.SequenceFinish(aborted, Snap(repo), rows, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.SequenceFinish(aborted, Snap(repo), rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.Equal(before, repo.Head);
         Assert.Equal(RebaseText.AbortedTitle, f.Result.Title);
@@ -155,7 +155,7 @@ public class RebasePauseFinishTests
         var request = new ResumeRequest(ResumeAction.Continue, null, outcome.Stop!.Commit);
         var refused = new ResumeSequenceOperation(repo.Git).Run(request, new ResumeSequenceOperation(repo.Git).Check(request));
 
-        var f = BranchesTab.SequenceFinish(refused, Snap(repo), rows, Layouts.Diverged(), Engine(repo));
+        var f = BranchesTab.SequenceFinish(refused, Snap(repo), rows, Layouts.Diverged(), Engine(repo), interactive: false);
 
         Assert.Equal(SequenceOutcomeKind.Refused, refused.Kind);
         Assert.Equal("Refused", f.Result.Title);
