@@ -689,6 +689,19 @@ public sealed class AppController
         }
     }
 
+    /// <summary>The layout of a paused rebase's branch against its onto, from the branch's old tip; null when a read fails.</summary>
+    internal GraphLayout? TryLoadRebaseLayout(RepoSnapshot snap, string branch, string oldTip, string onto)
+    {
+        try
+        {
+            return Reader.LoadRebaseLayout(branch, oldTip, onto, snap, CancellationToken.None);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     internal RepoSnapshot? TryLoadSnapshot()
     {
         try

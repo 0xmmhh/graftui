@@ -57,8 +57,24 @@ public sealed class RepoReader(GitClient git)
     public GraphLayout LoadLayout(RepoSnapshot snap, Branch sel, CancellationToken ct)
     {
         var curTip = snap.HeadHash ?? throw new InvalidOperationException("HEAD has no commits yet");
-        var detached = snap.CurrentBranch.Length == 0;
+        return ReadPair(snap.CurrentBranch, snap.CurrentBranch.Length == 0, curTip, sel, snap.Branches, ct);
+    }
 
+    /// <summary>
+    /// The layout of a paused rebase's branch against the onto it is rebased onto, read from the branch's old tip. HEAD is detached while the
+    /// rebase runs, so the snapshot cannot give the branch's own commits; the old tip gives the same layout the rebase started from.
+    /// Throws when the onto is not listed or a read fails.
+    /// </summary>
+    public GraphLayout LoadRebaseLayout(string branch, string oldTip, string onto, RepoSnapshot snap, CancellationToken ct)
+    {
+        var sel = snap.Branches.FirstOrDefault(b => b.Name == onto)
+            ?? throw new InvalidOperationException($"{onto} is not listed");
+        return ReadPair(branch, false, oldTip, sel, snap.Branches, ct);
+    }
+
+    // The layout of two branch tips: the current one (its name, whether HEAD is detached, and its tip) against the selected branch.
+    private GraphLayout ReadPair(string curName, bool detached, string curTip, Branch sel, IReadOnlyList<Branch> branches, CancellationToken ct)
+    {
         ct.ThrowIfCancellationRequested();
         var baseHash = git.GetMergeBase(curTip, sel.Hash);
 
@@ -88,7 +104,7 @@ public sealed class RepoReader(GitClient git)
         var curNew = git.GetCommitsNotIn(curTip, sel.Hash, NewListMax);
 
         return new GraphLayout(
-            snap.CurrentBranch, detached, sel.Name,
+            curName, detached, sel.Name,
             curTip, sel.Hash, baseHash,
             curOwn, curOwnMore,
             selOwn, selOwnMore,
@@ -98,7 +114,7 @@ public sealed class RepoReader(GitClient git)
         {
             SelectedNew = selNew,
             CurrentNew = curNew,
-        }.WithLanes(snap.Branches);
+        }.WithLanes(branches);
     }
 
     /// <summary>Changes-tab read: the status rows, the current branch with its last four commits, and the stash list. Never logged.</summary>

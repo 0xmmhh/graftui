@@ -189,7 +189,8 @@ internal sealed partial class BranchesTab
         var direction = PausedDirection(stop, curInk, ontoInk);
         var running = action == ResumeAction.Abort ? RebaseText.Aborting : RebaseText.Running(stop.Branch, stop.Onto);
         var engine = new RebaseEngine(_app.RootGit, _app.TryLoadSnapshot, _app.TryLoadLayout);
-        var layout = Or(null, _app.Snapshot, stop.Onto, TipOf(stop.Onto));
+        var snap = _app.Snapshot;
+        var bare = Or(null, snap, stop.Onto, TipOf(stop.Onto));
         var animator = _app.BranchAnimator;
 
         StartWork();
@@ -214,6 +215,9 @@ internal sealed partial class BranchesTab
                 if (_app.Gate.IsQuitting)
                     return null;
 
+                // The layout is read here, on the worker, once the step is known to run: a rebase's branch is read from its old tip, since
+                // HEAD is detached while it runs.
+                var layout = ResumeLayout(stop, oldTip, snap, bare);
                 _app.Ui(() =>
                 {
                     _app.LogCommands(check.Commands);
@@ -233,6 +237,18 @@ internal sealed partial class BranchesTab
                 return "graftui: rebase failed: " + ex.Message;
             }
         }, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// The layout a resume animates from, read on the worker. A rebase's branch is read from its old tip against its onto, so the commits and
+    /// the lanes are the ones the rebase started from. When the stop has no old tip (not graftui's own pause, or a cherry-pick), or the read
+    /// fails, the bare pair is used, as it was before: the resume never fails or waits because of its art.
+    /// </summary>
+    internal GraphLayout ResumeLayout(SequenceStop stop, string? oldTip, RepoSnapshot snap, GraphLayout bare)
+    {
+        if (oldTip is null || stop.Kind != SequenceKind.Rebase)
+            return bare;
+        return _app.TryLoadRebaseLayout(snap, stop.Branch, oldTip, stop.Onto) ?? bare;
     }
 
     /// <summary>

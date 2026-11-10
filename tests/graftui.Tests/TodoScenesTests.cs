@@ -401,6 +401,56 @@ public class TodoScenesTests
         Assert.Equal('✕', grid[58, geo.B].Ch);
     }
 
+    [Fact]
+    public void A_resume_draws_the_branch_by_name_with_its_colour_and_lands_the_stopped_commit_in_the_slot_after_the_onto_tip()
+    {
+        var rows = Plan(RebaseAction.Edit, RebaseAction.Pick, RebaseAction.Pick);
+        var layout = ResumedLayout();
+        var from = TodoScenes.ResumeFrom(rows, Stop(PauseKind.Edit, rows, 0), ResumeAction.AmendAndContinue);
+        var run = TodoScenes.Plan(rows, from, -1);
+
+        var frame = TodoScenes.Rebase(G, layout, rows, run, TodoScenes.Total(run), 0, waiting: false);
+        var text = string.Join("\n", Enumerable.Range(0, G.Height).Select(y => RowText(frame.Grid, y)));
+
+        Assert.Contains("feature (current)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("HEAD", text, StringComparison.Ordinal);
+        Assert.Contains("Rebasing feature onto main", frame.Caption!.Text, StringComparison.Ordinal);
+        Assert.Equal('●', frame.Grid[22, G.B].Ch);
+        Assert.Equal(new Style(BranchInks.Current(layout), true), frame.Grid[28, G.B].Style);
+    }
+
+    [Fact]
+    public void A_resume_after_a_squash_keeps_the_fold_target_in_its_own_slot_while_the_next_commit_flies()
+    {
+        var rows = Plan(RebaseAction.Pick, RebaseAction.Squash, RebaseAction.Pick);
+        var layout = ResumedLayout();
+        var stop = Stop(PauseKind.Squash, rows, 0, rows[1].Hash);
+        var run = TodoScenes.Plan(rows, TodoScenes.ResumeFrom(rows, stop, ResumeAction.Message), -1);
+
+        var mid = TodoScenes.Rebase(G, layout, rows, run, run.Starts[2] + run.Fly / 2, 0, waiting: false).Grid;
+        var end = TodoScenes.Rebase(G, layout, rows, run, TodoScenes.Total(run), 0, waiting: false).Grid;
+
+        Assert.Equal('●', mid[22, G.B].Ch);
+        Assert.Equal('●', mid[28, G.B].Ch);
+        Assert.Equal('●', end[28, G.B].Ch);
+        Assert.Equal(new Style(BranchInks.Current(layout), true), end[28, G.B].Style);
+    }
+
+    /// <summary>The branch as a resume reads it: feature at its old tip (named, HEAD is detached) against main, which has one commit of its own.</summary>
+    private static GraphLayout ResumedLayout()
+    {
+        var a = new CommitInfo("a1111111", "a111111", 1, "Fix typo in README");
+        var b = new CommitInfo("b2222222", "b222222", 1, "Add logging");
+        var c = new CommitInfo("c3333333", "c333333", 1, "Bump version");
+        var s1 = new CommitInfo("d4444444", "d444444", 1, "Change line 1 on main");
+        var shared = new CommitInfo("0000000000", "0000000", 1, "Initial");
+        var layout = new GraphLayout("feature", false, "main", "a1111111", "d4444444", "0000000000", [a, b, c], false, [s1], false, [shared], false,
+            a, s1, 3, 1, GraphKind.Diverged);
+        return layout.WithLanes([new Branch("feature", "a1111111", "a111111", false), new Branch("main", "d4444444", "d444444", false)]);
+    }
+
+    private static string RowText(ArtGrid grid, int y) => string.Concat(Enumerable.Range(0, grid.Width).Select(x => grid[x, y].Ch));
+
     /// <summary>n picks with made-up hashes, for the runs whose length is the point of a test.</summary>
     private static IReadOnlyList<RebaseRow> Picks(int n) =>
         Enumerable.Range(0, n).Select(i => new RebaseRow("h" + i, "h" + i, "subject " + i, RebaseAction.Pick)).ToList();

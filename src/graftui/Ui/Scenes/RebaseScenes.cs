@@ -92,6 +92,7 @@ public static class RebaseScenes
         // longer landing ends in a dim tail, so the stop's slot is still on the art.
         grid.VLine(g.XB, g.A + 1, g.B - 1, branch);
         grid.Put(g.XB, g.B, '╰', branch);
+        grid.HLine(g.XB + 1, g.TipX(1) - 1, g.B, onto);
         MergeScenes.Label(grid, g, g.TipX(1), g.B, up: false, stop.Onto, null, ontoInk);
         grid.Put(g.TipX(1), g.B, '●', onto);
         var drawn = Math.Min(landed, MaxLanding);

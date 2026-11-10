@@ -49,6 +49,20 @@ public class RebasePausedSceneTests
     }
 
     [Fact]
+    public void Row_B_runs_a_line_from_the_onto_corner_to_the_onto_tip_in_the_onto_style()
+    {
+        var grid = Paint(Stop(PauseKind.Conflict, 3, Four()));
+
+        Assert.Equal('╰', grid[16, 6].Ch);
+        for (var x = 17; x <= 21; x++)
+        {
+            Assert.Equal('─', grid[x, 6].Ch);
+            Assert.Equal(new Style(Ink.Lane1), grid[x, 6].Style);
+        }
+        Assert.Equal('●', grid[22, 6].Ch);
+    }
+
+    [Fact]
     public void Row_A_has_the_base_and_one_dim_ghost_per_plan_row()
     {
         var grid = Paint(Stop(PauseKind.Conflict, 3, Four()));
