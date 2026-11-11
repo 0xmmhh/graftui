@@ -142,12 +142,16 @@ public sealed class KeyBarView : View
             ("Esc", CancelLabel, 5),
         ];
 
-    /// <summary>The confirm screen's keys: Enter runs the rebase, Esc goes back to the preview.</summary>
+    /// <summary>
+    /// The confirm screen's keys: Enter runs the rebase, Esc goes back to the preview. ? is the lowest item: the two keys that act stay
+    /// on the bar longest.
+    /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> ConfirmItems() =>
-        [("Enter", " rebase", 5), ("Esc", CancelLabel, 6)];
+        [("Enter", " rebase", 5), ("?", " help", 4), ("Esc", CancelLabel, 6)];
 
     /// <summary>
     /// The todo list's keys. Reorder, the actions and Enter start are kept longest; the arrows and edit go first when the bar is narrow.
+    /// ? (priority 9) outranks reorder and the plain actions, which go before it does on a narrow bar. Enter and Esc still outlast it.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> TodoItems() =>
         [
@@ -160,6 +164,7 @@ public sealed class KeyBarView : View
             ("f", " fixup", 3),
             ("d", " drop", 6),
             ("Enter", " start", 9),
+            ("?", " help", 9),
             ("Esc", CancelLabel, 10),
         ];
 
@@ -199,6 +204,7 @@ public sealed class KeyBarView : View
             items.Add(("S", " skip", 4));
         items.Add(("X", " abort", 5));
         items.Add(("Tab", " changes", 3));
+        items.Add(("?", " help", 5));
         items.Add(("Esc", " quit", 7));
         return items;
     }

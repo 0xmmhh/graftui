@@ -97,13 +97,14 @@ public static class HelpOverlay
             rows.Add(new HelpRow("S", "skip this commit"));
         rows.Add(new HelpRow("X", "abort"));
         rows.Add(new HelpRow("Tab", "changes tab"));
+        rows.Add(new HelpRow("v", "exact commands"));
         rows.Add(new HelpRow("Esc", "quit, the pause stays"));
         return rows;
     }
 
     /// <summary>The rebase confirm screen's keys.</summary>
     internal static IReadOnlyList<HelpRow> ConfirmRows() =>
-        [new HelpRow("Enter", "run the rebase"), new HelpRow("Esc", "back to preview")];
+        [new HelpRow("Enter", "run the rebase"), new HelpRow("v", "exact commands"), new HelpRow("Esc", "back to preview")];
 
     /// <summary>The todo list's keys. The bar shows only some of them; the letters still set the row's action.</summary>
     internal static IReadOnlyList<HelpRow> TodoRows() =>
@@ -119,6 +120,7 @@ public static class HelpOverlay
         new HelpRow("f", "fixup"),
         new HelpRow("d", "drop"),
         new HelpRow("Enter", "start"),
+        new HelpRow("v", "exact commands"),
         new HelpRow("Esc", "close"),
     ];
 
@@ -132,22 +134,18 @@ public static class HelpOverlay
         if (rows.Count == 0 || geo.Width < 20 || geo.Height < 4)
             return new SceneFrame(grid, new Caption("Widen the window to see every key", Dim));
 
+        // The left column takes the first rows that fit. The right column starts right after the last of them, so no row is skipped,
+        // and the note takes the right column's last slot when rows are hidden. Hidden rows only happen when the height is short
+        // (room is at least 2, so a hidden row always has a right column to sit in).
         var room = geo.Height - 2;
-        var half = (rows.Count + 1) / 2;
-        var leftCount = Math.Min(half, room);
-        var rightCount = Math.Min(rows.Count - half, room);
+        var leftCount = Math.Min((rows.Count + 1) / 2, room);
+        var rightCount = Math.Min(rows.Count - leftCount, room);
         var hidden = rows.Count - leftCount - rightCount;
 
         var left = TakeRows(rows, 0, leftCount);
-        var right = TakeRows(rows, half, rightCount);
+        var right = TakeRows(rows, leftCount, rightCount);
         if (hidden > 0)
-        {
-            var note = MoreNote(hidden);
-            if (right.Count > 0)
-                right[right.Count - 1] = note;
-            else
-                left[left.Count - 1] = note;
-        }
+            right[right.Count - 1] = MoreNote(hidden, true);
 
         var leftKey = KeyWidth(left);
         var rightKey = KeyWidth(right);
@@ -155,6 +153,7 @@ public static class HelpOverlay
         List<HelpRow> single;
         if (descBudget >= 16)
         {
+            // Two columns already fit, so only the height hides rows: a taller window shows more.
             var each = descBudget / 2;
             DrawColumns(geo, grid, FitRows(left, leftKey, each), FitRows(right, rightKey, each), leftKey, rightKey);
         }
@@ -172,8 +171,14 @@ public static class HelpOverlay
     /// <summary>
     /// The note that stands in for the last shown row when rows do not fit. The note takes that row's slot, so the rows it
     /// stands for are the hidden ones plus the slot's own row: <paramref name="hiddenRows"/> counts only the hidden ones.
+    /// <paramref name="heightIsLimit"/> is true when two columns already fit, so only a taller window can show more rows. False
+    /// when the width is the limit (one column): a wider window can then change to two columns.
     /// </summary>
-    private static HelpRow MoreNote(int hiddenRows) => new HelpRow("…", (hiddenRows + 1) + " more: widen the window");
+    private static HelpRow MoreNote(int hiddenRows, bool heightIsLimit)
+    {
+        var advice = heightIsLimit ? "make the window taller" : "widen the window";
+        return new HelpRow("…", (hiddenRows + 1) + " more: " + advice);
+    }
 
     private static List<HelpRow> TakeRows(IReadOnlyList<HelpRow> rows, int start, int count)
     {
@@ -247,7 +252,7 @@ public static class HelpOverlay
         for (var i = 0; i < shown; i++)
             keys.Add(rows[i]);
         if (hidden > 0)
-            keys[keys.Count - 1] = MoreNote(hidden);
+            keys[keys.Count - 1] = MoreNote(hidden, false);
         var keyW = KeyWidth(keys);
         var descW = geo.Width - 5 - keyW;
         if (descW < 8)

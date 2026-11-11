@@ -21,13 +21,13 @@ public class PauseKeyBarTests
     [Fact]
     public void A_conflict_pause_lists_continue_skip_abort_then_changes_and_quit()
     {
-        Assert.Equal("Enter continue  S skip  X abort  Tab changes  Esc quit", Bar(KeyBarView.PauseItems(PauseKind.Conflict)));
+        Assert.Equal("Enter continue  S skip  X abort  Tab changes  ? help  Esc quit", Bar(KeyBarView.PauseItems(PauseKind.Conflict)));
     }
 
     [Theory]
-    [InlineData(PauseKind.Edit, "Enter amend & continue  X abort  Tab changes  Esc quit")]
-    [InlineData(PauseKind.Reword, "Enter continue  X abort  Tab changes  Esc quit")]
-    [InlineData(PauseKind.Squash, "Enter continue  X abort  Tab changes  Esc quit")]
+    [InlineData(PauseKind.Edit, "Enter amend & continue  X abort  Tab changes  ? help  Esc quit")]
+    [InlineData(PauseKind.Reword, "Enter continue  X abort  Tab changes  ? help  Esc quit")]
+    [InlineData(PauseKind.Squash, "Enter continue  X abort  Tab changes  ? help  Esc quit")]
     public void An_edit_or_message_pause_has_no_skip(PauseKind kind, string expected) =>
         Assert.Equal(expected, Bar(KeyBarView.PauseItems(kind)));
 
@@ -75,7 +75,7 @@ public class PauseKeyBarTests
     {
         var kept = KeyBarView.FitItems(KeyBarView.PauseItems(PauseKind.Conflict), 100, out _);
 
-        Assert.Equal(new[] { "Enter", "S", "X", "Tab", "Esc" }, kept.Select(i => i.Key));
+        Assert.Equal(new[] { "Enter", "S", "X", "Tab", "?", "Esc" }, kept.Select(i => i.Key));
     }
 
     [Fact]

@@ -61,7 +61,7 @@ public class HelpOverlayTests
         var named = HelpOverlay.ForBar(bar);
 
         Assert.Equal("Keys — Branches", named.Title);
-        Assert.Equal(new[] { "Enter", "S", "X", "Tab", "Esc" }, RowKeys(named.Rows));
+        Assert.Equal(new[] { "Enter", "S", "X", "Tab", "v", "Esc" }, RowKeys(named.Rows));
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class HelpOverlayTests
         var todo = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Todo });
 
         Assert.Equal("Keys — Rebase", confirm.Title);
-        Assert.Equal(new[] { "Enter", "Esc" }, RowKeys(confirm.Rows));
+        Assert.Equal(new[] { "Enter", "v", "Esc" }, RowKeys(confirm.Rows));
         Assert.Equal("Keys — Todo", todo.Title);
         Assert.Contains("Enter", RowKeys(todo.Rows));
         Assert.Contains("d", RowKeys(todo.Rows));
@@ -120,12 +120,12 @@ public class HelpOverlayTests
     public void The_frame_fits_a_short_art_with_a_note_naming_how_many_keys_are_hidden()
     {
         var rows = HelpOverlay.BranchesRows();
-        var geo = new ArtGeometry(60, 5, 6, 2, 4, 20);
+        var geo = new ArtGeometry(80, 5, 6, 2, 4, 20);
         var grid = new ArtGrid(geo.Width, geo.Height);
 
         var frame = HelpOverlay.Frame(geo, grid, rows);
 
-        Assert.Contains("more: widen the window", GridText(frame.Grid));
+        Assert.Contains("more: make the window taller", GridText(frame.Grid));
     }
 
     [Fact]
@@ -133,12 +133,12 @@ public class HelpOverlayTests
     {
         // 14 rows on a room of 5 in each column: 10 rows would show, but the note takes one of them, so 5 rows are hidden.
         var rows = Enumerable.Range(1, 14).Select(i => new HelpRow("k", "row " + i)).ToList();
-        var geo = new ArtGeometry(60, 7, 6, 2, 6, 20);
+        var geo = new ArtGeometry(80, 7, 6, 2, 6, 20);
         var grid = new ArtGrid(geo.Width, geo.Height);
 
         var frame = HelpOverlay.Frame(geo, grid, rows);
 
-        Assert.Contains("5 more: widen the window", GridText(frame.Grid));
+        Assert.Contains("5 more: make the window taller", GridText(frame.Grid));
     }
 
     [Fact]
@@ -152,6 +152,61 @@ public class HelpOverlayTests
         var frame = HelpOverlay.Frame(geo, grid, rows);
 
         Assert.Contains("10 more", GridText(frame.Grid));
+    }
+
+    [Fact]
+    public void Two_columns_that_already_fit_ask_for_a_taller_window_not_a_wider_one()
+    {
+        // Two columns fit at 80 columns, so the rows hidden by the height cannot be shown by widening: the note says taller.
+        var rows = Enumerable.Range(1, 14).Select(i => new HelpRow("k", "row " + i)).ToList();
+        var geo = new ArtGeometry(80, 7, 6, 2, 6, 20);
+        var grid = new ArtGrid(geo.Width, geo.Height);
+
+        var text = GridText(HelpOverlay.Frame(geo, grid, rows).Grid);
+
+        Assert.Contains("make the window taller", text);
+        Assert.DoesNotContain("widen", text);
+    }
+
+    [Fact]
+    public void One_column_that_is_the_width_limit_asks_for_a_wider_window()
+    {
+        // 24 columns cannot hold two columns, so a wider window is what shows more rows: the note says widen.
+        var rows = Enumerable.Range(1, 14).Select(i => new HelpRow("k", "row " + i)).ToList();
+        var geo = new ArtGeometry(24, 7, 6, 2, 6, 20);
+        var grid = new ArtGrid(geo.Width, geo.Height);
+
+        var text = GridText(HelpOverlay.Frame(geo, grid, rows).Grid);
+
+        Assert.Contains("10 more: widen", text);
+        Assert.DoesNotContain("taller", text);
+    }
+
+    [Fact]
+    public void No_row_is_skipped_when_the_left_column_is_shorter_than_half()
+    {
+        // 13 change rows on a room of 6: the left column shows the first 6, so the right one must start at row 7 ("A", the seventh),
+        // not at row 8. The last right slot holds the note: "v" and "Esc" are the 2 hidden rows.
+        var rows = HelpOverlay.ChangesRows(StagedSelected);
+        var geo = new ArtGeometry(100, 8, 6, 2, 6, 20);
+        var grid = new ArtGrid(geo.Width, geo.Height);
+
+        var text = GridText(HelpOverlay.Frame(geo, grid, rows).Grid);
+
+        Assert.Contains("amend last commit", text);
+        Assert.Contains("commit staged", text);
+        Assert.Contains("2 more: make the window taller", text);
+        Assert.DoesNotContain("exact commands", text);
+    }
+
+    [Fact]
+    public void The_exact_commands_key_is_listed_on_the_confirm_todo_and_paused_popups()
+    {
+        // AppController handles v before these modes, so each of their popups names it.
+        Assert.Contains("v", RowKeys(HelpOverlay.ConfirmRows()));
+        Assert.Contains("v", RowKeys(HelpOverlay.TodoRows()));
+        foreach (var kind in new[] { PauseKind.Conflict, PauseKind.Edit, PauseKind.Reword, PauseKind.Squash })
+            Assert.Contains("v", RowKeys(HelpOverlay.PauseRows(kind)));
     }
 
     [Fact]

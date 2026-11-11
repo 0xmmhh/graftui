@@ -301,9 +301,9 @@ public class KeyBarFitTests
         HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Branches }).Rows;
 
     [Fact]
-    public void Confirm_bar_lists_enter_rebase_and_esc_cancel()
+    public void Confirm_bar_lists_enter_rebase_help_and_esc_cancel()
     {
-        Assert.Equal("Enter rebase  Esc cancel", Bar(KeyBarView.ConfirmItems()));
+        Assert.Equal("Enter rebase  ? help  Esc cancel", Bar(KeyBarView.ConfirmItems()));
     }
 
     [Fact]
@@ -311,7 +311,7 @@ public class KeyBarFitTests
     {
         var bar = new KeyBarView { Mode = KeyBarMode.Confirm };
 
-        Assert.Equal("Enter rebase  Esc cancel", Bar(bar.Items()));
+        Assert.Equal("Enter rebase  ? help  Esc cancel", Bar(bar.Items()));
     }
 
     [Fact]
@@ -324,28 +324,48 @@ public class KeyBarFitTests
     }
 
     [Fact]
-    public void The_todo_bar_at_100_columns_drops_only_the_arrows_and_edit()
+    public void The_todo_bar_at_100_columns_drops_the_arrows_edit_and_fixup()
     {
         var bar = new KeyBarView { Mode = KeyBarMode.Todo };
 
         var fitted = KeyBarView.FitItems(bar.Items(), 100, out var separator);
 
         Assert.Equal(1, separator);
-        Assert.Equal("⇧↑↓ reorder  p pick  r reword  s squash  f fixup  d drop  Enter start  Esc cancel", Pairs(fitted));
+        Assert.Equal("⇧↑↓ reorder  p pick  r reword  s squash  d drop  Enter start  ? help  Esc cancel", Pairs(fitted));
     }
 
     [Fact]
-    public void The_todo_bar_at_64_columns_keeps_reorder_pick_drop_start_and_cancel()
+    public void The_todo_bar_at_64_columns_keeps_reorder_pick_start_help_and_cancel()
     {
         var fitted = KeyBarView.FitItems(KeyBarView.TodoItems(), 64, out _);
 
-        Assert.Equal("⇧↑↓ reorder  p pick  d drop  Enter start  Esc cancel", Pairs(fitted));
+        Assert.Equal("⇧↑↓ reorder  p pick  Enter start  ? help  Esc cancel", Pairs(fitted));
+    }
+
+    [Theory]
+    [InlineData(64)]
+    [InlineData(50)]
+    [InlineData(40)]
+    public void Help_stays_on_the_todo_bar_when_a_narrow_bar_drops_the_actions(int width)
+    {
+        // The ? key is the Todo bar's lowest-dropped item after Enter and Esc: the actions go before it does.
+        var kept = Keys(KeyBarView.FitItems(KeyBarView.TodoItems(), width, out _));
+
+        Assert.Contains("?", kept);
+        Assert.Contains("Esc", kept);
     }
 
     [Fact]
     public void The_todo_bar_lists_the_plan_keys_in_order_when_there_is_room()
     {
-        Assert.Equal("↑↓←→ move  ⇧↑↓ reorder  p pick  r reword  e edit  s squash  f fixup  d drop  Enter start  Esc cancel",
+        Assert.Equal("↑↓←→ move  ⇧↑↓ reorder  p pick  r reword  e edit  s squash  f fixup  d drop  Enter start  ? help  Esc cancel",
             Bar(KeyBarView.TodoItems()));
+    }
+
+    [Fact]
+    public void Help_is_on_the_paused_branches_bar_and_the_confirm_bar()
+    {
+        Assert.Contains("?", Names(KeyBarView.PauseItems(PauseKind.Conflict)));
+        Assert.Contains("?", Names(KeyBarView.ConfirmItems()));
     }
 }
