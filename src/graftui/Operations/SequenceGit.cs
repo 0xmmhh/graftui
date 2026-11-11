@@ -149,21 +149,34 @@ internal static class SequenceGit
     /// </summary>
     internal static TreeSide WorkTreeSide(GitClient git, List<GitResult> log, ConflictFile f)
     {
+        return WorkTreeSide(git, log, f, out _);
+    }
+
+    /// <summary>
+    /// The same, and the version the work tree holds: the blob hash of a regular file, the target text of a link, "" when there is no file.
+    /// The version tells two edited copies apart. Throws when git fails.
+    /// </summary>
+    internal static TreeSide WorkTreeSide(GitClient git, List<GitResult> log, ConflictFile f, out string version)
+    {
+        version = "";
         var full = Path.Combine(git.RepoPath, f.Path);
         if (!InWorkTree(full))
             return TreeSide.Deleted;
 
         if (IsLink(full))
-            return LinkSide(git, log, f, new FileInfo(full).LinkTarget ?? "");
+        {
+            version = new FileInfo(full).LinkTarget ?? "";
+            return LinkSide(git, log, f, version);
+        }
 
         var r = BranchGit.Call(git, log, "hash-object", "--", f.Path);
         if (!r.Success)
             throw new InvalidOperationException(GitClient.Describe(r));
 
-        var hash = r.StdOut.Trim();
-        if (hash == f.Ours)
+        version = r.StdOut.Trim();
+        if (version == f.Ours)
             return TreeSide.Ours;
-        if (hash == f.Theirs)
+        if (version == f.Theirs)
             return TreeSide.Theirs;
         return TreeSide.Edited;
     }

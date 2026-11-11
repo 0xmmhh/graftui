@@ -47,8 +47,12 @@ public enum ConflictKind { Text, Binary, Submodule, AddedOurs, AddedTheirs, Dele
 /// <summary>Which version the work tree holds now: the stage 2 blob, the stage 3 blob, something else, or no file.</summary>
 public enum TreeSide { Ours, Theirs, Edited, Deleted }
 
-/// <summary>A conflicted file without markers, and the version the user agreed to keep.</summary>
-public sealed record KeptFile(string Path, ConflictKind Kind, TreeSide Side);
+/// <summary>
+/// A conflicted file without markers, and the version the user agreed to keep. Version pins an Edited file to the exact content the question
+/// showed (its blob hash, or a link's target text), so an answer never covers a later edit; it is "" for Ours, Theirs and Deleted, whose
+/// side already names the content.
+/// </summary>
+public sealed record KeptFile(string Path, ConflictKind Kind, TreeSide Side, string Version = "");
 
 /// <summary>
 /// A conflicted file. Resolved is only ever true for a Text file the work tree holds with no markers left. Ours and Theirs are the stage 2

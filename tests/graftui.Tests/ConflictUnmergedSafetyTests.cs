@@ -131,10 +131,66 @@ public class ConflictUnmergedSafetyTests
 
         Assert.False(check.CanRun);
         Assert.Equal("logo.bin has no conflict markers: say which version to keep before continuing", check.Refusal);
-        Assert.Equal(new[] { new KeptFile("logo.bin", ConflictKind.Binary, TreeSide.Edited) }, check.Keep);
+        var kept = check.Keep!.Single();
+        Assert.Equal(("logo.bin", ConflictKind.Binary, TreeSide.Edited), (kept.Path, kept.Kind, kept.Side));
         Assert.Equal(SequenceOutcomeKind.Refused, RunResume(repo, request).Kind);
         Assert.True(RebaseInProgress(repo));
         Assert.Contains("logo.bin", repo.Run("ls-files", "-u"));
+    }
+
+    [Fact]
+    public void A_yes_for_one_edited_copy_does_not_cover_a_second_edit_made_before_the_answer()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        var stop = PauseRebase(repo).Stop!;
+        var logo = Path.Combine(repo.Dir, "logo.bin");
+        File.WriteAllBytes(logo, [0x65, 0x64, 0x69, 0x74, 0, 1]);
+        var asked = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit)).Keep!;
+        Assert.Equal(TreeSide.Edited, asked.Single().Side);
+        File.WriteAllBytes(logo, [0x65, 0x64, 0x69, 0x74, 0, 2]);
+
+        var request = new ResumeRequest(ResumeAction.Continue, null, stop.Commit, asked);
+        var check = CheckResume(repo, request);
+
+        Assert.False(check.CanRun);
+        Assert.NotEqual(asked.Single().Version, check.Keep!.Single().Version);
+        Assert.Equal(SequenceOutcomeKind.Refused, RunResume(repo, request).Kind);
+        Assert.True(RebaseInProgress(repo));
+        Assert.Contains("logo.bin", repo.Run("ls-files", "-u"));
+    }
+
+    [Fact]
+    public void Markers_in_a_file_that_diffs_as_binary_are_refused_before_any_question()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        var stop = PauseRebase(repo).Stop!;
+        File.WriteAllText(Path.Combine(repo.Dir, "logo.bin"), "<<<<<<< HEAD\nmain\n=======\nfeature\n>>>>>>> feature\n");
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+
+        Assert.False(check.CanRun);
+        Assert.Equal("logo.bin still has conflict markers: resolve them before continuing", check.Refusal);
+        Assert.Null(check.Keep);
+        Assert.True(RebaseInProgress(repo));
+    }
+
+    [Fact]
+    public void An_answer_for_a_file_resolved_by_hand_after_the_question_is_refused_then_a_fresh_enter_continues()
+    {
+        using var repo = SequenceRepos.MergeBinaryLock();
+        var stop = PauseRebase(repo).Stop!;
+        var asked = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit)).Keep!;
+        Assert.Equal(TreeSide.Ours, asked.Single().Side);
+        File.WriteAllText(Path.Combine(repo.Dir, asked.Single().Path), "merged by hand\n");
+
+        var stale = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit, asked));
+        Assert.False(stale.CanRun);
+        Assert.Equal(SequenceRefusals.KeepChanged, stale.Refusal);
+        Assert.True(RebaseInProgress(repo));
+
+        var outcome = RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+        Assert.Equal(SequenceOutcomeKind.Done, outcome.Kind);
+        Assert.Equal("merged by hand", repo.Run("show", "feature:" + asked.Single().Path).Trim());
     }
 
     [Fact]
@@ -333,7 +389,8 @@ public class ConflictUnmergedSafetyTests
 
         Assert.False(check.CanRun);
         Assert.Equal("link has no conflict markers: say which version to keep before continuing", check.Refusal);
-        Assert.Equal(new[] { new KeptFile("link", ConflictKind.Binary, TreeSide.Edited) }, check.Keep);
+        var kept = check.Keep!.Single();
+        Assert.Equal(("link", ConflictKind.Binary, TreeSide.Edited, "missing.txt"), (kept.Path, kept.Kind, kept.Side, kept.Version));
         Assert.True(RebaseInProgress(repo));
     }
 

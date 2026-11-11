@@ -174,9 +174,10 @@ internal sealed partial class BranchesTab
     /// Asks which version to keep of the marker-less files, over the pause. y keeps the version the work tree holds and continues; n goes back
     /// to the pause with "Still paused".
     /// </summary>
-    private void AskKeep(IReadOnlyList<KeptFile> files)
+    private void AskKeep(IReadOnlyList<KeptFile> files, string checkedCommit)
     {
-        if (!_app.IsPaused)
+        // The question belongs to the stop the engine checked. If the pause has ended or moved to another stop since, it is not asked.
+        if (!_app.IsPaused || _app.Snapshot.Paused!.Commit != checkedCommit)
         {
             RequestPreview();
             return;
@@ -196,7 +197,7 @@ internal sealed partial class BranchesTab
             Base = geo => RebaseScenes.Paused(geo, stop, curInk, ontoInk).Grid,
         };
         _askedKeep = files;
-        _askedCommit = stop.Commit;
+        _askedCommit = checkedCommit;
         BeginQuestion(question);
         if (Mode == BranchesMode.Ask)
             SetPauseRows(stop);
@@ -344,13 +345,13 @@ internal sealed partial class BranchesTab
     internal void ResumeRefused(ResumeCheck check, RepoSnapshot? fresh)
     {
         // The one obstacle is marker-less files: that is a question, not a refusal, so nothing goes into the log as one.
-        if (check.Keep is not null && check.Keep.Count > 0)
+        if (check.Keep is not null && check.Keep.Count > 0 && check.Stop is not null)
         {
             _app.LogCommands(check.Commands);
             if (fresh is not null)
                 _app.ApplySnapshot(fresh);
             EndWork();
-            AskKeep(check.Keep);
+            AskKeep(check.Keep, check.Stop.Commit);
             return;
         }
 

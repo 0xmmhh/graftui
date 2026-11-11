@@ -265,13 +265,17 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         return null;
     }
 
-    /// <summary>The text files that still hold conflict markers. Those are refused before any question.</summary>
+    /// <summary>
+    /// The conflicted files that still hold conflict markers, whatever their kind: git can write markers into a file whose pair diffs as
+    /// binary (a <c>-diff</c> attribute), and a user can leave markers in a one-sided file. Those are refused before any question.
+    /// HasMarkers skips missing paths, folders and links.
+    /// </summary>
     private List<string> MarkedPaths(SequenceStop stop)
     {
         var marked = new List<string>();
         foreach (var f in stop.Files)
         {
-            if (f.Kind == ConflictKind.Text && SequenceGit.HasMarkers(Path.Combine(git.RepoPath, f.Path)))
+            if (f.Kind != ConflictKind.Submodule && SequenceGit.HasMarkers(Path.Combine(git.RepoPath, f.Path)))
                 marked.Add(f.Path);
         }
         return marked;
@@ -281,7 +285,9 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
     /// The files that need a version chosen, each with the side the work tree holds now: every file that is not text (binary, a link, a
     /// one-sided add or a delete), and every text file the work tree holds as one side's bytes or not at all (a merge=binary, a custom driver,
     /// or a file deleted by hand). A text file edited to something else is resolved and is not asked about. Nothing is asked when there are
-    /// none, or when the answer (request.Keep) names exactly these sides. Otherwise ask is set to them and the refusal names the files.
+    /// none and no answer was given, or when the answer (request.Keep) names exactly these sides and versions. An answer that no longer
+    /// matches is never used: with files still to ask about, ask is set to them; with none left (the user resolved them by hand after the
+    /// question), the step is refused so the next Enter decides on what is there now.
     /// </summary>
     private string? KeepGate(ResumeRequest request, SequenceStop stop, List<GitResult> log, out IReadOnlyList<KeptFile>? ask)
     {
@@ -289,12 +295,18 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         var fresh = new List<KeptFile>();
         foreach (var f in stop.Files)
         {
-            var side = SequenceGit.WorkTreeSide(git, log, f);
+            var side = SequenceGit.WorkTreeSide(git, log, f, out var version);
             if (f.Kind != ConflictKind.Text || side != TreeSide.Edited)
-                fresh.Add(new KeptFile(f.Path, f.Kind, side));
+                fresh.Add(new KeptFile(f.Path, f.Kind, side, side == TreeSide.Edited ? version : ""));
         }
-        if (fresh.Count == 0 || Confirmed(request.Keep, fresh))
+        if (Confirmed(request.Keep, fresh))
             return null;
+        if (fresh.Count == 0)
+        {
+            if (request.Keep is null || request.Keep.Count == 0)
+                return null;
+            return SequenceRefusals.KeepChanged;
+        }
 
         ask = fresh;
         return SequenceRefusals.NoMarkers(fresh.Select(k => k.Path).ToList());
@@ -306,7 +318,7 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
     /// </summary>
     private static bool Confirmed(IReadOnlyList<KeptFile>? keep, IReadOnlyList<KeptFile> fresh)
     {
-        if (keep is null || keep.Count != fresh.Count)
+        if (keep is null || keep.Count == 0 || keep.Count != fresh.Count)
             return false;
         foreach (var k in fresh)
         {

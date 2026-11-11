@@ -62,6 +62,9 @@ public static class SequenceRefusals
     public static string NoMarkers(IReadOnlyList<string> paths) =>
         $"{Named(paths)} has no conflict markers: say which version to keep before continuing";
 
+    /// <summary>The files a keep answer was about changed since the question, and none needs a question now: nothing was done.</summary>
+    public const string KeepChanged = "the conflicted files changed since you answered; nothing was done, press Enter again";
+
     /// <summary>A conflicted submodule: graftui does not stage it, so the user stages it in a shell and then continues.</summary>
     public static string Submodule(string path) => $"{path} is a submodule conflict: stage it in a shell, then press Enter";
 

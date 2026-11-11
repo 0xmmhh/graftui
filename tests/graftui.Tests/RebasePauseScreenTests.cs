@@ -385,6 +385,22 @@ public sealed class RebasePauseScreenTests : IDisposable
     }
 
     [Fact]
+    public void A_keep_question_checked_for_another_stop_is_not_asked()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        var app = OpenPaused(repo);
+        var stop = app.Snapshot.Paused!;
+        var check = app.ResumeOp.Check(new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+        var moved = check with { Stop = check.Stop! with { Commit = new string('0', 40) } };
+
+        app.BranchesTab.ResumeRefused(moved, null);
+
+        Assert.NotEqual(BranchesMode.Ask, app.BranchesTab.Mode);
+        Assert.True(SequenceGit.RebaseInProgress(GitDir(repo)));
+        Assert.Contains("logo.bin", repo.Run("ls-files", "-u"));
+    }
+
+    [Fact]
     public async Task Y_on_the_keep_question_keeps_the_version_the_tree_holds_and_finishes_the_rebase()
     {
         using var repo = SequenceRepos.BinaryConflict();
