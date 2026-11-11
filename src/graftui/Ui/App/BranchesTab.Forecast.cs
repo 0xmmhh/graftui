@@ -34,6 +34,9 @@ internal sealed partial class BranchesTab
     /// <summary>True while a forecast runs or one waits to run next. The tests read it.</summary>
     internal bool ForecastInFlight => _forecastRunning || _forecastNext is not null;
 
+    /// <summary>The layout whose plain preview the art shows, or null. The tests read it.</summary>
+    internal GraphLayout? Shown => _shown;
+
     /// <summary>The forecast of a layout if it is known, else null.</summary>
     private MergeForecast? CachedForecast(GraphLayout L) =>
         _forecasts.TryGetValue(ForecastKey(L), out var f) ? f : null;
@@ -67,13 +70,37 @@ internal sealed partial class BranchesTab
     /// <summary>
     /// Asks for the forecast of the layout the art shows, after a snapshot change cleared the cache. A result that was still running
     /// was dropped with the old snapshot, so nothing else would ask again. Does nothing when the browse preview does not own the art.
+    /// A layout whose tips moved in the refresh is not forecast: its preview is read again, and the forecast follows that preview.
     /// UI thread only.
     /// </summary>
     internal void RequestShownForecast()
     {
         var shown = _shown;
-        if (shown is not null && MayDrawPreview)
-            RequestForecast(shown);
+        if (shown is null || !MayDrawPreview)
+            return;
+
+        if (!ShowsSnapshot(shown, _app.Snapshot))
+        {
+            RequestPreview();
+            return;
+        }
+        RequestForecast(shown);
+    }
+
+    /// <summary>
+    /// True when the layout still has the snapshot's current branch and tip, and the selected branch and tip the selection now points at.
+    /// A snapshot with no branches never matches.
+    /// </summary>
+    private bool ShowsSnapshot(GraphLayout shown, RepoSnapshot snap)
+    {
+        if (snap.Branches.Count == 0 || _selected >= snap.Branches.Count)
+            return false;
+
+        var selected = snap.Branches[_selected];
+        return shown.Current == snap.CurrentBranch
+            && shown.CurrentTip == (snap.HeadHash ?? "")
+            && shown.Selected == selected.Name
+            && shown.SelectedTip == selected.Hash;
     }
 
     /// <summary>Stops the plain preview from being drawn again until the next ShowPreview (the art shows something else now).</summary>

@@ -3,7 +3,8 @@ using graftui.Model;
 namespace graftui.Git;
 
 // Not modelled: the pre-merge-commit hook and merge.verifySignatures. A real merge can run them, and this forecast does not.
-// A configured merge driver makes the forecast Unavailable instead: merge-tree would run it.
+// The forecast never runs user commands: a configured merge driver, filter (clean, smudge or process) or merge.renormalize makes it
+// Unavailable instead, because merge-tree could run them.
 /// <summary>
 /// Read-only forecast of `git merge --no-edit &lt;selected&gt;` into the current branch. It never throws for git's own errors (it answers
 /// Unavailable instead), never changes HEAD, refs, the index or the work tree, and is not logged in the Commands pane.
@@ -14,11 +15,17 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     /// <summary>The oldest git with `merge-tree --write-tree`.</summary>
     public static readonly Version Minimum = new(2, 38);
 
+    /// <summary>The first git that makes `recursive` an alias of ort. Older git runs the old recursive code, which merge-tree cannot stand for.</summary>
+    public static readonly Version RecursiveIsOrt = new(2, 50);
+
     // What merge.ff asks for: merge commits allowed (the default), never a fast-forward, or fast-forward only.
     private enum FfMode { Default, Never, Only }
 
     // Every merge driver, as `git config --get-regexp` matches it: merge.<name>.driver. A driver is a shell command.
     private const string MergeDriverKeys = "^merge\\..*\\.driver$";
+
+    // Every filter command, as `git config --get-regexp` matches it: filter.<name>.clean, .smudge or .process. Each is a shell command.
+    private const string FilterKeys = "^filter\\..*\\.(clean|smudge|process)$";
 
     private Version? _version = knownVersion;
     private bool _versionRead = knownVersion is not null;
@@ -27,7 +34,10 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     /// True when git is 2.38 or newer. `git version` is read once, on first use (a version given to the constructor is used as it is).
     /// Called from the worker thread only.
     /// </summary>
-    public bool IsSupported
+    public bool IsSupported => GitVersion is not null && GitVersion >= Minimum;
+
+    /// <summary>The git version, read once (see <see cref="IsSupported"/>). Null when `git version` fails or is not understood.</summary>
+    private Version? GitVersion
     {
         get
         {
@@ -36,7 +46,7 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
                 _version = git.GetVersion();
                 _versionRead = true;
             }
-            return _version is not null && _version >= Minimum;
+            return _version;
         }
     }
 
@@ -101,11 +111,8 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     // Any other answer (unknown ref, other exit code, unreadable output) is Unavailable.
     private MergeForecast MergeTreeForecast(GraphLayout layout, List<GitResult> log)
     {
-        // merge-tree runs a configured merge driver (a shell command that can write files), so the forecast never asks it while one is
-        // set. Exit 1 means no driver is set. Exit 0 means one is, and any other failure leaves the question open: both are Unavailable.
-        var drivers = git.Run("config", "--get-regexp", MergeDriverKeys);
-        log.Add(drivers);
-        if (drivers.ExitCode != 1)
+        // The forecast never runs user commands: merge-tree must not be asked while one could run.
+        if (!MergeTreeRunsNoCommands(log))
             return MergeForecast.Unavailable(log);
 
         // The tips are passed as full hashes, so no branch name can be read as a tag or as an option.
@@ -122,6 +129,41 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
                 return new MergeForecast(ForecastKind.Conflict, files, null, log);
         }
         return MergeForecast.Unavailable(log);
+    }
+
+    /// <summary>
+    /// True when merge-tree cannot run a user command. merge-tree runs a configured merge driver, and the filters that .gitattributes
+    /// selects (clean, smudge, process: each a shell command). merge.renormalize runs the clean filter on every file. So any driver or
+    /// filter key set, or merge.renormalize on, means the forecast must not ask merge-tree. Exit 1 from a config query means nothing is
+    /// set; exit 0 means something is. Any other failure leaves the question open. Both of those answer false.
+    /// </summary>
+    private bool MergeTreeRunsNoCommands(List<GitResult> log)
+    {
+        if (!NothingConfigured(MergeDriverKeys, log))
+            return false;
+        if (!NothingConfigured(FilterKeys, log))
+            return false;
+        return !RenormalizeOn(log);
+    }
+
+    // `git config --get-regexp` exits 1 when no key matches the pattern.
+    private bool NothingConfigured(string pattern, List<GitResult> log)
+    {
+        var result = git.Run("config", "--get-regexp", pattern);
+        log.Add(result);
+        return result.ExitCode == 1;
+    }
+
+    // merge.renormalize: exit 1 means "not set". A value that is not a known false spelling counts as on, so the forecast stays away.
+    private bool RenormalizeOn(List<GitResult> log)
+    {
+        var result = git.Run("config", "--get", "merge.renormalize");
+        log.Add(result);
+        if (result.ExitCode == 1)
+            return false;
+        if (!result.Success)
+            return true;
+        return BoolOf(result.StdOut.Trim()) != false;
     }
 
     /// <summary>
@@ -151,7 +193,7 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
         log.Add(twohead);
         if (!twohead.Success && twohead.ExitCode != 1)
             return null;
-        if (twohead.Success && !IsOrtStrategy(twohead.StdOut.Trim()))
+        if (twohead.Success && !IsOrtStrategy(twohead.StdOut.Trim(), GitVersion))
             return null;
 
         // Exit 1 means "not set". A set, non-empty value means git merges with extra flags, so the forecast says nothing.
@@ -164,20 +206,39 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
         return new MergeConfig(mode);
     }
 
-    // The strategies merge-tree's ort stands for: ort itself, and recursive, which git runs as ort.
-    private static bool IsOrtStrategy(string name) => name == "ort" || name == "recursive";
+    /// <summary>
+    /// True when the strategy is one merge-tree's ort stands for. ort always is. recursive is an alias of ort only from git 2.50 on:
+    /// with an older git, or with no known version, it is not, and the forecast says nothing.
+    /// </summary>
+    internal static bool IsOrtStrategy(string name, Version? gitVersion)
+    {
+        if (name == "ort")
+            return true;
+        if (name == "recursive")
+            return gitVersion is not null && gitVersion >= RecursiveIsOrt;
+        return false;
+    }
+
+    // git's boolean spellings. Anything else is not known (null).
+    private static bool? BoolOf(string value)
+    {
+        var v = value.ToLowerInvariant();
+        if (v == "false" || v == "no" || v == "off" || v == "0")
+            return false;
+        if (v == "true" || v == "yes" || v == "on" || v == "1")
+            return true;
+        return null;
+    }
 
     // git's boolean spellings for merge.ff, and "only". Anything else is not known.
     private static FfMode? FfModeOf(string value)
     {
-        var v = value.ToLowerInvariant();
-        if (v == "false" || v == "no" || v == "off" || v == "0")
-            return FfMode.Never;
-        if (v == "only")
+        if (value.ToLowerInvariant() == "only")
             return FfMode.Only;
-        if (v == "true" || v == "yes" || v == "on" || v == "1")
-            return FfMode.Default;
-        return null;
+        var on = BoolOf(value);
+        if (on is null)
+            return null;
+        return on.Value ? FfMode.Default : FfMode.Never;
     }
 
     private sealed record MergeConfig(FfMode Ff);

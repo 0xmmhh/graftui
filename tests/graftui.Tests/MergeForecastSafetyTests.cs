@@ -413,18 +413,107 @@ public class MergeForecastSafetyTests
         AssertUntouched(repo, before);
     }
 
-    [Theory]
-    [InlineData("ort")]
-    [InlineData("recursive")]
-    public void A_pull_twohead_of_ort_or_recursive_keeps_the_conflict_forecast(string strategy)
+    [Fact]
+    public void A_pull_twohead_of_ort_keeps_the_conflict_forecast()
     {
         using var repo = TempRepo.Diverged(conflict: true);
-        repo.Run("config", "pull.twohead", strategy);
+        repo.Run("config", "pull.twohead", "ort");
 
         var f = ForecastOf(repo, "feature");
 
         Assert.Equal(ForecastKind.Conflict, f.Kind);
         AssertFiles(f, ("app.txt", ForecastConflict.Content));
+    }
+
+    // recursive is an alias of ort only from git 2.50. The version is injected, so both sides are tested whatever git is installed.
+    [Fact]
+    public void A_pull_twohead_of_recursive_keeps_the_conflict_forecast_on_git_2_50()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("config", "pull.twohead", "recursive");
+
+        var f = ForecastOf(repo, "feature", new Version(2, 50));
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("app.txt", ForecastConflict.Content));
+    }
+
+    [Fact]
+    public void A_pull_twohead_of_recursive_is_unavailable_before_git_2_50_and_merge_tree_is_not_asked()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("config", "pull.twohead", "recursive");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature", new Version(2, 49));
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.Empty(f.Files);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        AssertUntouched(repo, before);
+    }
+
+    // A clean filter is a shell command too. .gitattributes selects it for app.txt, so merge-tree would be able to run it.
+    [Fact]
+    public void A_clean_filter_selected_by_gitattributes_is_never_run_and_the_forecast_is_unavailable()
+    {
+        using var repo = FilteredDiverged();
+        var marker = Path.Combine(repo.Dir, "filter-ran.marker");
+        repo.Run("config", "filter.touchy.clean", "touch '" + marker + "' && cat");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.Empty(f.Files);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        Assert.False(File.Exists(marker), "the clean filter ran");
+        AssertUntouched(repo, before);
+    }
+
+    [Theory]
+    [InlineData("clean")]
+    [InlineData("smudge")]
+    [InlineData("process")]
+    public void Any_filter_command_in_the_config_makes_the_forecast_unavailable(string key)
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("config", "filter.touchy." + key, "true");
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+    }
+
+    // merge.renormalize runs the clean filter on every file. On this pair merge-tree does run the filter when renormalize is on (the
+    // marker shows it), so this is the case that proves the forecast does not ask merge-tree.
+    [Fact]
+    public void Merge_renormalize_true_makes_the_forecast_unavailable_and_the_clean_filter_is_not_run()
+    {
+        using var repo = FilteredDiverged();
+        var marker = Path.Combine(repo.Dir, "filter-ran.marker");
+        repo.Run("config", "filter.touchy.clean", "touch '" + marker + "' && cat");
+        repo.Run("config", "merge.renormalize", "true");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        Assert.False(File.Exists(marker), "the clean filter ran");
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void Merge_renormalize_false_keeps_the_conflict_forecast()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("config", "merge.renormalize", "false");
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
     }
 
     // ---------- helpers ----------
@@ -459,6 +548,30 @@ public class MergeForecastSafetyTests
     private static void CommitBytes(TempRepo repo, string file, byte[] bytes, string message)
     {
         File.WriteAllBytes(Path.Combine(repo.Dir, file), bytes);
+        repo.Run("add", file);
+        repo.Run("commit", "-q", "-m", message);
+    }
+
+    // main and feature both change app.txt, which .gitattributes gives the filter `touchy`. The filter's command is set by the caller.
+    private static TempRepo FilteredDiverged()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit(".gitattributes", "app.txt filter=touchy\n", "Assign app.txt to the filter");
+        CommitBackdated(repo, "app.txt", "line 1\n", "Add app");
+        repo.Run("switch", "-q", "-c", "feature");
+        CommitBackdated(repo, "app.txt", "feature\n", "Change line 1 on feature");
+        repo.Run("switch", "-q", "main");
+        CommitBackdated(repo, "app.txt", "main\n", "Change line 1 on main");
+        return repo;
+    }
+
+    // Writes and commits a file with a modification time two minutes back. A file written in the same timestamp tick as the index is
+    // "racy": git status then re-reads it, and with a clean filter selected that runs the filter. The filter test must not depend on that.
+    private static void CommitBackdated(TempRepo repo, string file, string content, string message)
+    {
+        var path = Path.Combine(repo.Dir, file);
+        File.WriteAllText(path, content);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-2));
         repo.Run("add", file);
         repo.Run("commit", "-q", "-m", message);
     }
