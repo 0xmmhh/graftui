@@ -1,0 +1,379 @@
+using graftui.Git;
+using graftui.Model;
+using graftui.Operations;
+
+namespace graftui.Tests;
+
+/// <summary>
+/// The merge forecast against real temp repos. Every test also checks that the forecast left the repo as it found it: HEAD, the refs,
+/// the index file, the status, and no merge in progress.
+/// </summary>
+public class MergeForecastSafetyTests
+{
+    private const string MergeTree = "merge-tree";
+
+    [Fact]
+    public void A_clean_diverged_merge_is_forecast_clean_with_no_files()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Clean, f.Kind);
+        Assert.Null(f.Note);
+        Assert.Empty(f.Files);
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_content_conflict_is_forecast_with_the_file_as_content()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("app.txt", ForecastConflict.Content));
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_file_added_on_both_sides_is_forecast_as_added_on_both()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("a.txt", "a\n", "Add a");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("both.txt", "feature\n", "Add both on feature");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("both.txt", "main\n", "Add both on main");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("both.txt", ForecastConflict.BothAdded));
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_file_deleted_on_the_current_branch_and_changed_on_the_selected_is_deleted_current()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("del.txt", "one\n", "Add del");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("del.txt", "changed on feature\n", "Change del on feature");
+        repo.Run("switch", "-q", "main");
+        repo.Run("rm", "-q", "del.txt");
+        repo.Run("commit", "-q", "-m", "Delete del on main");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("del.txt", ForecastConflict.DeletedCurrent));
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_file_deleted_on_the_selected_branch_and_changed_on_the_current_is_deleted_selected()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("del.txt", "one\n", "Add del");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Run("rm", "-q", "del.txt");
+        repo.Run("commit", "-q", "-m", "Delete del on feature");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("del.txt", "changed on main\n", "Change del on main");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("del.txt", ForecastConflict.DeletedSelected));
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_binary_file_changed_on_both_sides_is_forecast_as_binary()
+    {
+        using var repo = TempRepo.Create();
+        CommitBytes(repo, "bin.dat", [0, 1, 2, 3], "Add bin");
+        repo.Run("switch", "-q", "-c", "feature");
+        CommitBytes(repo, "bin.dat", [0, 9, 9], "Change bin on feature");
+        repo.Run("switch", "-q", "main");
+        CommitBytes(repo, "bin.dat", [0, 7, 7], "Change bin on main");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("bin.dat", ForecastConflict.Binary));
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_rename_on_one_side_and_an_edit_on_the_other_merges_cleanly()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("ren.txt", Lines(20), "Add ren");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Run("mv", "ren.txt", "moved.txt");
+        repo.Run("commit", "-q", "-m", "Rename ren on feature");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("ren.txt", Lines(20) + "extra\n", "Edit ren on main");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Clean, f.Kind);
+        Assert.Empty(f.Files);
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_rename_on_both_sides_to_different_names_is_forecast_as_renamed()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("ren.txt", Lines(20), "Add ren");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Run("mv", "ren.txt", "other-name.txt");
+        repo.Run("commit", "-q", "-m", "Rename on feature");
+        repo.Run("switch", "-q", "main");
+        repo.Run("mv", "ren.txt", "main-name.txt");
+        repo.Run("commit", "-q", "-m", "Rename on main");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        Assert.NotEmpty(f.Files);
+        Assert.All(f.Files, file => Assert.Equal(ForecastConflict.Rename, file.Kind));
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_branch_already_in_the_current_one_is_up_to_date_and_merge_tree_is_not_asked()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("a.txt", "a\n", "Add a");
+        repo.Run("branch", "feature");
+        repo.Commit("b.txt", "b\n", "Add b on main");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.UpToDate, f.Kind);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_fast_forward_is_forecast_as_a_fast_forward()
+    {
+        using var repo = TempRepo.FastForwardable();
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.FastForward, f.Kind);
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void With_merge_ff_false_a_fast_forward_is_forecast_as_a_merge_commit()
+    {
+        using var repo = TempRepo.FastForwardable();
+        repo.Run("config", "merge.ff", "false");
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Clean, f.Kind);
+        Assert.Equal(MergeForecast.FfOffNote, f.Note);
+    }
+
+    [Fact]
+    public void With_merge_ff_only_a_diverged_merge_is_refused_without_merge_tree()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        repo.Run("config", "merge.ff", "only");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Refused, f.Kind);
+        Assert.Equal(MergeForecast.FfOnlyNote, f.Note);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void Branches_with_no_common_history_are_refused_without_any_git_call()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("a.txt", "a\n", "Add a");
+        repo.Run("switch", "-q", "--orphan", "other");
+        repo.Commit("b.txt", "b\n", "Add b on an orphan");
+        repo.Run("switch", "-q", "main");
+
+        var f = ForecastOf(repo, "other");
+
+        Assert.Equal(ForecastKind.Refused, f.Kind);
+        Assert.Equal(MergeForecast.UnrelatedNote, f.Note);
+        Assert.Empty(f.Commands);
+    }
+
+    [Fact]
+    public void Extra_merge_options_in_the_branch_config_make_the_forecast_unavailable()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("config", "branch.main.mergeOptions", "--no-ff");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.Empty(f.Files);
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void Git_older_than_2_38_gives_no_forecast_and_never_runs_merge_tree()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+
+        var f = ForecastOf(repo, "feature", new Version(2, 37));
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+    }
+
+    [Fact]
+    public void Git_2_38_is_new_enough_to_forecast_a_conflict()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+
+        var f = ForecastOf(repo, "feature", new Version(2, 38));
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+    }
+
+    [Fact]
+    public void A_dirty_work_tree_is_forecast_as_usual_and_left_as_it_was()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Write("app.txt", "edited, not committed\n");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("app.txt", ForecastConflict.Content));
+        Assert.Equal(before.Status, repo.Status());
+        Assert.Equal(before.Head, repo.Head);
+        Assert.Equal(before.Index, File.ReadAllBytes(IndexPath(repo)));
+    }
+
+    [Fact]
+    public void A_cancelled_forecast_throws_instead_of_answering()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => new MergeForecaster(repo.Git, new Version(2, 56)).Forecast(LayoutOf(repo, "feature"), cts.Token));
+    }
+
+    [Fact]
+    public void The_clean_forecast_matches_the_merge_that_follows()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var f = ForecastOf(repo, "feature");
+
+        var outcome = MergeNow(repo, "feature");
+
+        Assert.Equal(ForecastKind.Clean, f.Kind);
+        Assert.Equal(MergeKind.MergeCommit, outcome.Kind);
+    }
+
+    [Fact]
+    public void The_conflict_forecast_matches_the_merge_that_follows()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        var f = ForecastOf(repo, "feature");
+        var before = repo.Head;
+
+        var outcome = MergeNow(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        Assert.Equal(MergeKind.Conflict, outcome.Kind);
+        Assert.Equal(f.Files.Select(file => file.Path).ToList(), outcome.ConflictFiles.ToList());
+        Assert.Equal(before, repo.Head);
+    }
+
+    [Fact]
+    public void The_fast_forward_forecast_matches_the_merge_that_follows()
+    {
+        using var repo = TempRepo.FastForwardable();
+        var f = ForecastOf(repo, "feature");
+
+        var outcome = MergeNow(repo, "feature");
+
+        Assert.Equal(ForecastKind.FastForward, f.Kind);
+        Assert.Equal(MergeKind.FastForward, outcome.Kind);
+    }
+
+    // ---------- helpers ----------
+
+    private static GraphLayout LayoutOf(TempRepo repo, string selected)
+    {
+        var reader = new RepoReader(repo.Git);
+        var snap = reader.LoadSnapshot(withCounts: false, CancellationToken.None);
+        var branch = snap.Branches.Single(b => b.Name == selected);
+        return reader.LoadLayout(snap, branch, CancellationToken.None);
+    }
+
+    private static MergeForecast ForecastOf(TempRepo repo, string selected, Version? version = null) =>
+        new MergeForecaster(repo.Git, version).Forecast(LayoutOf(repo, selected), CancellationToken.None);
+
+    private static MergeOutcome MergeNow(TempRepo repo, string branch)
+    {
+        var op = new MergeOperation(repo.Git);
+        var check = op.Check(new MergeRequest(branch));
+        Assert.True(check.CanMerge, check.Refusal);
+        return op.Run(new MergeRequest(branch), check);
+    }
+
+    private static void AssertFiles(MergeForecast f, params (string Path, ForecastConflict Kind)[] expected)
+    {
+        var actual = f.Files.Select(file => (file.Path, file.Kind)).ToList();
+        Assert.Equal(expected.ToList(), actual);
+    }
+
+    private static string Lines(int count) => string.Concat(Enumerable.Range(1, count).Select(i => $"line {i}\n"));
+
+    private static void CommitBytes(TempRepo repo, string file, byte[] bytes, string message)
+    {
+        File.WriteAllBytes(Path.Combine(repo.Dir, file), bytes);
+        repo.Run("add", file);
+        repo.Run("commit", "-q", "-m", message);
+    }
+
+    private static string IndexPath(TempRepo repo) => Path.Combine(repo.Dir, ".git", "index");
+
+    /// <summary>What the forecast must not change: HEAD, the refs, the status, the index file's bytes.</summary>
+    private sealed record RepoFacts(string Head, string Status, string Refs, byte[] Index);
+
+    private static RepoFacts Capture(TempRepo repo) =>
+        new(repo.Head, repo.Status(), repo.Run("for-each-ref"), File.ReadAllBytes(IndexPath(repo)));
+
+    private static void AssertUntouched(TempRepo repo, RepoFacts before)
+    {
+        Assert.Equal(before.Head, repo.Head);
+        Assert.Equal(before.Refs, repo.Run("for-each-ref"));
+        Assert.Equal(before.Status, repo.Status());
+        Assert.Equal(before.Index, File.ReadAllBytes(IndexPath(repo)));
+        Assert.False(repo.Merging);
+    }
+}

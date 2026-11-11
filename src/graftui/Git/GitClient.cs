@@ -267,6 +267,50 @@ public sealed class GitClient(string repoPath)
         return result.Success && string.IsNullOrWhiteSpace(result.StdOut);
     }
 
+    /// <summary>git's version as major.minor, or null when `git version` fails or its output is not understood.</summary>
+    public Version? GetVersion()
+    {
+        var result = Run("version");
+        return result.Success ? ParseVersion(result.StdOut) : null;
+    }
+
+    /// <summary>
+    /// The major and minor numbers of `git version X.Y.Z...`, or null for anything else. Only the leading digits of the first two parts
+    /// count: "2.39.5 (Apple Git-154)" and "2.45.1.windows.1" both give 2.39 and 2.45.
+    /// </summary>
+    internal static Version? ParseVersion(string output)
+    {
+        const string prefix = "git version ";
+        var text = output.Trim();
+        if (!text.StartsWith(prefix, StringComparison.Ordinal))
+            return null;
+
+        var words = text[prefix.Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+            return null;
+
+        var parts = words[0].Split('.');
+        if (parts.Length < 2)
+            return null;
+
+        var major = LeadingNumber(parts[0]);
+        var minor = LeadingNumber(parts[1]);
+        if (major is null || minor is null)
+            return null;
+        return new Version(major.Value, minor.Value);
+    }
+
+    // The number at the start of a text ("39" in "39rc1"), or null when the text does not start with a digit.
+    private static int? LeadingNumber(string text)
+    {
+        var digits = 0;
+        while (digits < text.Length && char.IsAsciiDigit(text[digits]))
+            digits++;
+        if (digits == 0)
+            return null;
+        return int.TryParse(text[..digits], NumberStyles.None, CultureInfo.InvariantCulture, out var number) ? number : null;
+    }
+
     /// <summary>
     /// True when at least one undo step is saved (a ref under refs/graftui/undo/). A read for the key bar: it is not logged,
     /// and any failure answers false.

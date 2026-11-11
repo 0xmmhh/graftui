@@ -43,7 +43,12 @@ internal sealed partial class BranchesTab
     /// <summary>Name of the selected branch, or null when there are no branches.</summary>
     internal string? SelectedName() => _app.Snapshot.Branches.Count > 0 ? _app.Snapshot.Branches[_selected].Name : null;
 
-    internal void ClearCache() => _cache.Clear();
+    internal void ClearCache()
+    {
+        _cache.Clear();
+        _forecasts.Clear();
+        _forecastNext = null;
+    }
 
     /// <summary>The cached layout of a branch in the snapshot, or null. Reads the cache, so it is used on the UI thread only.</summary>
     private GraphLayout? CachedLayout(RepoSnapshot snap, Branch b) =>
@@ -251,6 +256,7 @@ internal sealed partial class BranchesTab
 
     private void ShowLoading(Branch b)
     {
+        _shown = null;
         _app.Art.Title = "Preview";
         var selInk = _app.InkOf(b.Name);
         _app.Art.Direction = _ => DirectionLine.Loading(b.Name, selInk);
@@ -265,9 +271,14 @@ internal sealed partial class BranchesTab
         // A preview that loaded is proof that git answers again, so an earlier preview error no longer applies.
         _app.Status.ErrorText = null;
         _app.Status.SetNeedsDraw();
+        _shown = layout;
         _app.Art.Title = "Preview";
         _app.Art.Direction = cols => DirectionLine.Browse(layout, cols);
-        _app.Art.Panel = CommitLists.Idle(layout);
+        // The forecast is read after the preview loads (see RequestForecast): until then the panel and the caption are the plain ones.
+        var forecast = CachedForecast(layout);
+        _app.Art.Panel = forecast is null
+            ? CommitLists.Idle(layout)
+            : ForecastText.WithFiles(CommitLists.Idle(layout), forecast, layout);
         _app.Art.FallbackCaption = null;
         // A straight graph's preview is drawn in the single-line art (see IsStraight).
         _app.Art.ShowScene(geo =>
@@ -290,9 +301,14 @@ internal sealed partial class BranchesTab
             }
             else if (layout.Kind == GraphKind.Unrelated)
                 caption = new Caption($"{layout.Selected} and {layout.Current} have no common history", Muted);
+            else if (forecast is not null)
+                caption = ForecastText.Caption(forecast, layout);
             return new SceneFrame(grid, caption);
         }, IsStraight(layout));
         _app.Art.SetNeedsDraw();
+
+        if (forecast is null)
+            RequestForecast(layout);
     }
 
     /// <summary>

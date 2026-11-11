@@ -47,6 +47,7 @@ internal sealed partial class BranchesTab
             return;
         }
 
+        _shown = null;
         var stop = _app.Snapshot.Paused!;
         var curInk = _app.InkOf(stop.Branch);
         var ontoInk = _app.InkOf(stop.Onto);

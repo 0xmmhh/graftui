@@ -36,7 +36,7 @@ public static class CommandDisplay
     private static readonly HashSet<string> HiddenSubcommands =
     [
         GitArgs.RevParse, "symbolic-ref", "status", "diff", "for-each-ref", "ls-files", "ls-tree", "log", "rev-list",
-        "merge-base", "show", "cat-file", "write-tree", "mktree", GitArgs.CommitTree, "check-ref-format",
+        "merge-base", "show", "cat-file", "write-tree", "mktree", GitArgs.CommitTree, "check-ref-format", "merge-tree", "version",
     ];
 
     // Flags that add nothing a reader needs. Dropping them only changes what is shown.

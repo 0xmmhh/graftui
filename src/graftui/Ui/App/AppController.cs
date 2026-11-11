@@ -38,6 +38,7 @@ public sealed class AppController
         RootGit = rootGit;
         RootReader = new RepoReader(rootGit);
         MergeOp = new MergeOperation(git);
+        Forecaster = new MergeForecaster(git);
         StageOp = new StageOperation(rootGit);
         CommitOp = new CommitOperation(rootGit);
         DiscardOp = new DiscardOperation(rootGit);
@@ -115,6 +116,9 @@ public sealed class AppController
     internal GitClient Git { get; }
     internal RepoReader Reader { get; }
     internal MergeOperation MergeOp { get; }
+
+    /// <summary>The dry-run forecast of `m` for the selected branch. Read-only; its worker is single-flight (see BranchesTab.Forecast).</summary>
+    internal MergeForecaster Forecaster { get; }
     internal StageOperation StageOp { get; }
     internal CommitOperation CommitOp { get; }
     internal DiscardOperation DiscardOp { get; }
