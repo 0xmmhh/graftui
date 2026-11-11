@@ -297,7 +297,7 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         {
             var side = SequenceGit.WorkTreeSide(git, log, f, out var version);
             if (f.Kind != ConflictKind.Text || side != TreeSide.Edited)
-                fresh.Add(new KeptFile(f.Path, f.Kind, side, side == TreeSide.Edited ? version : ""));
+                fresh.Add(new KeptFile(f.Path, f.Kind, side, PinnedVersion(f.Path, side, version)));
         }
         if (Confirmed(request.Keep, fresh))
             return null;
@@ -310,6 +310,32 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
 
         ask = fresh;
         return SequenceRefusals.NoMarkers(fresh.Select(k => k.Path).ToList());
+    }
+
+    /// <summary>
+    /// What an answer is pinned to besides the side: the entry type of a link ("link:"), an Edited entry's content, and a regular file's
+    /// executable bit ("+x"). git add records all three, so a change to any of them after the question is asked about again. "" for a
+    /// plain, non-executable Ours, Theirs or Deleted file.
+    /// </summary>
+    private string PinnedVersion(string path, TreeSide side, string version)
+    {
+        var full = Path.Combine(git.RepoPath, path);
+        var pinned = "";
+        if (SequenceGit.IsLink(full))
+            pinned = "link:";
+        if (side == TreeSide.Edited)
+            pinned += version;
+        if (IsExecutable(full))
+            pinned += "+x";
+        return pinned;
+    }
+
+    /// <summary>True for a regular file (not a link) whose owner may run it. Always false on Windows, where git does not use the bit.</summary>
+    private static bool IsExecutable(string fullPath)
+    {
+        if (OperatingSystem.IsWindows() || !SequenceGit.HoldsFile(fullPath))
+            return false;
+        return (File.GetUnixFileMode(fullPath) & UnixFileMode.UserExecute) != 0;
     }
 
     /// <summary>

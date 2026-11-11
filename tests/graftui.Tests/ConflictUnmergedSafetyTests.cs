@@ -160,6 +160,47 @@ public class ConflictUnmergedSafetyTests
     }
 
     [Fact]
+    public void A_yes_given_before_the_file_was_made_executable_is_asked_again()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        using var repo = SequenceRepos.BinaryConflict();
+        var stop = PauseRebase(repo).Stop!;
+        var asked = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit)).Keep!;
+        var logo = Path.Combine(repo.Dir, "logo.bin");
+        File.SetUnixFileMode(logo, File.GetUnixFileMode(logo) | UnixFileMode.UserExecute);
+
+        var request = new ResumeRequest(ResumeAction.Continue, null, stop.Commit, asked);
+        var check = CheckResume(repo, request);
+
+        Assert.False(check.CanRun);
+        Assert.Equal("+x", check.Keep!.Single().Version);
+        Assert.Equal(SequenceOutcomeKind.Refused, RunResume(repo, request).Kind);
+        Assert.True(RebaseInProgress(repo));
+    }
+
+    [Fact]
+    public void A_yes_for_an_edited_file_does_not_cover_a_link_put_in_its_place()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        var stop = PauseRebase(repo).Stop!;
+        var logo = Path.Combine(repo.Dir, "logo.bin");
+        File.WriteAllBytes(logo, [0x65, 0x64, 0x69, 0x74, 0, 3]);
+        var asked = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit)).Keep!;
+        var hash = asked.Single().Version;
+        File.Delete(logo);
+        File.CreateSymbolicLink(logo, hash);
+
+        var request = new ResumeRequest(ResumeAction.Continue, null, stop.Commit, asked);
+        var check = CheckResume(repo, request);
+
+        Assert.False(check.CanRun);
+        Assert.Equal("link:" + hash, check.Keep!.Single().Version);
+        Assert.Equal(SequenceOutcomeKind.Refused, RunResume(repo, request).Kind);
+        Assert.True(RebaseInProgress(repo));
+    }
+
+    [Fact]
     public void Markers_in_a_file_that_diffs_as_binary_are_refused_before_any_question()
     {
         using var repo = SequenceRepos.BinaryConflict();
@@ -368,7 +409,7 @@ public class ConflictUnmergedSafetyTests
 
         var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
 
-        Assert.Equal(new[] { new KeptFile("link", ConflictKind.Binary, TreeSide.Ours) }, check.Keep);
+        Assert.Equal(new[] { new KeptFile("link", ConflictKind.Binary, TreeSide.Ours, "link:") }, check.Keep);
         var outcome = RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit, check.Keep));
 
         Assert.Equal(SequenceOutcomeKind.Done, outcome.Kind);
@@ -390,7 +431,8 @@ public class ConflictUnmergedSafetyTests
         Assert.False(check.CanRun);
         Assert.Equal("link has no conflict markers: say which version to keep before continuing", check.Refusal);
         var kept = check.Keep!.Single();
-        Assert.Equal(("link", ConflictKind.Binary, TreeSide.Edited, "missing.txt"), (kept.Path, kept.Kind, kept.Side, kept.Version));
+        Assert.Equal(("link", ConflictKind.Binary, TreeSide.Edited, "missing.txt"), (kept.Path, kept.Kind, kept.Side, kept.Version.Replace("link:", "")));
+        Assert.StartsWith("link:", kept.Version);
         Assert.True(RebaseInProgress(repo));
     }
 
