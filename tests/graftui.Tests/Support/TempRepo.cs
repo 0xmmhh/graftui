@@ -10,9 +10,9 @@ namespace graftui.Tests;
 /// </summary>
 internal sealed class TempRepo : IDisposable
 {
-    // The tests must not read the developer's global or system git config. A git-lfs install adds filter.lfs.* there, and the
-    // merge forecast treats any filter as a user command, so every forecast would answer Unavailable. GIT_CONFIG_GLOBAL points
-    // at an empty file and GIT_CONFIG_NOSYSTEM drops /etc/gitconfig for every git process the tests start.
+    // The tests must not read the developer's global or system git config, so each test sees only the config it sets. A git-lfs
+    // install adds filter.lfs.* there, which the tests would otherwise inherit. GIT_CONFIG_GLOBAL points at an empty file and
+    // GIT_CONFIG_NOSYSTEM drops /etc/gitconfig for every git process the tests start.
     static TempRepo()
     {
         var dir = Path.Combine(Path.GetTempPath(), "graftui-tests-config");

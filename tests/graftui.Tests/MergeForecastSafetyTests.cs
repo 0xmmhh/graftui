@@ -453,9 +453,10 @@ public class MergeForecastSafetyTests
         AssertUntouched(repo, before);
     }
 
-    // A clean filter is a shell command too. .gitattributes selects it for app.txt, so merge-tree would be able to run it.
+    // A clean filter selected by .gitattributes does not run without merge.renormalize: merge-tree only runs it during renormalize.
+    // So the forecast goes ahead, and the marker stays absent.
     [Fact]
-    public void A_clean_filter_selected_by_gitattributes_is_never_run_and_the_forecast_is_unavailable()
+    public void A_clean_filter_without_renormalize_forecasts_normally_and_never_runs()
     {
         using var repo = FilteredDiverged();
         var marker = Path.Combine(repo.Dir, "filter-ran.marker");
@@ -464,26 +465,54 @@ public class MergeForecastSafetyTests
 
         var f = ForecastOf(repo, "feature");
 
-        Assert.Equal(ForecastKind.Unavailable, f.Kind);
-        Assert.Empty(f.Files);
-        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("app.txt", ForecastConflict.Content));
         Assert.False(File.Exists(marker), "the clean filter ran");
         AssertUntouched(repo, before);
     }
 
+    // git-lfs installs filter.lfs.* globally. With no attribute selecting it and renormalize off, nothing can run it: no block.
+    [Fact]
+    public void A_git_lfs_style_filter_alone_does_not_block_the_forecast()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("config", "filter.lfs.clean", "git-lfs clean -- %f");
+        repo.Run("config", "filter.lfs.smudge", "git-lfs smudge -- %f");
+        repo.Run("config", "filter.lfs.process", "git-lfs filter-process");
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("app.txt", ForecastConflict.Content));
+    }
+
+    // With renormalize on, merge-tree runs any clean filter, so any filter key makes the forecast unknown.
     [Theory]
     [InlineData("clean")]
     [InlineData("smudge")]
     [InlineData("process")]
-    public void Any_filter_command_in_the_config_makes_the_forecast_unavailable(string key)
+    public void With_renormalize_on_any_filter_key_makes_the_forecast_unavailable(string key)
     {
         using var repo = TempRepo.Diverged(conflict: true);
         repo.Run("config", "filter.touchy." + key, "true");
+        repo.Run("config", "merge.renormalize", "true");
 
         var f = ForecastOf(repo, "feature");
 
         Assert.Equal(ForecastKind.Unavailable, f.Kind);
         Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+    }
+
+    // renormalize with no filter has no command to run, so the forecast goes ahead.
+    [Fact]
+    public void Merge_renormalize_true_without_a_filter_keeps_the_conflict_forecast()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("config", "merge.renormalize", "true");
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
     }
 
     // merge.renormalize runs the clean filter on every file. On this pair merge-tree does run the filter when renormalize is on (the

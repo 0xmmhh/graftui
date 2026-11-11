@@ -3,8 +3,9 @@ using graftui.Model;
 namespace graftui.Git;
 
 // Not modelled: the pre-merge-commit hook and merge.verifySignatures. A real merge can run them, and this forecast does not.
-// The forecast never runs user commands: a configured merge driver, filter (clean, smudge or process) or merge.renormalize makes it
-// Unavailable instead, because merge-tree could run them.
+// The forecast never runs user commands. A configured merge driver makes it Unavailable, and so does a filter (clean, smudge or
+// process) while merge.renormalize is true: merge-tree could run them. A filter alone does not block, since merge-tree runs filters
+// only during renormalize.
 /// <summary>
 /// Read-only forecast of `git merge --no-edit &lt;selected&gt;` into the current branch. It never throws for git's own errors (it answers
 /// Unavailable instead), never changes HEAD, refs, the index or the work tree, and is not logged in the Commands pane.
@@ -132,18 +133,23 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     }
 
     /// <summary>
-    /// True when merge-tree cannot run a user command. merge-tree runs a configured merge driver, and the filters that .gitattributes
-    /// selects (clean, smudge, process: each a shell command). merge.renormalize runs the clean filter on every file. So any driver or
-    /// filter key set, or merge.renormalize on, means the forecast must not ask merge-tree. Exit 1 from a config query means nothing is
-    /// set; exit 0 means something is. Any other failure leaves the question open. Both of those answer false.
+    /// True when merge-tree cannot run a user command. A configured merge driver always can, so any driver key answers false. A filter
+    /// (clean, smudge or process) can run only while merge.renormalize is on: merge-tree never checks files out, so smudge does not
+    /// run otherwise, and merge.renormalize runs the clean filter. So a filter key answers false only when renormalize is true. A
+    /// config read that fails, or a renormalize value git does not know, answers false too.
     /// </summary>
     private bool MergeTreeRunsNoCommands(List<GitResult> log)
     {
         if (!NothingConfigured(MergeDriverKeys, log))
             return false;
-        if (!NothingConfigured(FilterKeys, log))
+
+        var renormalize = RenormalizeSetting(log);
+        if (renormalize is null)
             return false;
-        return !RenormalizeOn(log);
+        if (!renormalize.Value)
+            return true;
+
+        return NothingConfigured(FilterKeys, log);
     }
 
     // `git config --get-regexp` exits 1 when no key matches the pattern.
@@ -154,16 +160,16 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
         return result.ExitCode == 1;
     }
 
-    // merge.renormalize: exit 1 means "not set". A value that is not a known false spelling counts as on, so the forecast stays away.
-    private bool RenormalizeOn(List<GitResult> log)
+    // merge.renormalize: exit 1 means "not set" (false). Another failure, or a value that is not a boolean git knows, is unknown (null).
+    private bool? RenormalizeSetting(List<GitResult> log)
     {
         var result = git.Run("config", "--get", "merge.renormalize");
         log.Add(result);
         if (result.ExitCode == 1)
             return false;
         if (!result.Success)
-            return true;
-        return BoolOf(result.StdOut.Trim()) != false;
+            return null;
+        return BoolOf(result.StdOut.Trim());
     }
 
     /// <summary>
