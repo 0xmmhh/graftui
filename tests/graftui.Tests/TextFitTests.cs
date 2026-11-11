@@ -143,4 +143,13 @@ public class TextFitTests
     {
         Assert.Equal("a b", TextFit.Sanitize("a\u001bb"));
     }
+
+    [Fact]
+    public void Tail_keeps_the_end_and_never_splits_a_wide_character()
+    {
+        Assert.Equal("abc", TextFit.Tail("abc", 3));
+        Assert.Equal("…cdef", TextFit.Tail("abcdef", 5));
+        Assert.Equal("….txt", TextFit.Tail("日日日日.txt", 6));
+        Assert.Equal("", TextFit.Tail("abc", 0));
+    }
 }

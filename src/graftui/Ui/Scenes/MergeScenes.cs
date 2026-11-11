@@ -336,7 +336,7 @@ public static class MergeScenes
     {
         var first = files[0];
         if (TextFit.Columns(first) > 24)
-            first = "…" + first[^23..];
+            first = TextFit.Tail(first, 24);
         return first + (files.Count > 1 ? $" +{files.Count - 1} more" : "");
     }
 

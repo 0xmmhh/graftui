@@ -359,6 +359,74 @@ public class MergeForecastSafetyTests
         Assert.Equal(MergeKind.FastForward, outcome.Kind);
     }
 
+    // A merge driver is a shell command. merge-tree runs one for a file that .gitattributes assigns to it, so the forecast must not ask.
+    [Fact]
+    public void A_configured_merge_driver_is_never_run_and_the_forecast_is_unavailable()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit(".gitattributes", "app.txt merge=touchy\n", "Assign app.txt to the driver");
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("app.txt", "feature\n", "Change line 1 on feature");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("app.txt", "main\n", "Change line 1 on main");
+        var marker = Path.Combine(repo.Dir, "driver-ran.marker");
+        repo.Run("config", "merge.touchy.driver", "touch '" + marker + "'");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.Empty(f.Files);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        Assert.False(File.Exists(marker), "the merge driver ran");
+        AssertUntouched(repo, before);
+    }
+
+    [Theory]
+    [InlineData("resolve")]
+    [InlineData("octopus")]
+    public void A_pull_twohead_other_than_ort_makes_a_diverged_forecast_unavailable(string strategy)
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("config", "pull.twohead", strategy);
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.Empty(f.Files);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        AssertUntouched(repo, before);
+    }
+
+    [Fact]
+    public void A_pull_twohead_other_than_ort_is_unavailable_before_a_fast_forward_is_classified()
+    {
+        using var repo = TempRepo.FastForwardable();
+        repo.Run("config", "pull.twohead", "resolve");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        AssertUntouched(repo, before);
+    }
+
+    [Theory]
+    [InlineData("ort")]
+    [InlineData("recursive")]
+    public void A_pull_twohead_of_ort_or_recursive_keeps_the_conflict_forecast(string strategy)
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("config", "pull.twohead", strategy);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertFiles(f, ("app.txt", ForecastConflict.Content));
+    }
+
     // ---------- helpers ----------
 
     private static GraphLayout LayoutOf(TempRepo repo, string selected)

@@ -12,6 +12,8 @@ Thanks for taking the time to help. graftui runs real git commands on real repos
 
 You need git and the [.NET 10 SDK](https://dotnet.microsoft.com/download).
 
+Running the tests requires git 2.38 or newer.
+
 ```bash
 git clone https://github.com/0xmmhh/graftui.git
 cd graftui

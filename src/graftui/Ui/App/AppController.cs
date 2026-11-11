@@ -38,7 +38,7 @@ public sealed class AppController
         RootGit = rootGit;
         RootReader = new RepoReader(rootGit);
         MergeOp = new MergeOperation(git);
-        Forecaster = new MergeForecaster(git);
+        Forecaster = new MergeForecaster(rootGit);
         StageOp = new StageOperation(rootGit);
         CommitOp = new CommitOperation(rootGit);
         DiscardOp = new DiscardOperation(rootGit);
@@ -661,6 +661,9 @@ public sealed class AppController
         BranchList.Selected = BranchesTab.Selected;
         BranchList.PausedBranch = SequenceStatus.PausedBranch(s);
         BranchList.SetNeedsDraw();
+
+        // The clear above dropped the shown branch's forecast: ask again, unless the art shows something else.
+        BranchesTab.RequestShownForecast();
     }
 
     /// <summary>True while a rebase or cherry-pick that graftui started is paused. Only that pause is shown as one.</summary>

@@ -53,6 +53,36 @@ public static class TextFit
     }
 
     /// <summary>
+    /// Keeps the end of the text, for names where the end matters (a file name). Text that fits is returned as it is. Otherwise the result
+    /// is "…" and the longest tail that, with the ellipsis, fits into <paramref name="width"/> columns. Cut by rune, so a wide character is
+    /// never split. Returns "" when width is 0 or less.
+    /// </summary>
+    public static string Tail(string s, int width)
+    {
+        if (width <= 0)
+            return "";
+        if (Columns(s) <= width)
+            return s;
+
+        var runes = s.EnumerateRunes().ToList();
+        var used = 0;
+        var start = runes.Count;
+        for (var i = runes.Count - 1; i >= 0; i--)
+        {
+            var cols = Math.Max(0, runes[i].GetColumns());
+            if (used + cols > width - 1)
+                break;
+            used += cols;
+            start = i;
+        }
+
+        var sb = new StringBuilder(Ellipsis);
+        for (var i = start; i < runes.Count; i++)
+            sb.Append(runes[i].ToString());
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// Two names that share one line of <paramref name="budget"/> columns. When both fit, nothing is cut. Otherwise the shorter
     /// name is kept whole, and the longer one is cut, until the longer one is down to <paramref name="min"/> columns; only then
     /// is the shorter one cut too. Two names of equal width split the budget evenly. Each name gets at least

@@ -48,9 +48,15 @@ public static class MergeTreeParser
 
         while (i < tokens.Length && tokens[i].Length > 0)
         {
-            i = ReadMessageRecord(tokens, i, order, types);
-            if (i < 0)
+            var next = ReadMessageRecord(tokens, i, order, types);
+            if (next < 0)
+            {
+                // Git 2.38 and 2.39 add plain-text advice after the records. When that is all that is left, the records read so far stand.
+                if (IsTrailingAdvice(tokens, i))
+                    break;
                 return null;
+            }
+            i = next;
         }
 
         var files = new List<ForecastFile>();
@@ -155,6 +161,21 @@ public static class MergeTreeParser
                 order.Add(path);
         }
         return i + 2;
+    }
+
+    // The advice is the last section and one text token: nothing but empty tokens follows it. A token that reads as a count is a record cut
+    // short, not advice, so it is still an error.
+    private static bool IsTrailingAdvice(string[] tokens, int start)
+    {
+        var nonEmpty = 0;
+        for (var i = start; i < tokens.Length; i++)
+        {
+            if (tokens[i].Length > 0)
+                nonEmpty++;
+        }
+        if (nonEmpty != 1)
+            return false;
+        return !int.TryParse(tokens[start], NumberStyles.None, CultureInfo.InvariantCulture, out _);
     }
 
     // git writes "CONFLICT (contents)" with a space in most versions; the space is not part of the meaning, so it is dropped.

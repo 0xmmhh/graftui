@@ -183,6 +183,61 @@ public class MergeTreeParserTests
         Assert.False(MergeTreeParser.IsOid(new string('g', 40)));
     }
 
+    // git 2.38 and 2.39 print submodule advice as plain text after the NUL records. The fixture is shaped like that output.
+    private const string SubmoduleAdvice = "Failed to merge submodule sub (commits don't follow merge-base)\n";
+
+    [Fact]
+    public void Trailing_submodule_advice_after_the_records_is_read_as_the_end()
+    {
+        var stdout = Z(Tree,
+            $"100644 {Base} 1\tapp.txt", $"100644 {Ours} 2\tapp.txt", $"100644 {Theirs} 3\tapp.txt",
+            "", "1", "app.txt", "CONFLICT (contents)", "CONFLICT (content): Merge conflict in app.txt\n")
+            + SubmoduleAdvice;
+
+        AssertFiles(MergeTreeParser.ParseConflicts(stdout), ("app.txt", ForecastConflict.Content));
+    }
+
+    [Fact]
+    public void Trailing_advice_that_ends_with_a_NUL_is_read_as_the_end()
+    {
+        var stdout = Z(Tree,
+            $"100644 {Base} 1\tapp.txt", $"100644 {Ours} 2\tapp.txt", $"100644 {Theirs} 3\tapp.txt",
+            "", "1", "app.txt", "CONFLICT (contents)", "CONFLICT (content): Merge conflict in app.txt\n",
+            SubmoduleAdvice);
+
+        AssertFiles(MergeTreeParser.ParseConflicts(stdout), ("app.txt", ForecastConflict.Content));
+    }
+
+    [Fact]
+    public void Trailing_advice_with_no_message_records_is_read_as_the_end()
+    {
+        var stdout = Z(Tree, $"100644 {Ours} 2\tboth.txt", $"100644 {Theirs} 3\tboth.txt", "")
+            + SubmoduleAdvice;
+
+        AssertFiles(MergeTreeParser.ParseConflicts(stdout), ("both.txt", ForecastConflict.BothAdded));
+    }
+
+    [Fact]
+    public void A_record_cut_short_at_the_end_is_still_an_error_and_not_advice()
+    {
+        // A count with no path after it reads as a count, so it is never taken for advice.
+        var stdout = Z(Tree, $"100644 {Ours} 2\tboth.txt", $"100644 {Theirs} 3\tboth.txt", "", "1");
+
+        Assert.Null(MergeTreeParser.ParseConflicts(stdout));
+    }
+
+    [Fact]
+    public void Advice_followed_by_another_record_is_still_an_error()
+    {
+        var stdout = Z(Tree,
+            $"100644 {Base} 1\tapp.txt", $"100644 {Ours} 2\tapp.txt", $"100644 {Theirs} 3\tapp.txt",
+            "", "1", "app.txt", "CONFLICT (contents)", "CONFLICT (content): Merge conflict in app.txt\n")
+            + SubmoduleAdvice
+            + Z("1", "app.txt", "CONFLICT (contents)", "CONFLICT (content): Merge conflict in app.txt\n");
+
+        Assert.Null(MergeTreeParser.ParseConflicts(stdout));
+    }
+
     // Each token followed by a NUL, the way git writes `-z` output.
     private static string Z(params string[] tokens) => string.Concat(tokens.Select(t => t + "\0"));
 

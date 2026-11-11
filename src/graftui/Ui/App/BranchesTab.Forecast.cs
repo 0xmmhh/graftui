@@ -31,6 +31,9 @@ internal sealed partial class BranchesTab
     /// <summary>The generation a forecast result is checked against. ClearCache bumps it.</summary>
     internal int ForecastGeneration => _forecastGeneration;
 
+    /// <summary>True while a forecast runs or one waits to run next. The tests read it.</summary>
+    internal bool ForecastInFlight => _forecastRunning || _forecastNext is not null;
+
     /// <summary>The forecast of a layout if it is known, else null.</summary>
     private MergeForecast? CachedForecast(GraphLayout L) =>
         _forecasts.TryGetValue(ForecastKey(L), out var f) ? f : null;
@@ -59,6 +62,18 @@ internal sealed partial class BranchesTab
             var f = forecaster.Forecast(L);
             _app.Ui(() => ForecastDone(L, f, generation));
         }, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Asks for the forecast of the layout the art shows, after a snapshot change cleared the cache. A result that was still running
+    /// was dropped with the old snapshot, so nothing else would ask again. Does nothing when the browse preview does not own the art.
+    /// UI thread only.
+    /// </summary>
+    internal void RequestShownForecast()
+    {
+        var shown = _shown;
+        if (shown is not null && MayDrawPreview)
+            RequestForecast(shown);
     }
 
     /// <summary>Stops the plain preview from being drawn again until the next ShowPreview (the art shows something else now).</summary>

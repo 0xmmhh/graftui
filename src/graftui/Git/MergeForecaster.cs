@@ -2,7 +2,8 @@ using graftui.Model;
 
 namespace graftui.Git;
 
-// Not modelled: the pre-merge-commit hook, merge.verifySignatures and merge drivers. A real merge can run them, and this forecast does not.
+// Not modelled: the pre-merge-commit hook and merge.verifySignatures. A real merge can run them, and this forecast does not.
+// A configured merge driver makes the forecast Unavailable instead: merge-tree would run it.
 /// <summary>
 /// Read-only forecast of `git merge --no-edit &lt;selected&gt;` into the current branch. It never throws for git's own errors (it answers
 /// Unavailable instead), never changes HEAD, refs, the index or the work tree, and is not logged in the Commands pane.
@@ -15,6 +16,9 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
 
     // What merge.ff asks for: merge commits allowed (the default), never a fast-forward, or fast-forward only.
     private enum FfMode { Default, Never, Only }
+
+    // Every merge driver, as `git config --get-regexp` matches it: merge.<name>.driver. A driver is a shell command.
+    private const string MergeDriverKeys = "^merge\\..*\\.driver$";
 
     private Version? _version = knownVersion;
     private bool _versionRead = knownVersion is not null;
@@ -97,6 +101,13 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     // Any other answer (unknown ref, other exit code, unreadable output) is Unavailable.
     private MergeForecast MergeTreeForecast(GraphLayout layout, List<GitResult> log)
     {
+        // merge-tree runs a configured merge driver (a shell command that can write files), so the forecast never asks it while one is
+        // set. Exit 1 means no driver is set. Exit 0 means one is, and any other failure leaves the question open: both are Unavailable.
+        var drivers = git.Run("config", "--get-regexp", MergeDriverKeys);
+        log.Add(drivers);
+        if (drivers.ExitCode != 1)
+            return MergeForecast.Unavailable(log);
+
         // The tips are passed as full hashes, so no branch name can be read as a tag or as an option.
         var result = git.Run("merge-tree", "--write-tree", "-z", layout.CurrentTip, layout.SelectedTip);
         log.Add(result);
@@ -134,6 +145,15 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
             mode = known.Value;
         }
 
+        // pull.twohead is the strategy `git merge` picks for a diverged merge when none is given. merge-tree always uses ort, so any other
+        // strategy makes the forecast unknown. It is read here, before any fast-forward is classified or merge-tree runs.
+        var twohead = git.Run("config", "--get", "pull.twohead");
+        log.Add(twohead);
+        if (!twohead.Success && twohead.ExitCode != 1)
+            return null;
+        if (twohead.Success && !IsOrtStrategy(twohead.StdOut.Trim()))
+            return null;
+
         // Exit 1 means "not set". A set, non-empty value means git merges with extra flags, so the forecast says nothing.
         var options = git.Run("config", "--get", "branch." + currentBranch + ".mergeOptions");
         log.Add(options);
@@ -143,6 +163,9 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
             return null;
         return new MergeConfig(mode);
     }
+
+    // The strategies merge-tree's ort stands for: ort itself, and recursive, which git runs as ort.
+    private static bool IsOrtStrategy(string name) => name == "ort" || name == "recursive";
 
     // git's boolean spellings for merge.ff, and "only". Anything else is not known.
     private static FfMode? FfModeOf(string value)

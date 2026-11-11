@@ -283,7 +283,7 @@ internal sealed partial class BranchesTab
     /// Draws the preview art for a layout: with the forecast when it is known, else the plain one, and then the forecast is started.
     /// It does not touch the status bar.
     /// </summary>
-    private void DrawPreview(GraphLayout layout)
+    internal void DrawPreview(GraphLayout layout)
     {
         _shown = layout;
         _app.Art.Title = "Preview";
