@@ -238,7 +238,7 @@ internal sealed partial class ChangesTab
     /// Shows the message box: the subject and body fields over the art, with the counters and the hint. The fields take
     /// the focus; the art pane becomes focusable while the box is open.
     /// </summary>
-    private void OpenForm(bool amend, CommitCheck check, string subject, string body, bool pushedConfirmed, bool blankAfterSubject)
+    internal void OpenForm(bool amend, CommitCheck check, string subject, string body, bool pushedConfirmed, bool blankAfterSubject)
     {
         _formCheck = check;
         _formAmend = amend;
@@ -257,7 +257,6 @@ internal sealed partial class ChangesTab
             field.Visible = true;
         }
         _app.SubjectField.Text = subject;
-        _app.SubjectField.InsertionPoint = subject.Length;
         _app.BodyField.Text = body;
 
         art.Title = amend ? AmendTitle : CommitTitle;
@@ -270,7 +269,7 @@ internal sealed partial class ChangesTab
         art.FallbackCaption = null;
         art.Scene = geo => FormFrame(geo);
         art.SetNeedsDraw();
-        _app.SubjectField.SetFocus();
+        _app.FocusSubjectAtEnd();
     }
 
     private SceneFrame FormFrame(ArtGeometry geo)
