@@ -191,10 +191,10 @@ public class MergeScenesTests
     private static int SelectedNameX(ArtGeometry g, GraphLayout L) =>
         MergeScenes.LabelTextX(g, MergeScenes.LabelSpots(g, L).SelX, MergeScenes.Runes(L.Selected));
 
-    // Every drawn (non-blank) cell of one row has this ink.
-    private static void AssertRowIs(ArtGrid grid, int y, Ink ink)
+    // Every drawn (non-blank) cell of one row, from fromX on, has this ink.
+    private static void AssertRowIs(ArtGrid grid, int y, Ink ink, int fromX = 0)
     {
-        for (var x = 0; x < grid.Width; x++)
+        for (var x = fromX; x < grid.Width; x++)
         {
             var cell = grid[x, y];
             if (cell.Ch != ' ')
@@ -208,8 +208,8 @@ public class MergeScenesTests
         var grid = MergeScenes.Preview(Geo9, Lanes03).Grid;
         var s = MergeScenes.LabelSpots(Geo9, Lanes03);
 
-        // Current: the shared history, its row, its marker and its label's name.
-        AssertRowIs(grid, Geo9.A, Ink.Lane0);
+        // Current: its own row (right of the dim shared history), its marker and its label's name.
+        AssertRowIs(grid, Geo9.A, Ink.Lane0, Geo9.XB + 1);
         Assert.Equal(Ink.Lane0, grid[s.CurX, s.CurRow - 1].Style.Ink);
         Assert.Equal(Ink.Lane0, grid[CurrentNameX(Geo9, Lanes03), s.CurRow - 2].Style.Ink);
 
@@ -228,7 +228,7 @@ public class MergeScenesTests
         var s = MergeScenes.LabelSpots(Geo9, L);
 
         Assert.Equal(Ink.Lane3, grid[s.SelX, Geo9.A].Style.Ink);
-        Assert.Equal(Ink.Lane0, grid[Geo9.XB, Geo9.A].Style.Ink);
+        Assert.Equal(Ink.Dim, grid[Geo9.XB, Geo9.A].Style.Ink);
         Assert.Equal(Ink.Lane0, grid[s.CurX, s.CurRow - 1].Style.Ink);
         Assert.Equal(Ink.Lane0, grid[CurrentNameX(Geo9, L), s.CurRow - 2].Style.Ink);
         Assert.Equal(Ink.Lane3, grid[SelectedNameX(Geo9, L), s.SelRow + 2].Style.Ink);
@@ -316,6 +316,86 @@ public class MergeScenesTests
         Assert.Equal(Ink.Lane0, frame.Grid[labelX, JoinY - 2].Style.Ink);
         Assert.Equal(Ink.Lane3, frame.Grid[JoinX, Geo.B].Style.Ink);
         Assert.Equal(Ink.Lane0, frame.Grid[JoinX - 1, Geo.A].Style.Ink);
+    }
+
+    // ---------- dimmed shared history ----------
+
+    // Three shared commits with older history left out: at step 6 with the base at 16, the dots sit at 4, 10 and 16.
+    private static readonly GraphLayout Shared3 = Layouts.Diverged() with
+    {
+        Shared = [Layouts.C("a000000000"), Layouts.C("a111111111"), Layouts.C(Layouts.Shared)],
+        SharedMore = true,
+    };
+
+    [Fact]
+    public void Shared_commits_are_dim_small_dots_on_dim_segments_with_a_dim_tail()
+    {
+        var grid = MergeScenes.Preview(Geo9, Shared3).Grid;
+        var dim = new Style(Ink.Dim);
+
+        Assert.Equal(new Cell('·', dim), grid[4, Geo9.A]);
+        Assert.Equal(new Cell('·', dim), grid[10, Geo9.A]);
+        Assert.Equal(new Cell('·', dim), grid[16, Geo9.A]);
+        Assert.Equal(new Cell('─', dim), grid[7, Geo9.A]);
+        Assert.Equal(new Cell('─', dim), grid[13, Geo9.A]);
+        Assert.Equal(new Cell('┄', dim), grid[2, Geo9.A]);
+    }
+
+    [Fact]
+    public void The_own_commits_and_the_segment_from_the_fork_point_stay_bright()
+    {
+        var grid = MergeScenes.Preview(Geo9, Shared3).Grid;
+
+        Assert.Equal('●', grid[Geo9.TipX(1), Geo9.A].Ch);
+        Assert.NotEqual(Ink.Dim, grid[Geo9.TipX(1), Geo9.A].Style.Ink);
+        Assert.NotEqual(Ink.Dim, grid[Geo9.TipX(1) - 2, Geo9.A].Style.Ink);
+    }
+
+    [Fact]
+    public void The_shared_label_sits_under_the_dots_clear_of_the_fork_points_column()
+    {
+        var grid = MergeScenes.Preview(Geo9, Shared3).Grid;
+        var row = RowText(grid, Geo9.A + 1);
+
+        Assert.Contains(MergeScenes.SharedLabel, row, StringComparison.Ordinal);
+        Assert.Equal(new Style(Ink.Dim), grid[row.IndexOf(MergeScenes.SharedLabel, StringComparison.Ordinal), Geo9.A + 1].Style);
+        // The two cells left of the connector stay blank, and the connector is still drawn.
+        Assert.Equal(' ', grid[Geo9.XB - 2, Geo9.A + 1].Ch);
+        Assert.Equal(' ', grid[Geo9.XB - 1, Geo9.A + 1].Ch);
+        Assert.Equal('│', grid[Geo9.XB, Geo9.A + 1].Ch);
+    }
+
+    [Fact]
+    public void No_shared_commits_means_no_shared_label()
+    {
+        var unrelated = Layouts.Diverged() with { Shared = [], MergeBase = null, Kind = GraphKind.Unrelated };
+
+        var grid = MergeScenes.Preview(Geo9, unrelated).Grid;
+
+        Assert.DoesNotContain(MergeScenes.SharedLabel, RowText(grid, Geo9.A + 1), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_branch_shown_alone_keeps_its_history_bright_with_no_shared_label()
+    {
+        var same = Shared3 with { Selected = Shared3.Current, SelectedTip = Shared3.CurrentTip, Kind = GraphKind.Same };
+
+        var grid = MergeScenes.Preview(Geo9, same).Grid;
+
+        Assert.DoesNotContain(MergeScenes.SharedLabel, RowText(grid, Geo9.A + 1), StringComparison.Ordinal);
+        Assert.DoesNotContain("·", RowText(grid, Geo9.A), StringComparison.Ordinal);
+        Assert.NotEqual(new Style(Ink.Dim), grid[Geo9.XB, Geo9.A].Style);
+    }
+
+    [Fact]
+    public void The_narrowest_art_still_fits_the_shared_label()
+    {
+        var narrow = ArtGeometry.For(40, 9)!;
+
+        var grid = MergeScenes.Preview(narrow, Layouts.Diverged()).Grid;
+
+        Assert.Contains(MergeScenes.SharedLabel, RowText(grid, narrow.A + 1), StringComparison.Ordinal);
+        Assert.Equal('│', grid[narrow.XB, narrow.A + 1].Ch);
     }
 }
 

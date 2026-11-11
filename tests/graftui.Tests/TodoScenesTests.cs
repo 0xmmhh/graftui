@@ -64,7 +64,7 @@ public class TodoScenesTests
 
         var grid = Frame(rows, Done(rows), 0);
 
-        Assert.Equal('●', grid[16, 2].Ch);
+        Assert.Equal('·', grid[16, 2].Ch);
         Assert.Equal('✂', grid[19, 2].Ch);
         Assert.Equal('●', grid[22, 2].Ch);
         Assert.Equal('✕', grid[34, 2].Ch);
