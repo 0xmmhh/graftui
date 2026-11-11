@@ -109,7 +109,7 @@ internal sealed partial class BranchesTab
     /// Shows the box: the field on the commit rows (its label above it when the pane has two rows free), the preview of the layout
     /// under it, and the hint as the caption. Opening takes the keys; the field has the focus.
     /// </summary>
-    private void OpenNameForm(bool rename, string old, string tip, GraphLayout layout)
+    internal void OpenNameForm(bool rename, string old, string tip, GraphLayout layout)
     {
         _nameRename = rename;
         _nameOld = old;
@@ -126,7 +126,6 @@ internal sealed partial class BranchesTab
         subject.CanFocus = true;
         subject.Visible = true;
         subject.Text = rename ? old : "";
-        subject.InsertionPoint = subject.Text.Length;
         _app.BodyField.Visible = false;
         _app.BodyField.CanFocus = false;
 
@@ -155,7 +154,7 @@ internal sealed partial class BranchesTab
         _app.Keys.MessageEnterLabel = rename ? " rename" : " create";
         _app.Keys.SetNeedsDraw();
         art.SetNeedsDraw();
-        subject.SetFocus();
+        _app.FocusSubjectAtEnd();
     }
 
     /// <summary>

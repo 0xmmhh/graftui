@@ -328,6 +328,18 @@ public sealed class AppController
     }
 
     /// <summary>
+    /// Gives the subject field the focus with the cursor after its text. A text field selects all its text when it takes the
+    /// focus, and an amend or a rename opens with the old text, so the focus is taken first and the selection cleared after it:
+    /// typing then adds to the end instead of replacing the old text.
+    /// </summary>
+    internal void FocusSubjectAtEnd()
+    {
+        SubjectField.SetFocus();
+        SubjectField.ClearAllSelection();
+        SubjectField.InsertionPoint = (SubjectField.Text ?? "").Length;
+    }
+
+    /// <summary>
     /// The focused field takes the selection colour; the other one keeps the chip shade. The form's labels, its hint and the key
     /// bar follow the focus too, so they are drawn again.
     /// </summary>
