@@ -623,6 +623,8 @@ public sealed class AppController
 
         if (onChanges)
         {
+            // The art is the Changes tab's from now on: a forecast that finishes later must not draw the preview over it.
+            BranchesTab.ForgetShown();
             ChangesTab.Activate();
             return;
         }

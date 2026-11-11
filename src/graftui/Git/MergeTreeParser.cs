@@ -10,9 +10,10 @@ namespace graftui.Git;
 /// </summary>
 public static class MergeTreeParser
 {
-    private const string BinaryType = "CONFLICT (binary)";
-    private const string RenameTypePrefix = "CONFLICT (rename";
-    private const string ConflictTypePrefix = "CONFLICT (";
+    // Types are read with their spacing made uniform (see NormalizeType): "CONFLICT(binary)" and "CONFLICT (binary)" are the same.
+    private const string BinaryType = "CONFLICT(binary)";
+    private const string RenameTypePrefix = "CONFLICT(rename";
+    private const string ConflictTypePrefix = "CONFLICT(";
 
     /// <summary>True when the output starts with a tree oid, which is what a merge that went through (exit 0) or ended in conflicts prints.</summary>
     internal static bool HasTree(string stdout) => IsOid(stdout.Split('\0')[0]);
@@ -133,7 +134,7 @@ public static class MergeTreeParser
         // The type, then the message (not read). A record needs both.
         if (i + 1 >= tokens.Length)
             return -1;
-        var type = tokens[i];
+        var type = NormalizeType(tokens[i]);
 
         foreach (var path in paths)
         {
@@ -155,6 +156,9 @@ public static class MergeTreeParser
         }
         return i + 2;
     }
+
+    // git writes "CONFLICT (contents)" with a space in most versions; the space is not part of the meaning, so it is dropped.
+    internal static string NormalizeType(string type) => type.Replace("CONFLICT (", "CONFLICT(", StringComparison.Ordinal);
 
     // The kind of one conflicted path. The first rule that matches wins: the conflict type, then the stages present.
     private static ForecastConflict KindOf(StageSet set, List<string>? types)

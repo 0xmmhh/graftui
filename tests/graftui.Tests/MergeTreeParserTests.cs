@@ -92,6 +92,45 @@ public class MergeTreeParserTests
     }
 
     [Fact]
+    public void A_directory_rename_conflict_lists_both_paths_as_other()
+    {
+        // Copied from git 2.56: main added dir/c.txt while feature renamed dir/ to newdir/.
+        var stdout = Z("fa7e3ddda5416f6d99370cabebd4965ea37d0524",
+            "100644 f2ad6c76f0115a6ba5b00456a849810e7ec0af20 2\tnewdir/c.txt",
+            "",
+            "2", "newdir/c.txt", "dir/c.txt", "CONFLICT (directory rename suggested)",
+            "CONFLICT (file location): dir/c.txt added in main inside a directory that was renamed in feature, suggesting it should perhaps be moved to newdir/c.txt.\n");
+
+        AssertFiles(MergeTreeParser.ParseConflicts(stdout),
+            ("newdir/c.txt", ForecastConflict.Other),
+            ("dir/c.txt", ForecastConflict.Other));
+    }
+
+    [Fact]
+    public void Conflict_types_are_read_with_or_without_the_space_after_conflict()
+    {
+        var stdout = Z(Tree,
+            $"100644 {Base} 1\tbin.dat", $"100644 {Ours} 2\tbin.dat", $"100644 {Theirs} 3\tbin.dat",
+            "", "1", "bin.dat", "CONFLICT(binary)", "CONFLICT(binary): Merge conflict in bin.dat\n",
+            "3", "ren.txt", "main-name.txt", "other-name.txt", "CONFLICT(rename/rename)", "msg\n");
+
+        AssertFiles(MergeTreeParser.ParseConflicts(stdout),
+            ("bin.dat", ForecastConflict.Binary),
+            ("ren.txt", ForecastConflict.Rename),
+            ("main-name.txt", ForecastConflict.Rename),
+            ("other-name.txt", ForecastConflict.Rename));
+    }
+
+    [Theory]
+    [InlineData("CONFLICT (contents)", "CONFLICT(contents)")]
+    [InlineData("CONFLICT(contents)", "CONFLICT(contents)")]
+    [InlineData("Auto-merging", "Auto-merging")]
+    public void The_space_after_conflict_is_dropped(string type, string expected)
+    {
+        Assert.Equal(expected, MergeTreeParser.NormalizeType(type));
+    }
+
+    [Fact]
     public void A_conflict_with_no_file_records_is_an_empty_list_not_null()
     {
         var files = MergeTreeParser.ParseConflicts(Z(Tree, ""));

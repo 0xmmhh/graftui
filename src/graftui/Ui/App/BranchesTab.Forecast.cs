@@ -16,6 +16,9 @@ internal sealed partial class BranchesTab
     // A merge-tree process cannot be stopped once it has started, so one runs at a time: holding a key down must not start one per branch.
     private bool _forecastRunning;
 
+    // Bumped by ClearCache. A forecast that started before a clear answers for the old snapshot, so its result is dropped.
+    private int _forecastGeneration;
+
     // The latest layout asked for while a forecast ran. Each request replaces it, so the newest selection is the one computed next.
     private GraphLayout? _forecastNext;
 
@@ -46,10 +49,11 @@ internal sealed partial class BranchesTab
 
         _forecastRunning = true;
         var forecaster = _app.Forecaster;
+        var generation = _forecastGeneration;
         Task.Run(() =>
         {
             var f = ForecastOrUnavailable(forecaster, L);
-            _app.Ui(() => ForecastDone(L, f));
+            _app.Ui(() => ForecastDone(L, f, generation));
         }, CancellationToken.None);
     }
 
@@ -66,18 +70,26 @@ internal sealed partial class BranchesTab
         }
     }
 
+    /// <summary>Stops the plain preview from being drawn again until the next ShowPreview (the art shows something else now).</summary>
+    internal void ForgetShown() => _shown = null;
+
     /// <summary>
-    /// A forecast finished: it is cached, the preview is drawn again when the art shows the same tips, and the waiting layout (if any)
-    /// starts. UI thread only.
+    /// A forecast finished: it is cached (unless the snapshot changed meanwhile), the preview is drawn again when the art shows the same tips,
+    /// and the waiting layout (if any) starts. UI thread only.
     /// </summary>
-    private void ForecastDone(GraphLayout L, MergeForecast f)
+    private void ForecastDone(GraphLayout L, MergeForecast f, int generation)
     {
-        _forecasts[ForecastKey(L)] = f;
         _forecastRunning = false;
 
-        var shown = _shown;
-        if (shown is not null && ForecastKey(shown) == ForecastKey(L) && MayDrawPreview)
-            ShowPreview(shown);
+        // A result from before the last ClearCache is dropped: its snapshot is gone. The waiting layout still runs below.
+        if (generation == _forecastGeneration)
+        {
+            _forecasts[ForecastKey(L)] = f;
+
+            var shown = _shown;
+            if (shown is not null && ForecastKey(shown) == ForecastKey(L) && MayDrawPreview)
+                ShowPreview(shown);
+        }
 
         var next = _forecastNext;
         _forecastNext = null;

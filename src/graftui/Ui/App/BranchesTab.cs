@@ -48,6 +48,7 @@ internal sealed partial class BranchesTab
         _cache.Clear();
         _forecasts.Clear();
         _forecastNext = null;
+        _forecastGeneration++;
     }
 
     /// <summary>The cached layout of a branch in the snapshot, or null. Reads the cache, so it is used on the UI thread only.</summary>
@@ -239,10 +240,13 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>
-    /// A preview may replace the art only when nothing is running, no change's result is shown, no question is open, and the help popup
-    /// is not drawn over the art. A preview that finishes meanwhile is cached; the popup's close asks for the preview again.
+    /// A preview may replace the art only when nothing is running, no change's result is shown, no question is open, the Branches tab is
+    /// the one on screen, and the help popup is not drawn over the art. A preview that finishes meanwhile is cached; the popup's close,
+    /// and the return to the Branches tab, ask for the preview again.
     /// </summary>
-    private bool MayDrawPreview => !_app.Busy && !_app.IsPaused && _app.Result is null && Mode == BranchesMode.Browse && !_app.HelpOpen;
+    private bool MayDrawPreview =>
+        !_app.Busy && !_app.IsPaused && _app.Result is null && Mode == BranchesMode.Browse
+        && _app.ActiveTab == AppController.TabKind.Branches && !_app.HelpOpen;
 
     internal void ShowInitialState()
     {
