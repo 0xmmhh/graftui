@@ -49,6 +49,43 @@ public class ConflictUnmergedSafetyTests
     }
 
     [Fact]
+    public void A_keep_answer_for_a_pause_that_has_moved_on_is_refused_and_nothing_is_staged()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        PauseRebase(repo);
+        var keep = new[] { new KeptFile("logo.bin", ConflictKind.Binary, TreeSide.Ours) };
+        var otherCommit = repo.Run("rev-parse", "main");
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, otherCommit, keep));
+
+        Assert.False(check.CanRun);
+        Assert.Equal(SequenceRefusals.PauseChanged, check.Refusal);
+        Assert.Contains("logo.bin", repo.Run("ls-files", "-u"));
+        Assert.True(RebaseInProgress(repo));
+    }
+
+    [Fact]
+    public void A_rename_rename_conflict_asks_about_all_three_paths_and_keeping_them_removes_the_old_name()
+    {
+        using var repo = SequenceRepos.RenameRename();
+        var stop = PauseRebase(repo).Stop!;
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+
+        Assert.False(check.CanRun);
+        var paths = check.Keep!.Select(k => k.Path).OrderBy(p => p, StringComparer.Ordinal).ToList();
+        Assert.Equal(new[] { "a.txt", "b.txt", "c.txt" }, paths);
+        Assert.Equal(ConflictKind.DeletedBoth, check.Keep!.Single(k => k.Path == "a.txt").Kind);
+
+        var outcome = RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit, check.Keep));
+
+        Assert.Equal(SequenceOutcomeKind.Done, outcome.Kind);
+        Assert.Equal("", repo.Run("ls-files", "a.txt"));
+        Assert.True(repo.IsClean);
+        Assert.False(RebaseInProgress(repo));
+    }
+
+    [Fact]
     public void Keeping_the_tree_version_of_a_binary_file_continues_and_git_drops_the_empty_commit()
     {
         using var repo = SequenceRepos.BinaryConflict();
@@ -329,7 +366,7 @@ public class ConflictUnmergedSafetyTests
         var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
 
         Assert.False(check.CanRun);
-        Assert.Equal("gone.txt is a folder in the work tree: move it aside, then press Enter", check.Refusal);
+        Assert.Equal("gone.txt is a folder in the work tree: resolve it in a shell (git add or git rm), then press Enter", check.Refusal);
         Assert.Null(check.Keep);
         Assert.Equal(SequenceOutcomeKind.Refused, RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit)).Kind);
         Assert.True(RebaseInProgress(repo));

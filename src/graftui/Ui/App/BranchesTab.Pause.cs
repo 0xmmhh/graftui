@@ -244,7 +244,8 @@ internal sealed partial class BranchesTab
             return;
         }
 
-        // expectedCommit is the commit a question was asked about; the engine refuses the step when the pause has moved on since.
+        // expectedCommit is the commit a question was asked about; the engine refuses the step when the pause has moved on since. Callers without
+        // a question pass null, and the fallback compares the pause with itself, so it never refuses.
         var stop = _app.Snapshot.Paused!;
         var oldTip = _app.Snapshot.PausedOldTip;
         var request = new ResumeRequest(action, message, expectedCommit ?? stop.Commit, keep);

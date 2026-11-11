@@ -65,8 +65,8 @@ public static class SequenceRefusals
     /// <summary>A conflicted submodule: graftui does not stage it, so the user stages it in a shell and then continues.</summary>
     public static string Submodule(string path) => $"{path} is a submodule conflict: stage it in a shell, then press Enter";
 
-    /// <summary>A conflicted path that is a folder in the work tree: git add would stage what is inside it, so the user moves it aside first.</summary>
-    public static string Folder(string path) => $"{path} is a folder in the work tree: move it aside, then press Enter";
+    /// <summary>A conflicted path that is a folder in the work tree: git add would stage what is inside it, so the user resolves it in a shell.</summary>
+    public static string Folder(string path) => $"{path} is a folder in the work tree: resolve it in a shell (git add or git rm), then press Enter";
 
     public static string StageFirst(string file) => $"{file} has unstaged changes: stage it first, then Amend & continue";
 

@@ -194,6 +194,24 @@ internal static class SequenceRepos
     }
 
     /// <summary>
+    /// a.txt is renamed to c.txt on feature ("Rename to c") and to b.txt on main ("Rename to b"): a rename/rename conflict that leaves a.txt
+    /// with only the base stage (deleted on both sides), b.txt only on ours and c.txt only on theirs. HEAD is on feature.
+    /// </summary>
+    public static TempRepo RenameRename()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("a.txt", "one\ntwo\nthree\nfour\n", "Add a");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Run("mv", "a.txt", "c.txt");
+        repo.Run("commit", "-q", "-m", "Rename to c");
+        repo.Run("switch", "-q", "main");
+        repo.Run("mv", "a.txt", "b.txt");
+        repo.Run("commit", "-q", "-m", "Rename to b");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>
     /// app.lock is set to merge=binary, so git does not merge it: it leaves the file unmerged with no markers, holding main's bytes. feature
     /// and main both change app.lock ("Feature lock", "Main lock"). HEAD is on feature.
     /// </summary>
