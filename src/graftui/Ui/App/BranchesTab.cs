@@ -273,13 +273,24 @@ internal sealed partial class BranchesTab
     private void ShowPreview(GraphLayout layout)
     {
         // A preview that loaded is proof that git answers again, so an earlier preview error no longer applies.
+        // Only a loaded preview clears it: a forecast that finishes later draws through DrawPreview and leaves it alone.
         _app.Status.ErrorText = null;
         _app.Status.SetNeedsDraw();
+        DrawPreview(layout);
+    }
+
+    /// <summary>
+    /// Draws the preview art for a layout: with the forecast when it is known, else the plain one, and then the forecast is started.
+    /// It does not touch the status bar.
+    /// </summary>
+    private void DrawPreview(GraphLayout layout)
+    {
         _shown = layout;
         _app.Art.Title = "Preview";
         _app.Art.Direction = cols => DirectionLine.Browse(layout, cols);
         // The forecast is read after the preview loads (see RequestForecast): until then the panel and the caption are the plain ones.
         var forecast = CachedForecast(layout);
+        var clean = _app.Snapshot.Clean;
         _app.Art.Panel = forecast is null
             ? CommitLists.Idle(layout)
             : ForecastText.WithFiles(CommitLists.Idle(layout), forecast, layout);
@@ -306,7 +317,7 @@ internal sealed partial class BranchesTab
             else if (layout.Kind == GraphKind.Unrelated)
                 caption = new Caption($"{layout.Selected} and {layout.Current} have no common history", Muted);
             else if (forecast is not null)
-                caption = ForecastText.Caption(forecast, layout);
+                caption = ForecastText.Caption(forecast, layout, clean);
             return new SceneFrame(grid, caption);
         }, IsStraight(layout));
         _app.Art.SetNeedsDraw();

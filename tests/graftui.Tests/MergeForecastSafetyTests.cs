@@ -209,7 +209,7 @@ public class MergeForecastSafetyTests
     }
 
     [Fact]
-    public void Branches_with_no_common_history_are_refused_without_any_git_call()
+    public void Branches_with_no_common_history_get_no_forecast_and_no_git_call()
     {
         using var repo = TempRepo.Create();
         repo.Commit("a.txt", "a\n", "Add a");
@@ -219,8 +219,7 @@ public class MergeForecastSafetyTests
 
         var f = ForecastOf(repo, "other");
 
-        Assert.Equal(ForecastKind.Refused, f.Kind);
-        Assert.Equal(MergeForecast.UnrelatedNote, f.Note);
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
         Assert.Empty(f.Commands);
     }
 
@@ -276,13 +275,49 @@ public class MergeForecastSafetyTests
     }
 
     [Fact]
-    public void A_cancelled_forecast_throws_instead_of_answering()
+    public void A_merge_already_in_progress_gets_no_forecast_and_is_left_as_it_was()
     {
-        using var repo = TempRepo.Diverged(conflict: false);
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        using var repo = TempRepo.Diverged(conflict: true);
+        var started = repo.Git.Run("merge", "--no-edit", "feature");
+        Assert.False(started.Success);
+        Assert.True(repo.Merging);
+        var before = Capture(repo);
 
-        Assert.Throws<OperationCanceledException>(() => new MergeForecaster(repo.Git, new Version(2, 56)).Forecast(LayoutOf(repo, "feature"), cts.Token));
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.Empty(f.Files);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        Assert.Equal(before.Head, repo.Head);
+        Assert.Equal(before.Status, repo.Status());
+        Assert.Equal(before.Index, File.ReadAllBytes(IndexPath(repo)));
+        Assert.True(repo.Merging);
+    }
+
+    [Fact]
+    public void A_rename_rename_conflict_lists_the_files_git_lists_as_unmerged()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("ren.txt", Lines(20), "Add ren");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Run("mv", "ren.txt", "other-name.txt");
+        repo.Run("commit", "-q", "-m", "Rename on feature");
+        repo.Run("switch", "-q", "main");
+        repo.Run("mv", "ren.txt", "main-name.txt");
+        repo.Run("commit", "-q", "-m", "Rename on main");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+        Assert.Equal(ForecastKind.Conflict, f.Kind);
+        AssertUntouched(repo, before);
+
+        var merge = repo.Git.Run("merge", "--no-edit", "feature");
+        Assert.False(merge.Success);
+        var unmerged = repo.Git.Run("diff", "--name-only", "--diff-filter=U").StdOut
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        repo.Git.Run("merge", "--abort");
+
+        Assert.Equal(unmerged.ToList(), f.Files.Select(file => file.Path).ToList());
     }
 
     [Fact]
@@ -335,7 +370,7 @@ public class MergeForecastSafetyTests
     }
 
     private static MergeForecast ForecastOf(TempRepo repo, string selected, Version? version = null) =>
-        new MergeForecaster(repo.Git, version).Forecast(LayoutOf(repo, selected), CancellationToken.None);
+        new MergeForecaster(repo.Git, version).Forecast(LayoutOf(repo, selected));
 
     private static MergeOutcome MergeNow(TempRepo repo, string branch)
     {

@@ -28,17 +28,21 @@ internal sealed partial class BranchesTab
     private static (string Current, string CurrentTip, string SelectedTip) ForecastKey(GraphLayout L) =>
         (L.Current, L.CurrentTip, L.SelectedTip);
 
+    /// <summary>The generation a forecast result is checked against. ClearCache bumps it.</summary>
+    internal int ForecastGeneration => _forecastGeneration;
+
     /// <summary>The forecast of a layout if it is known, else null.</summary>
     private MergeForecast? CachedForecast(GraphLayout L) =>
         _forecasts.TryGetValue(ForecastKey(L), out var f) ? f : null;
 
     /// <summary>
-    /// Starts the forecast of a layout, unless it is cached or the layout is the same commit (nothing to forecast). While another
-    /// forecast runs, the layout waits as the next one. UI thread only.
+    /// Starts the forecast of a layout, unless it is cached or there is nothing to forecast: a detached HEAD, the same commit, or
+    /// unrelated histories (MergeForecaster answers Unavailable for those). While another forecast runs, the layout waits as the next one.
+    /// UI thread only.
     /// </summary>
     private void RequestForecast(GraphLayout L)
     {
-        if (L.Kind == GraphKind.Same || CachedForecast(L) is not null)
+        if (L.Detached || L.Kind == GraphKind.Same || L.Kind == GraphKind.Unrelated || CachedForecast(L) is not null)
             return;
 
         if (_forecastRunning)
@@ -52,22 +56,9 @@ internal sealed partial class BranchesTab
         var generation = _forecastGeneration;
         Task.Run(() =>
         {
-            var f = ForecastOrUnavailable(forecaster, L);
+            var f = forecaster.Forecast(L);
             _app.Ui(() => ForecastDone(L, f, generation));
         }, CancellationToken.None);
-    }
-
-    // The forecast is only a preview: any failure says nothing rather than an error.
-    private static MergeForecast ForecastOrUnavailable(MergeForecaster forecaster, GraphLayout L)
-    {
-        try
-        {
-            return forecaster.Forecast(L, CancellationToken.None);
-        }
-        catch (Exception)
-        {
-            return MergeForecast.Unavailable([]);
-        }
     }
 
     /// <summary>Stops the plain preview from being drawn again until the next ShowPreview (the art shows something else now).</summary>
@@ -75,9 +66,10 @@ internal sealed partial class BranchesTab
 
     /// <summary>
     /// A forecast finished: it is cached (unless the snapshot changed meanwhile), the preview is drawn again when the art shows the same tips,
-    /// and the waiting layout (if any) starts. UI thread only.
+    /// and the waiting layout (if any) starts. It leaves the status bar alone: an error still shown stays until a preview loads.
+    /// UI thread only.
     /// </summary>
-    private void ForecastDone(GraphLayout L, MergeForecast f, int generation)
+    internal void ForecastDone(GraphLayout L, MergeForecast f, int generation)
     {
         _forecastRunning = false;
 
@@ -88,7 +80,7 @@ internal sealed partial class BranchesTab
 
             var shown = _shown;
             if (shown is not null && ForecastKey(shown) == ForecastKey(L) && MayDrawPreview)
-                ShowPreview(shown);
+                DrawPreview(shown);
         }
 
         var next = _forecastNext;

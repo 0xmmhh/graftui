@@ -28,8 +28,5 @@ public sealed record MergeForecast(ForecastKind Kind, IReadOnlyList<ForecastFile
     /// <summary>A refused merge because merge.ff is only: the branches diverged.</summary>
     public const string FfOnlyNote = "merge.ff=only";
 
-    /// <summary>A refused merge because the two branches share no history.</summary>
-    public const string UnrelatedNote = "no common history";
-
     public static MergeForecast Unavailable(IReadOnlyList<GitResult> commands) => new(ForecastKind.Unavailable, [], null, commands);
 }

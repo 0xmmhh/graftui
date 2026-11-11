@@ -9,9 +9,9 @@ public class ForecastTextTests
     private static MergeForecast Of(ForecastKind kind, string? note = null, params ForecastFile[] files) =>
         new(kind, files, note, []);
 
-    private static string Text(MergeForecast f, GraphLayout L)
+    private static string Text(MergeForecast f, GraphLayout L, bool clean = true)
     {
-        var caption = ForecastText.Caption(f, L);
+        var caption = ForecastText.Caption(f, L, clean);
         Assert.NotNull(caption);
         return caption.Text;
     }
@@ -78,7 +78,8 @@ public class ForecastTextTests
     [Fact]
     public void An_unavailable_forecast_has_no_caption()
     {
-        Assert.Null(ForecastText.Caption(MergeForecast.Unavailable([]), Layouts.Diverged()));
+        Assert.Null(ForecastText.Caption(MergeForecast.Unavailable([]), Layouts.Diverged(), clean: true));
+        Assert.Null(ForecastText.Caption(MergeForecast.Unavailable([]), Layouts.Diverged(), clean: false));
     }
 
     [Fact]
@@ -126,5 +127,67 @@ public class ForecastTextTests
         var panel = ForecastText.WithFiles(idle, Of(ForecastKind.Clean), Layouts.Diverged());
 
         Assert.Same(idle, panel);
+    }
+
+    [Fact]
+    public void On_a_dirty_tree_a_clean_merge_says_the_merge_is_clean_and_m_asks_to_stash_first()
+    {
+        Assert.Equal("✔ the merge itself is clean; m asks to stash your changes first",
+            Text(Of(ForecastKind.Clean), Layouts.Diverged(), clean: false));
+    }
+
+    [Fact]
+    public void On_a_dirty_tree_a_merge_commit_made_by_merge_ff_false_says_the_same()
+    {
+        var f = Of(ForecastKind.Clean, MergeForecast.FfOffNote);
+
+        Assert.Equal("✔ the merge itself is clean; m asks to stash your changes first", Text(f, Layouts.FastForward(), clean: false));
+    }
+
+    [Fact]
+    public void On_a_dirty_tree_a_fast_forward_says_the_fast_forward_is_clean_and_m_asks_to_stash_first()
+    {
+        Assert.Equal("✔ the fast-forward itself is clean; m asks to stash your changes first",
+            Text(Of(ForecastKind.FastForward), Layouts.FastForward(), clean: false));
+    }
+
+    [Fact]
+    public void On_a_dirty_tree_an_up_to_date_branch_still_says_m_asks_to_stash_first()
+    {
+        Assert.Equal("✔ already up to date: nothing to merge; m asks to stash your changes first",
+            Text(Of(ForecastKind.UpToDate), Layouts.UpToDate(), clean: false));
+    }
+
+    [Fact]
+    public void On_a_dirty_tree_a_conflict_names_the_files_and_m_asks_to_stash_first()
+    {
+        var f = Of(ForecastKind.Conflict, null,
+            new ForecastFile("app.txt", ForecastConflict.Content),
+            new ForecastFile("b.txt", ForecastConflict.Binary));
+
+        Assert.Equal("✕ would conflict in app.txt +1 more; m asks to stash your changes first", Text(f, Layouts.Diverged(), clean: false));
+    }
+
+    [Fact]
+    public void On_a_dirty_tree_a_conflict_with_no_file_entries_says_so_and_m_asks_to_stash_first()
+    {
+        Assert.Equal("✕ would conflict; m asks to stash your changes first",
+            Text(Of(ForecastKind.Conflict), Layouts.Diverged(), clean: false));
+    }
+
+    [Fact]
+    public void On_a_dirty_tree_a_refused_fast_forward_still_says_m_asks_to_stash_first()
+    {
+        var f = Of(ForecastKind.Refused, MergeForecast.FfOnlyNote);
+
+        Assert.Equal("✕ m can't fast-forward: the branches diverged (merge.ff=only); m asks to stash your changes first",
+            Text(f, Layouts.Diverged(), clean: false));
+    }
+
+    [Fact]
+    public void A_clean_tree_keeps_the_plain_words_for_every_kind()
+    {
+        Assert.Equal("✔ m fast-forwards: 1 commit", Text(Of(ForecastKind.FastForward), Layouts.FastForward(), clean: true));
+        Assert.Equal("✔ already up to date: nothing to merge", Text(Of(ForecastKind.UpToDate), Layouts.UpToDate(), clean: true));
     }
 }

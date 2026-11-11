@@ -2,6 +2,7 @@ using graftui.Model;
 
 namespace graftui.Git;
 
+// Not modelled: the pre-merge-commit hook, merge.verifySignatures and merge drivers. A real merge can run them, and this forecast does not.
 /// <summary>
 /// Read-only forecast of `git merge --no-edit &lt;selected&gt;` into the current branch. It never throws for git's own errors (it answers
 /// Unavailable instead), never changes HEAD, refs, the index or the work tree, and is not logged in the Commands pane.
@@ -13,9 +14,7 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     public static readonly Version Minimum = new(2, 38);
 
     // What merge.ff asks for: merge commits allowed (the default), never a fast-forward, or fast-forward only.
-    private const string FfDefault = "default";
-    private const string FfNever = "never";
-    private const string FfOnly = "only";
+    private enum FfMode { Default, Never, Only }
 
     private Version? _version = knownVersion;
     private bool _versionRead = knownVersion is not null;
@@ -37,17 +36,13 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
         }
     }
 
-    /// <summary>The forecast of merging the selected branch into the current one. Cancelling it throws; every other failure answers Unavailable.</summary>
-    public MergeForecast Forecast(GraphLayout layout, CancellationToken ct)
+    /// <summary>The forecast of merging the selected branch into the current one. Never throws: every failure answers Unavailable.</summary>
+    public MergeForecast Forecast(GraphLayout layout)
     {
         var log = new List<GitResult>();
         try
         {
-            return Decide(layout, ct, log);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
+            return Decide(layout, log);
         }
         catch (Exception)
         {
@@ -56,15 +51,19 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     }
 
     // The decision, in order. A layout that git cannot be sure about gets Unavailable: the preview then says nothing.
-    private MergeForecast Decide(GraphLayout layout, CancellationToken ct, List<GitResult> log)
+    private MergeForecast Decide(GraphLayout layout, List<GitResult> log)
     {
-        // A detached HEAD refuses the merge, and the preview already says so. A Same layout has its own caption.
-        if (layout.Detached || layout.Kind == GraphKind.Same)
+        // A detached HEAD refuses the merge, and the preview already says so. A Same layout has its own caption. Unrelated histories are
+        // refused by git before any merge. A rebase in progress also leaves HEAD detached. None of these asks git anything.
+        if (layout.Detached || layout.Kind == GraphKind.Same || layout.Kind == GraphKind.Unrelated)
             return MergeForecast.Unavailable(log);
 
-        // git refuses unrelated histories without merging. merge-tree says the same (exit 128), so no git call is needed here.
-        if (layout.Kind == GraphKind.Unrelated)
-            return new MergeForecast(ForecastKind.Refused, [], MergeForecast.UnrelatedNote, log);
+        // A merge that is already in progress: MergeOperation.Check refuses to start another, so m says nothing here either.
+        // Exit 1 means there is no MERGE_HEAD; any other failure leaves the state unknown.
+        var merging = git.Run(GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead);
+        log.Add(merging);
+        if (merging.Success || merging.ExitCode != 1)
+            return MergeForecast.Unavailable(log);
 
         if (!IsSupported)
             return MergeForecast.Unavailable(log);
@@ -80,17 +79,16 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
             return FastForwardForecast(config, log);
 
         // Diverged: a merge is needed. With merge.ff=only, git refuses it before it looks at the files.
-        if (config.Ff == FfOnly)
+        if (config.Ff == FfMode.Only)
             return new MergeForecast(ForecastKind.Refused, [], MergeForecast.FfOnlyNote, log);
 
-        ct.ThrowIfCancellationRequested();
         return MergeTreeForecast(layout, log);
     }
 
     // A fast-forward is what `git merge` does by default. With merge.ff=false it makes a merge commit instead, which cannot conflict.
     private static MergeForecast FastForwardForecast(MergeConfig config, List<GitResult> log)
     {
-        if (config.Ff == FfNever)
+        if (config.Ff == FfMode.Never)
             return new MergeForecast(ForecastKind.Clean, [], MergeForecast.FfOffNote, log);
         return new MergeForecast(ForecastKind.FastForward, [], null, log);
     }
@@ -127,13 +125,13 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
         if (!ff.Success && ff.ExitCode != 1)
             return null;
 
-        var mode = FfDefault;
+        var mode = FfMode.Default;
         if (ff.Success)
         {
             var known = FfModeOf(ff.StdOut.Trim());
             if (known is null)
                 return null;
-            mode = known;
+            mode = known.Value;
         }
 
         // Exit 1 means "not set". A set, non-empty value means git merges with extra flags, so the forecast says nothing.
@@ -147,17 +145,17 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     }
 
     // git's boolean spellings for merge.ff, and "only". Anything else is not known.
-    private static string? FfModeOf(string value)
+    private static FfMode? FfModeOf(string value)
     {
         var v = value.ToLowerInvariant();
         if (v == "false" || v == "no" || v == "off" || v == "0")
-            return FfNever;
+            return FfMode.Never;
         if (v == "only")
-            return FfOnly;
+            return FfMode.Only;
         if (v == "true" || v == "yes" || v == "on" || v == "1")
-            return FfDefault;
+            return FfMode.Default;
         return null;
     }
 
-    private sealed record MergeConfig(string Ff);
+    private sealed record MergeConfig(FfMode Ff);
 }

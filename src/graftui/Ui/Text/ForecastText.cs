@@ -13,27 +13,41 @@ public static class ForecastText
     private static readonly Style BadB = new(Ink.Bad, true);
     private static readonly Style Dim = new(Ink.Dim);
 
-    /// <summary>The caption under the preview art, or null when the forecast says nothing (Unavailable).</summary>
-    public static Caption? Caption(MergeForecast f, GraphLayout L)
+    // Added to a caption when the work tree is not clean: m asks to stash the changes before it merges.
+    private const string StashFirst = "m asks to stash your changes first";
+
+    /// <summary>
+    /// The caption under the preview art, or null when the forecast says nothing (Unavailable).
+    /// <paramref name="clean"/> is the snapshot's clean flag, which counts untracked files. On a dirty tree the forecast is kept but
+    /// qualified. Untracked files that would block the merge are not forecast: they are covered only because the dirty check (which
+    /// counts them) comes first in MergeOperation.Check, so the caption says m asks to stash first.
+    /// </summary>
+    public static Caption? Caption(MergeForecast f, GraphLayout L, bool clean)
     {
         switch (f.Kind)
         {
             case ForecastKind.Clean:
+                if (!clean)
+                    return new Caption("✔ the merge itself is clean; " + StashFirst, OkB);
                 if (f.Note == MergeForecast.FfOffNote)
                     return new Caption("✔ m makes a merge commit (merge.ff=false)", OkB);
                 return new Caption("✔ m merges cleanly: a merge commit", OkB);
 
             case ForecastKind.FastForward:
+                if (!clean)
+                    return new Caption("✔ the fast-forward itself is clean; " + StashFirst, OkB);
                 return new Caption("✔ m fast-forwards: " + MergeScenes.Plural(L.Ahead, "commit"), OkB);
 
             case ForecastKind.UpToDate:
+                if (!clean)
+                    return new Caption("✔ already up to date: nothing to merge; " + StashFirst, OkB);
                 return new Caption("✔ already up to date: nothing to merge", OkB);
 
             case ForecastKind.Conflict:
-                return new Caption(ConflictText(f), BadB);
+                return new Caption(ConflictText(f, clean), BadB);
 
             case ForecastKind.Refused:
-                return new Caption(RefusedText(f), BadB);
+                return new Caption(RefusedText(f, clean), BadB);
 
             default:
                 return null;
@@ -77,19 +91,25 @@ public static class ForecastText
         }
     }
 
-    private static string ConflictText(MergeForecast f)
+    private static string ConflictText(MergeForecast f, bool clean)
     {
         if (f.Files.Count == 0)
-            return "✕ m would conflict: the merge would be aborted";
+            return clean ? "✕ m would conflict: the merge would be aborted" : "✕ would conflict; " + StashFirst;
 
         var paths = f.Files.Select(file => file.Path).ToList();
-        return "✕ m would conflict in " + MergeScenes.ConflictFiles(paths) + ": the merge would be aborted";
+        var files = MergeScenes.ConflictFiles(paths);
+        if (!clean)
+            return "✕ would conflict in " + files + "; " + StashFirst;
+        return "✕ m would conflict in " + files + ": the merge would be aborted";
     }
 
-    private static string RefusedText(MergeForecast f)
+    private static string RefusedText(MergeForecast f, bool clean)
     {
+        var text = "✕ m can't merge: " + f.Note;
         if (f.Note == MergeForecast.FfOnlyNote)
-            return "✕ m can't fast-forward: the branches diverged (merge.ff=only)";
-        return "✕ m can't merge: " + f.Note;
+            text = "✕ m can't fast-forward: the branches diverged (merge.ff=only)";
+        if (!clean)
+            return text + "; " + StashFirst;
+        return text;
     }
 }
