@@ -43,8 +43,10 @@ public class RebaseScenesTests
 
         var grid = RebaseScenes.Preview(G, L, rows, -1).Grid;
 
-        // The shared commit at the base, then the three own commits.
-        Assert.Equal(4, RowText(grid, G.A).Count(c => c == '●'));
+        // The shared commit at the base is a dim small dot; the three own commits stay bright.
+        Assert.Equal('·', grid[G.XB, G.A].Ch);
+        Assert.Equal(new Style(Ink.Dim), grid[G.XB, G.A].Style);
+        Assert.Equal(3, RowText(grid, G.A).Count(c => c == '●'));
         Assert.Equal('●', grid[G.TipX(1), G.A].Ch);
     }
 

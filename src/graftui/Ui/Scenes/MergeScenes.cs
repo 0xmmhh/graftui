@@ -340,20 +340,29 @@ public static class MergeScenes
         return first + (files.Count > 1 ? $" +{files.Count - 1} more" : "");
     }
 
+    /// <summary>The dim label under the shared history, two columns clear of the fork point's column.</summary>
+    internal const string SharedLabel = "shared";
+
+    /// <summary>
+    /// The commits both branches share, left of the fork point: dim grey small dots on dim segments, with a dim "shared" label
+    /// under them, so the shared history recedes and each branch's own commits stay bright. At most three are drawn; a dim ┄
+    /// tail says older commits were left out.
+    /// </summary>
     internal static void DrawShared(ArtGrid grid, ArtGeometry g, GraphLayout L)
     {
-        var shared = new Style(BranchInks.Current(L));
         var s = g.Step;
         var n = L.Shared.Count;
         for (var i = 0; i < n; i++)
         {
             var x = g.XB - s * (n - 1 - i);
             if (i > 0)
-                grid.HLine(x - s + 1, x - 1, g.A, shared);
+                grid.HLine(x - s + 1, x - 1, g.A, Dim);
             else if (L.SharedMore)
                 grid.HLine(x - s + 2, x - 1, g.A, Dim, '┄');
-            grid.Put(x, g.A, Dot(L.Shared[i]), shared);
+            grid.Put(x, g.A, '·', Dim);
         }
+        if (n > 0)
+            grid.Text(g.XB - SharedLabel.Length - 2, g.A + 1, SharedLabel, Dim);
     }
 
     internal static void DrawRowA(ArtGrid grid, ArtGeometry g, IReadOnlyList<CommitInfo> list, Style st, bool more,
