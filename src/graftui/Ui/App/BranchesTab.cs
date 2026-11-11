@@ -37,6 +37,9 @@ internal sealed partial class BranchesTab
 
     internal int Selected => _selected;
 
+    /// <summary>The number of the newest preview request. A load whose number is older is dropped. The tests read it.</summary>
+    internal int PreviewSeq => _previewSeq;
+
     /// <summary>The keys the tab is taking. Browse unless a question or the name box is open.</summary>
     internal BranchesMode Mode { get; private set; } = BranchesMode.Browse;
 
@@ -215,14 +218,7 @@ internal sealed partial class BranchesTab
             try
             {
                 var layout = _app.Reader.LoadLayout(snap, b, ct);
-                _app.Ui(() =>
-                {
-                    if (seq != _previewSeq)
-                        return;
-                    _cache[key] = layout;
-                    if (MayDrawPreview)
-                        ShowPreview(layout);
-                });
+                _app.Ui(() => PreviewLoaded(seq, key, layout));
             }
             catch (OperationCanceledException)
             {
@@ -237,6 +233,20 @@ internal sealed partial class BranchesTab
                 });
             }
         }, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// A preview load finished on a worker and is handed back on the UI thread. A load that is no longer the newest request read a
+    /// selection or a snapshot that has been replaced, so its layout is dropped: it is neither cached nor drawn, and so it cannot start a
+    /// forecast of tips the list no longer shows. UI thread only.
+    /// </summary>
+    internal void PreviewLoaded(int seq, (string Current, string Head, string Name, string Tip) key, GraphLayout layout)
+    {
+        if (seq != _previewSeq)
+            return;
+        _cache[key] = layout;
+        if (MayDrawPreview)
+            ShowPreview(layout);
     }
 
     /// <summary>
@@ -333,7 +343,7 @@ internal sealed partial class BranchesTab
     internal static bool IsStraight(GraphLayout L) =>
         !L.Detached && (L.Kind == GraphKind.FastForward || L.Kind == GraphKind.UpToDate || L.Kind == GraphKind.Same);
 
-    private static (string Current, string Head, string Name, string Tip) CacheKey(RepoSnapshot snap, Branch b) =>
+    internal static (string Current, string Head, string Name, string Tip) CacheKey(RepoSnapshot snap, Branch b) =>
         (snap.CurrentBranch, snap.HeadHash ?? "", b.Name, b.Hash);
 
     private static int FirstNonCurrent(RepoSnapshot s)

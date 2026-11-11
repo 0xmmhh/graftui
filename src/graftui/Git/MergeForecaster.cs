@@ -83,6 +83,11 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
         if (!IsSupported)
             return MergeForecast.Unavailable(log);
 
+        // m runs `git merge --no-edit <name>`, and git resolves that name itself: a tag of the same name can win over the branch. The forecast
+        // is of the selected tip, so a name that resolves to another commit (or to nothing) is Unavailable.
+        if (!NameResolvesToSelectedTip(layout, log))
+            return MergeForecast.Unavailable(log);
+
         var config = ReadConfig(layout.Current, log);
         if (config is null)
             return MergeForecast.Unavailable(log);
@@ -98,6 +103,18 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
             return new MergeForecast(ForecastKind.Refused, [], MergeForecast.FfOnlyNote, log);
 
         return MergeTreeForecast(layout, log);
+    }
+
+    // The selected branch's name, resolved the way `git merge` resolves it, must give the selected tip. A name that starts with '-' is never
+    // a branch name, and --end-of-options keeps git from reading it as an option anyway. Any failure, or another commit, answers false.
+    private bool NameResolvesToSelectedTip(GraphLayout layout, List<GitResult> log)
+    {
+        if (layout.Selected.StartsWith('-'))
+            return false;
+
+        var resolved = git.Run("rev-parse", "--verify", "-q", "--end-of-options", layout.Selected + "^{commit}");
+        log.Add(resolved);
+        return resolved.Success && resolved.StdOut.Trim() == layout.SelectedTip;
     }
 
     // A fast-forward is what `git merge` does by default. With merge.ff=false it makes a merge commit instead, which cannot conflict.

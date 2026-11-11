@@ -662,8 +662,9 @@ public sealed class AppController
         BranchList.PausedBranch = SequenceStatus.PausedBranch(s);
         BranchList.SetNeedsDraw();
 
-        // The clear above dropped the shown branch's forecast: ask again, unless the art shows something else.
-        BranchesTab.RequestShownForecast();
+        // The clear above dropped the shown branch's forecast, and a preview still loading reads the old snapshot: the Branches tab
+        // drops that load and reads the preview again, unless the art shows something else.
+        BranchesTab.SnapshotChanged();
     }
 
     /// <summary>True while a rebase or cherry-pick that graftui started is paused. Only that pause is shown as one.</summary>

@@ -545,6 +545,23 @@ public class MergeForecastSafetyTests
         Assert.Equal(ForecastKind.Conflict, f.Kind);
     }
 
+    // m merges by name, and git resolves a tag of the same name before the branch: `git merge feature` merged the tag's commit. The
+    // forecast is of the branch's tip, so it must say nothing here.
+    [Fact]
+    public void A_tag_named_like_the_selected_branch_makes_the_forecast_unavailable()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        repo.Run("tag", "feature", "main~1");
+        var before = Capture(repo);
+
+        var f = ForecastOf(repo, "feature");
+
+        Assert.Equal(ForecastKind.Unavailable, f.Kind);
+        Assert.Empty(f.Files);
+        Assert.DoesNotContain(f.Commands, c => c.Args.Contains(MergeTree));
+        AssertUntouched(repo, before);
+    }
+
     // ---------- helpers ----------
 
     private static GraphLayout LayoutOf(TempRepo repo, string selected)

@@ -6,12 +6,13 @@ namespace graftui.Ui.App;
 
 /// <summary>
 /// The merge forecast in the preview: what `m` would do, read after each preview loads. One worker at a time, and the newest selection
-/// goes next. Results are cached by the two tips and the current branch's name (an empty name is a detached HEAD). The cache is
-/// cleared with the snapshot. Only the UI thread touches these fields; the worker sees just its own layout and forecaster.
+/// goes next. Results are cached by the two tips, the current branch's name (an empty name is a detached HEAD) and the selected name:
+/// m merges by name, so two names on one tip can get different answers. The cache is cleared with the snapshot. Only the UI thread
+/// touches these fields; the worker sees just its own layout and forecaster.
 /// </summary>
 internal sealed partial class BranchesTab
 {
-    private readonly Dictionary<(string Current, string CurrentTip, string SelectedTip), MergeForecast> _forecasts = new();
+    private readonly Dictionary<(string Current, string CurrentTip, string Selected, string SelectedTip), MergeForecast> _forecasts = new();
 
     // A merge-tree process cannot be stopped once it has started, so one runs at a time: holding a key down must not start one per branch.
     private bool _forecastRunning;
@@ -25,8 +26,8 @@ internal sealed partial class BranchesTab
     // The layout whose plain preview the art shows now. Null while the art shows something else (loading, a flash, a question, the pause).
     private GraphLayout? _shown;
 
-    private static (string Current, string CurrentTip, string SelectedTip) ForecastKey(GraphLayout L) =>
-        (L.Current, L.CurrentTip, L.SelectedTip);
+    private static (string Current, string CurrentTip, string Selected, string SelectedTip) ForecastKey(GraphLayout L) =>
+        (L.Current, L.CurrentTip, L.Selected, L.SelectedTip);
 
     /// <summary>The generation a forecast result is checked against. ClearCache bumps it.</summary>
     internal int ForecastGeneration => _forecastGeneration;
@@ -68,18 +69,21 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>
-    /// Asks for the forecast of the layout the art shows, after a snapshot change cleared the cache. A result that was still running
-    /// was dropped with the old snapshot, so nothing else would ask again. Does nothing when the browse preview does not own the art.
-    /// A layout whose tips moved in the refresh is not forecast: its preview is read again, and the forecast follows that preview.
-    /// UI thread only.
+    /// Called after a snapshot change cleared the cache. A preview load still running reads the old snapshot: its sequence number moves
+    /// on, so its result is dropped and it cannot draw or forecast old tips. Then, when the browse preview owns the art, the shown layout
+    /// is forecast again if its tips still hold; if it is gone or its tips moved, the preview is read again (the forecast follows that).
+    /// A result that was still running was dropped with the old snapshot, so nothing else would ask again. UI thread only.
     /// </summary>
-    internal void RequestShownForecast()
+    internal void SnapshotChanged()
     {
-        var shown = _shown;
-        if (shown is null || !MayDrawPreview)
+        Cancellation.CancelAndDispose(ref _previewCts);
+        _previewSeq++;
+
+        if (!MayDrawPreview)
             return;
 
-        if (!ShowsSnapshot(shown, _app.Snapshot))
+        var shown = _shown;
+        if (shown is null || !ShowsSnapshot(shown, _app.Snapshot))
         {
             RequestPreview();
             return;

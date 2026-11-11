@@ -104,6 +104,31 @@ public sealed class ForecastStatusTests : IDisposable
         Assert.Null(app.BranchesTab.Shown);
     }
 
+    // A preview load that started before a refresh finishes after it, with the old tips. Its result is dropped: it draws nothing and
+    // starts no forecast of the old layout. The preview is read again for the refreshed snapshot instead.
+    [Fact]
+    public void A_preview_load_that_finishes_after_a_refresh_is_dropped_and_no_old_tips_are_forecast()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        var snapshot = new RepoReader(repo.Git).LoadSnapshot(withCounts: true, CancellationToken.None);
+        var app = OpenApp(repo, snapshot);
+        var branch = snapshot.Branches.Single(b => b.Name == "feature");
+        app.BranchesTab.RequestPreview();
+        var loadSeq = app.BranchesTab.PreviewSeq;
+        var oldLayout = FeatureLayout(repo, snapshot);
+
+        repo.Run("switch", "-q", "feature");
+        repo.Commit("moved.txt", "moved\n", "Move feature");
+        repo.Run("switch", "-q", "main");
+        var refreshed = new RepoReader(repo.Git).LoadSnapshot(withCounts: true, CancellationToken.None);
+        app.ApplySnapshot(refreshed);
+
+        app.BranchesTab.PreviewLoaded(loadSeq, BranchesTab.CacheKey(snapshot, branch), oldLayout);
+
+        Assert.Null(app.BranchesTab.Shown);
+        Assert.False(app.BranchesTab.ForecastInFlight);
+    }
+
     private AppController OpenApp(TempRepo repo, RepoSnapshot snapshot)
     {
         var app = new AppController(_ui, repo.Git, repo.Git, snapshot, "repo");
