@@ -36,7 +36,29 @@ public enum SequenceKind { Rebase, CherryPick }
 /// <summary>Conflict: git stopped on a conflict. Edit: an edit stop. Reword and Squash: graftui's own message pauses.</summary>
 public enum PauseKind { Conflict, Edit, Reword, Squash }
 
-public sealed record ConflictFile(string Path, bool Resolved);
+/// <summary>
+/// Text: a regular file git may have written markers into; it is resolved once the file is held with no marker line. Binary: git kept
+/// one side without markers (a binary file or a symlink). Submodule: a gitlink on a side; it is refused, not asked about. AddedOurs and
+/// AddedTheirs: only stage 2 (ours) or only stage 3 (theirs) has the file, and the base has none. DeletedOurs: the base and theirs have
+/// it and ours (stage 2) deleted it; DeletedTheirs is the same with theirs deleting it. DeletedBoth: only the base has it.
+/// </summary>
+public enum ConflictKind { Text, Binary, Submodule, AddedOurs, AddedTheirs, DeletedOurs, DeletedTheirs, DeletedBoth }
+
+/// <summary>Which version the work tree holds now: the stage 2 blob, the stage 3 blob, something else, or no file.</summary>
+public enum TreeSide { Ours, Theirs, Edited, Deleted }
+
+/// <summary>
+/// A conflicted file without markers, and the version the user agreed to keep. Version pins an Edited file to the exact content the question
+/// showed (its blob hash, or a link's target text), so an answer never covers a later edit; it is "" for Ours, Theirs and Deleted, whose
+/// side already names the content.
+/// </summary>
+public sealed record KeptFile(string Path, ConflictKind Kind, TreeSide Side, string Version = "");
+
+/// <summary>
+/// A conflicted file. Resolved is only ever true for a Text file the work tree holds with no markers left. Ours and Theirs are the stage 2
+/// and stage 3 blob hashes from <c>git ls-files -u</c>; "" when that stage is missing.
+/// </summary>
+public sealed record ConflictFile(string Path, bool Resolved, ConflictKind Kind = ConflictKind.Text, string Ours = "", string Theirs = "");
 
 /// <summary>
 /// Commit/ShortCommit: the ORIGINAL commit the stop is about. Step/Total: 1-based index in the plan rows (rebase) or picks.
@@ -51,10 +73,16 @@ public sealed record SequenceStop(SequenceKind Kind, PauseKind Pause, string Bra
 
 public enum ResumeAction { Continue, AmendAndContinue, Skip, Abort, Message }
 
-/// <summary>Message: the new message for a reword or combine pause. ExpectedCommit: the commit the pause showed, if the caller knows it.</summary>
-public sealed record ResumeRequest(ResumeAction Action, string? Message = null, string? ExpectedCommit = null);
+/// <summary>
+/// Message: the new message for a reword or combine pause. ExpectedCommit: the commit the pause showed, if the caller knows it.
+/// Keep: the marker-less files the user said yes to keeping (the question's answer), or null.
+/// </summary>
+public sealed record ResumeRequest(ResumeAction Action, string? Message = null, string? ExpectedCommit = null,
+    IReadOnlyList<KeptFile>? Keep = null);
 
-public sealed record ResumeCheck(string? Refusal, SequenceStop? Stop, string GitDir, IReadOnlyList<GitResult> Commands)
+/// <summary>Keep is set only when the one obstacle is marker-less files that the user has not yet confirmed: the question asks for them.</summary>
+public sealed record ResumeCheck(string? Refusal, SequenceStop? Stop, string GitDir, IReadOnlyList<GitResult> Commands,
+    IReadOnlyList<KeptFile>? Keep = null)
 {
     public bool CanRun => Refusal is null;
 }

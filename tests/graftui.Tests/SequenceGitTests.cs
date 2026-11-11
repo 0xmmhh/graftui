@@ -1,3 +1,4 @@
+using graftui.Git;
 using graftui.Model;
 using graftui.Operations;
 
@@ -14,8 +15,9 @@ public class SequenceGitTests
 
     [Theory]
     [InlineData("<<<<<<< HEAD")]
-    [InlineData("=======")]
+    [InlineData("<<<<<<<")]
     [InlineData(">>>>>>> feature")]
+    [InlineData(">>>>>>>\r")]
     public void HasMarkers_detects_each_marker_line(string markerLine)
     {
         using var repo = TempRepo.Create();
@@ -23,6 +25,19 @@ public class SequenceGitTests
         File.WriteAllText(path, "one\n" + markerLine + "\ntwo\n");
 
         Assert.True(SequenceGit.HasMarkers(path));
+    }
+
+    [Theory]
+    [InlineData("=======")]
+    [InlineData("<<<<<<<<")]
+    [InlineData(">>>>>>>x")]
+    public void HasMarkers_ignores_a_lone_separator_and_runs_that_are_not_exactly_seven(string line)
+    {
+        using var repo = TempRepo.Create();
+        var path = Path.Combine(repo.Dir, "app.txt");
+        File.WriteAllText(path, "one\n" + line + "\ntwo\n");
+
+        Assert.False(SequenceGit.HasMarkers(path));
     }
 
     [Fact]
@@ -34,6 +49,36 @@ public class SequenceGitTests
 
         Assert.False(SequenceGit.HasMarkers(Path.Combine(repo.Dir, "missing.txt")));
         Assert.False(SequenceGit.HasMarkers(clean));
+    }
+
+    [Fact]
+    public void HasMarkers_does_not_follow_a_link_to_a_file_with_markers()
+    {
+        using var repo = TempRepo.Create();
+        File.WriteAllText(Path.Combine(repo.Dir, "target.txt"), "<<<<<<< HEAD\n");
+        File.CreateSymbolicLink(Path.Combine(repo.Dir, "link.txt"), "target.txt");
+
+        Assert.False(SequenceGit.HasMarkers(Path.Combine(repo.Dir, "link.txt")));
+    }
+
+    [Fact]
+    public void ReadConflicts_takes_a_link_only_from_the_sides_so_a_link_in_the_base_alone_leaves_the_text_conflict_text()
+    {
+        using var repo = SequenceRepos.LinkReplacedByText();
+        Assert.Equal(1, repo.Git.Run("rebase", "main").ExitCode);
+        try
+        {
+            var files = SequenceGit.ReadConflicts(repo.Git, new List<GitResult>());
+
+            var ln = Assert.Single(files);
+            Assert.Equal("ln", ln.Path);
+            Assert.Equal(ConflictKind.Text, ln.Kind);
+            Assert.False(ln.Resolved);
+        }
+        finally
+        {
+            repo.Run("rebase", "--abort");
+        }
     }
 
     [Fact]

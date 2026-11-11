@@ -7,8 +7,9 @@ namespace graftui.Operations;
 /// <summary>
 /// Continues, skips, aborts or re-words a rebase that graftui paused.
 /// Check reads the pause and refuses whatever the pause does not allow: unresolved conflicts, unstaged changes at an edit stop, a skip
-/// that is not a conflict, a message for a commit that is not waiting for one. Run runs the check again, makes the git call the action
-/// needs, saves the state and settles the result with the classifier that Run uses. Run never throws.
+/// that is not a conflict, a conflicted file with no markers that the user has not said to keep, a message for a commit that is not
+/// waiting for one. Run runs the check again, makes the git call the action needs, saves the state and settles the result with the
+/// classifier that Run uses. Run never throws.
 /// A sequence that graftui did not start is never touched: it is refused as "a rebase is in progress".
 /// </summary>
 public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<ResumeRequest, ResumeCheck, SequenceOutcome>
@@ -74,16 +75,26 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         {
             case ResumeAction.Continue when stop.Pause == PauseKind.Conflict:
             {
+                // Check let these through only once no text file has markers, and every file without markers is one the user said to keep.
+                // A file the work tree holds is staged as it is; a file it does not hold is staged as a deletion (git rm).
                 var files = stop.Files.Select(f => f.Path).ToList();
-                if (files.Count > 0)
+                var present = files.Where(f => SequenceGit.InWorkTree(Path.Combine(git.RepoPath, f))).ToList();
+                var absent = files.Where(f => !present.Contains(f)).ToList();
+                if (present.Count > 0)
                 {
-                    // Check let these through only once no file has conflict markers, so the resolved text is what gets added.
-                    var add = git.RunLiteral(["add", "--", .. files]);
+                    var add = git.RunLiteral(["add", "--", .. present]);
                     log.Add(add);
                     if (!add.Success)
                         return Failed(state, probe.Op, BranchGit.FirstLine(add), log);
-                    state.Resolved.AddRange(files.Where(f => !state.Resolved.Contains(f)));
                 }
+                if (absent.Count > 0)
+                {
+                    var remove = git.RunLiteral(["rm", "-q", "--", .. absent]);
+                    log.Add(remove);
+                    if (!remove.Success)
+                        return Failed(state, probe.Op, BranchGit.FirstLine(remove), log);
+                }
+                state.Resolved.AddRange(files.Where(f => !state.Resolved.Contains(f)));
                 last = SequenceCall(log, probe.Op, "continue");
                 break;
             }
@@ -182,13 +193,17 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         var stop = state.Kind == SequenceKind.CherryPick
             ? SequenceGit.ReadPickStop(git, state, log)
             : SequenceGit.ReadRebaseStop(git, gitDirPath, state, log);
-        var refusal = Gate(request, stop, op, log);
-        return new Probe(new ResumeCheck(refusal, stop, gitDirPath, log), state, op);
+        var refusal = Gate(request, stop, op, log, out var ask);
+        return new Probe(new ResumeCheck(refusal, stop, gitDirPath, log, ask), state, op);
     }
 
-    /// <summary>What the pause allows. Null when the action may run.</summary>
-    private string? Gate(ResumeRequest request, SequenceStop? stop, SequenceKind op, List<GitResult> log)
+    /// <summary>
+    /// What the pause allows. Null when the action may run. Ask is set only when the refusal is the question about marker-less files: the
+    /// files whose version the user must say to keep.
+    /// </summary>
+    private string? Gate(ResumeRequest request, SequenceStop? stop, SequenceKind op, List<GitResult> log, out IReadOnlyList<KeptFile>? ask)
     {
+        ask = null;
         if (request.Action == ResumeAction.Abort)
             return null;
         if (stop is null)
@@ -200,8 +215,16 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         {
             case ResumeAction.Continue when stop.Pause == PauseKind.Conflict:
             {
-                var unresolved = stop.Files.Where(f => !f.Resolved).Select(f => f.Path).ToList();
-                return unresolved.Count > 0 ? SequenceRefusals.Unresolved(unresolved) : null;
+                // A submodule or a folder is refused first: no question is asked about either, and git add would stage a folder's contents.
+                var stuck = UnstageableRefusal(stop);
+                if (stuck is not null)
+                    return stuck;
+
+                // Marker files are refused next: the question about the others is asked only once every text file is free of markers.
+                var marked = MarkedPaths(stop);
+                if (marked.Count > 0)
+                    return SequenceRefusals.Unresolved(marked);
+                return KeepGate(request, stop, log, out ask);
             }
             case ResumeAction.Continue when stop.Pause == PauseKind.Edit:
             case ResumeAction.AmendAndContinue when stop.Pause == PauseKind.Edit:
@@ -224,6 +247,111 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
                 // Continue or amend at a reword or squash pause, or a message at any other pause: the screen never sends these.
                 return SequenceRefusals.PauseChanged;
         }
+    }
+
+    /// <summary>
+    /// The refusal for a conflicted path that cannot be staged as a file: a submodule, or a folder in the work tree. Null when every path
+    /// can be staged (or removed). No question is asked about these.
+    /// </summary>
+    private string? UnstageableRefusal(SequenceStop stop)
+    {
+        foreach (var f in stop.Files)
+        {
+            if (f.Kind == ConflictKind.Submodule)
+                return SequenceRefusals.Submodule(f.Path);
+            if (SequenceGit.IsFolder(Path.Combine(git.RepoPath, f.Path)))
+                return SequenceRefusals.Folder(f.Path);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The conflicted files that still hold conflict markers, whatever their kind: git can write markers into a file whose pair diffs as
+    /// binary (a <c>-diff</c> attribute), and a user can leave markers in a one-sided file. Those are refused before any question.
+    /// HasMarkers skips missing paths, folders and links.
+    /// </summary>
+    private List<string> MarkedPaths(SequenceStop stop)
+    {
+        var marked = new List<string>();
+        foreach (var f in stop.Files)
+        {
+            if (f.Kind != ConflictKind.Submodule && SequenceGit.HasMarkers(Path.Combine(git.RepoPath, f.Path)))
+                marked.Add(f.Path);
+        }
+        return marked;
+    }
+
+    /// <summary>
+    /// The files that need a version chosen, each with the side the work tree holds now: every file that is not text (binary, a link, a
+    /// one-sided add or a delete), and every text file the work tree holds as one side's bytes or not at all (a merge=binary, a custom driver,
+    /// or a file deleted by hand). A text file edited to something else is resolved and is not asked about. Nothing is asked when there are
+    /// none and no answer was given, or when the answer (request.Keep) names exactly these sides and versions. An answer that no longer
+    /// matches is never used: with files still to ask about, ask is set to them; with none left (the user resolved them by hand after the
+    /// question), the step is refused so the next Enter decides on what is there now.
+    /// </summary>
+    private string? KeepGate(ResumeRequest request, SequenceStop stop, List<GitResult> log, out IReadOnlyList<KeptFile>? ask)
+    {
+        ask = null;
+        var fresh = new List<KeptFile>();
+        foreach (var f in stop.Files)
+        {
+            var side = SequenceGit.WorkTreeSide(git, log, f, out var version);
+            if (f.Kind != ConflictKind.Text || side != TreeSide.Edited)
+                fresh.Add(new KeptFile(f.Path, f.Kind, side, PinnedVersion(f.Path, side, version)));
+        }
+        if (Confirmed(request.Keep, fresh))
+            return null;
+        if (fresh.Count == 0)
+        {
+            if (request.Keep is null || request.Keep.Count == 0)
+                return null;
+            return SequenceRefusals.KeepChanged;
+        }
+
+        ask = fresh;
+        return SequenceRefusals.NoMarkers(fresh.Select(k => k.Path).ToList());
+    }
+
+    /// <summary>
+    /// What an answer is pinned to besides the side: the entry type of a link ("link:"), an Edited entry's content, and a regular file's
+    /// executable bit ("+x"). git add records all three, so a change to any of them after the question is asked about again. "" for a
+    /// plain, non-executable Ours, Theirs or Deleted file.
+    /// </summary>
+    private string PinnedVersion(string path, TreeSide side, string version)
+    {
+        var full = Path.Combine(git.RepoPath, path);
+        var pinned = "";
+        if (SequenceGit.IsLink(full))
+            pinned = "link:";
+        if (side == TreeSide.Edited)
+            pinned += version;
+        if (IsExecutable(full))
+            pinned += "+x";
+        return pinned;
+    }
+
+    /// <summary>True for a regular file (not a link) whose owner may run it. Always false on Windows, where git does not use the bit.</summary>
+    private static bool IsExecutable(string fullPath)
+    {
+        if (OperatingSystem.IsWindows() || !SequenceGit.HoldsFile(fullPath))
+            return false;
+        return (File.GetUnixFileMode(fullPath) & UnixFileMode.UserExecute) != 0;
+    }
+
+    /// <summary>
+    /// True when the answer names exactly the sides that the work tree holds now. A side that moved since the question (the user replaced the
+    /// file) makes it false, so the question is asked again with the new side.
+    /// </summary>
+    private static bool Confirmed(IReadOnlyList<KeptFile>? keep, IReadOnlyList<KeptFile> fresh)
+    {
+        if (keep is null || keep.Count == 0 || keep.Count != fresh.Count)
+            return false;
+        foreach (var k in fresh)
+        {
+            if (!keep.Contains(k))
+                return false;
+        }
+        return true;
     }
 
     private static SequenceOutcome Refused(SequenceState? state, SequenceKind op, string refusal, List<GitResult> log) =>

@@ -22,27 +22,244 @@ internal static class SequenceGit
     }
 
     /// <summary>
-    /// True when the file still holds a conflict marker line (<c>&lt;&lt;&lt;&lt;&lt;&lt;&lt; </c>, <c>=======</c> or <c>&gt;&gt;&gt;&gt;&gt;&gt;&gt; </c>).
-    /// A missing file has none.
+    /// True when the file still holds a conflict marker line: a line that starts with exactly seven <c>&lt;</c> or seven <c>&gt;</c>, followed
+    /// by a space or by the end of the line. A lone <c>=======</c> is not a marker: it is also a line that real text can hold. A file that
+    /// is not held (missing, a folder or a link) has none, and a link is never followed.
     /// </summary>
     public static bool HasMarkers(string fullPath)
     {
-        if (!File.Exists(fullPath))
+        if (!HoldsFile(fullPath))
             return false;
 
         foreach (var line in File.ReadLines(fullPath))
         {
-            if (line.StartsWith("<<<<<<< ", StringComparison.Ordinal)
-                || line.StartsWith(">>>>>>> ", StringComparison.Ordinal)
-                || line.TrimEnd('\r') == "=======")
+            if (IsMarkerLine(line.TrimEnd('\r')))
                 return true;
         }
         return false;
     }
 
-    /// <summary>Each path with whether its file in the work tree is free of markers (resolved).</summary>
-    public static IReadOnlyList<ConflictFile> ConflictState(string repoPath, IEnumerable<string> paths) =>
-        paths.Select(p => new ConflictFile(p, !HasMarkers(Path.Combine(repoPath, p)))).ToList();
+    /// <summary>True when the line is a marker: seven '&lt;' or seven '&gt;', then a space or the end of the line.</summary>
+    private static bool IsMarkerLine(string line)
+    {
+        if (!line.StartsWith("<<<<<<<", StringComparison.Ordinal) && !line.StartsWith(">>>>>>>", StringComparison.Ordinal))
+            return false;
+        return line.Length == 7 || line[7] == ' ';
+    }
+
+    /// <summary>
+    /// The conflicted files, from git's index (<c>git ls-files -u -z</c>): every path with an unmerged entry, in git's order. A text file is
+    /// resolved once the work tree holds it with no marker line. The other kinds are never resolved by markers. Throws when git fails.
+    /// </summary>
+    internal static IReadOnlyList<ConflictFile> ReadConflicts(GitClient git, List<GitResult> log)
+    {
+        var r = BranchGit.Call(git, log, "ls-files", "-u", "-z");
+        if (!r.Success)
+            throw new InvalidOperationException(GitClient.Describe(r));
+
+        var entries = new List<UnmergedEntry>();
+        var byPath = new Dictionary<string, UnmergedEntry>(StringComparer.Ordinal);
+        foreach (var record in r.StdOut.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            // Each record is "<mode> <sha> <stage>", a tab, then the path.
+            var tab = record.IndexOf('\t');
+            if (tab < 0)
+                throw new InvalidOperationException("git ls-files printed a line without a tab: " + record);
+            var meta = record[..tab].Split(' ');
+            var name = record[(tab + 1)..];
+
+            if (!byPath.TryGetValue(name, out var entry))
+            {
+                entry = new UnmergedEntry(name);
+                byPath[name] = entry;
+                entries.Add(entry);
+            }
+            entry.AddStage(meta[0], meta[1], meta[2]);
+        }
+
+        var files = new List<ConflictFile>(entries.Count);
+        foreach (var entry in entries)
+        {
+            var full = Path.Combine(git.RepoPath, entry.Name);
+            var kind = KindOf(git, log, entry, full);
+            var resolved = kind == ConflictKind.Text && HoldsFile(full) && !HasMarkers(full);
+            files.Add(new ConflictFile(entry.Name, resolved, kind, entry.Ours, entry.Theirs));
+        }
+        return files;
+    }
+
+    /// <summary>
+    /// What kind of conflict a path is. A side that is missing says whether a side deleted the file (the base has it) or only one side
+    /// added it (the base has none). A gitlink on a side is a submodule. A link on a side, or a link in the work tree, is binary. Otherwise
+    /// git's numstat decides: it prints "-" for a binary pair.
+    /// </summary>
+    private static ConflictKind KindOf(GitClient git, List<GitResult> log, UnmergedEntry entry, string fullPath)
+    {
+        if (entry.Submodule)
+            return ConflictKind.Submodule;
+        if (entry.Ours.Length == 0 && entry.Theirs.Length == 0)
+            return ConflictKind.DeletedBoth;
+        if (entry.Ours.Length == 0)
+            return entry.Base ? ConflictKind.DeletedOurs : ConflictKind.AddedTheirs;
+        if (entry.Theirs.Length == 0)
+            return entry.Base ? ConflictKind.DeletedTheirs : ConflictKind.AddedOurs;
+        if (entry.Link || IsLink(fullPath))
+            return ConflictKind.Binary;
+        return IsBinaryPair(git, log, entry.Name) ? ConflictKind.Binary : ConflictKind.Text;
+    }
+
+    /// <summary>
+    /// True when git's diff of the two sides of a path is binary. The sides are named as <c>:2:path</c> and <c>:3:path</c>, so the path's
+    /// .gitattributes apply. Throws when git fails.
+    /// </summary>
+    private static bool IsBinaryPair(GitClient git, List<GitResult> log, string path)
+    {
+        var r = BranchGit.Call(git, log, "diff", "--numstat", "-z", "--no-textconv", ":2:" + path, ":3:" + path);
+        if (!r.Success)
+            throw new InvalidOperationException(GitClient.Describe(r));
+        return r.StdOut.StartsWith("-\t-\t", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The same files with each text file's resolved state read again from the work tree. The other kinds keep theirs. No git runs here,
+    /// so the pause screen's poll can use it.
+    /// </summary>
+    public static IReadOnlyList<ConflictFile> Recheck(string repoPath, IReadOnlyList<ConflictFile> files)
+    {
+        var result = new List<ConflictFile>(files.Count);
+        foreach (var f in files)
+        {
+            if (f.Kind == ConflictKind.Text)
+            {
+                var full = Path.Combine(repoPath, f.Path);
+                result.Add(f with { Resolved = HoldsFile(full) && !HasMarkers(full) });
+            }
+            else
+            {
+                result.Add(f);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Which version the work tree holds for a conflicted file: the stage 2 blob, the stage 3 blob, an edited file, or no file. A regular file
+    /// is hashed the way git would stage it (hash-object, with the clean filters). A link is compared by its target text, since git stores a
+    /// link as a blob of that text; a dangling link is compared the same way, and no file is followed. Throws when git fails.
+    /// </summary>
+    internal static TreeSide WorkTreeSide(GitClient git, List<GitResult> log, ConflictFile f)
+    {
+        return WorkTreeSide(git, log, f, out _);
+    }
+
+    /// <summary>
+    /// The same, and the version the work tree holds: the blob hash of a regular file, the target text of a link, "" when there is no file.
+    /// The version tells two edited copies apart. Throws when git fails.
+    /// </summary>
+    internal static TreeSide WorkTreeSide(GitClient git, List<GitResult> log, ConflictFile f, out string version)
+    {
+        version = "";
+        var full = Path.Combine(git.RepoPath, f.Path);
+        if (!InWorkTree(full))
+            return TreeSide.Deleted;
+
+        if (IsLink(full))
+        {
+            version = new FileInfo(full).LinkTarget ?? "";
+            return LinkSide(git, log, f, version);
+        }
+
+        var r = BranchGit.Call(git, log, "hash-object", "--", f.Path);
+        if (!r.Success)
+            throw new InvalidOperationException(GitClient.Describe(r));
+
+        version = r.StdOut.Trim();
+        if (version == f.Ours)
+            return TreeSide.Ours;
+        if (version == f.Theirs)
+            return TreeSide.Theirs;
+        return TreeSide.Edited;
+    }
+
+    /// <summary>The side a link in the work tree holds: its target text is compared with each side's blob.</summary>
+    private static TreeSide LinkSide(GitClient git, List<GitResult> log, ConflictFile f, string target)
+    {
+        if (BlobText(git, log, f.Ours) == target)
+            return TreeSide.Ours;
+        if (BlobText(git, log, f.Theirs) == target)
+            return TreeSide.Theirs;
+        return TreeSide.Edited;
+    }
+
+    /// <summary>
+    /// The text of a blob, read with cat-file. "" when the hash is missing (the side is absent), so it never matches a target that is
+    /// not empty. Throws when git fails.
+    /// </summary>
+    private static string BlobText(GitClient git, List<GitResult> log, string blob)
+    {
+        if (blob.Length == 0)
+            return "";
+        var r = BranchGit.Call(git, log, "cat-file", "blob", blob);
+        if (!r.Success)
+            throw new InvalidOperationException(GitClient.Describe(r));
+        return r.StdOut;
+    }
+
+    /// <summary>True when the work tree holds something at the path: a file, a folder or a link, even a dangling one.</summary>
+    internal static bool InWorkTree(string fullPath)
+    {
+        if (File.Exists(fullPath) || Directory.Exists(fullPath))
+            return true;
+        return IsLink(fullPath);
+    }
+
+    /// <summary>True when the work tree holds a regular file at the path: not missing, not a folder, and not a link (a link is never followed).</summary>
+    internal static bool HoldsFile(string fullPath) => File.Exists(fullPath) && !IsLink(fullPath);
+
+    /// <summary>True when the work tree holds a plain folder at the path (a link to a folder is a link, not a folder).</summary>
+    internal static bool IsFolder(string fullPath) => Directory.Exists(fullPath) && !IsLink(fullPath);
+
+    /// <summary>True when the path is a symbolic link, even a dangling one. The link itself is read, never its target.</summary>
+    internal static bool IsLink(string fullPath) => new FileInfo(fullPath).LinkTarget != null;
+
+    /// <summary>
+    /// One conflicted path while its unmerged entries are read: the stage 2 and stage 3 blobs, whether the base (stage 1) has the file, and
+    /// whether a side is a link or a gitlink. Only stages 2 and 3 set the link and gitlink flags: the base's mode says nothing about a side.
+    /// </summary>
+    private sealed class UnmergedEntry(string name)
+    {
+        public string Name { get; } = name;
+
+        public string Ours { get; private set; } = "";
+
+        public string Theirs { get; private set; } = "";
+
+        public bool Base { get; private set; }
+
+        public bool Link { get; private set; }
+
+        public bool Submodule { get; private set; }
+
+        /// <summary>Notes one stage's entry: its mode, blob and stage number ("1" base, "2" ours, "3" theirs).</summary>
+        public void AddStage(string mode, string sha, string stage)
+        {
+            if (stage == "1")
+            {
+                Base = true;
+            }
+            else if (stage == "2" || stage == "3")
+            {
+                if (stage == "2")
+                    Ours = sha;
+                else
+                    Theirs = sha;
+                if (mode == "120000")
+                    Link = true;
+                if (mode == "160000")
+                    Submodule = true;
+            }
+        }
+    }
 
     /// <summary>
     /// The paths of every change the status lists (staged, unstaged and untracked, a rename's original too), each once, in git's order.
@@ -118,7 +335,7 @@ internal static class SequenceGit
     /// </summary>
     internal static SequenceStop? ReadRebaseStop(GitClient git, string gitDir, SequenceState s, List<GitResult> log)
     {
-        var files = UnmergedFiles(git, log);
+        var files = ReadConflicts(git, log);
         var folder = Path.Combine(gitDir, "rebase-merge");
         var donePath = Path.Combine(folder, "done");
         if (!File.Exists(donePath))
@@ -133,7 +350,7 @@ internal static class SequenceGit
         var stopCommit = stopped.Length > 0 ? stopped : hash ?? "";
 
         if (files.Count > 0)
-            return RebaseStop(s, PauseKind.Conflict, FullOrGiven(s, stopCommit), ConflictState(git.RepoPath, files), "", []);
+            return RebaseStop(s, PauseKind.Conflict, FullOrGiven(s, stopCommit), files, "", []);
 
         if (cmd is "edit" or "e")
         {
@@ -172,9 +389,9 @@ internal static class SequenceGit
         if (step < 0)
             return null;
 
-        var files = UnmergedFiles(git, log);
+        var files = ReadConflicts(git, log);
         return new SequenceStop(SequenceKind.CherryPick, PauseKind.Conflict, s.Branch, s.Onto, commit, BranchGit.Short(commit),
-            Subject(git, log, commit), ConflictState(git.RepoPath, files), step + 1, s.Picks.Count, "", [], Ours: true);
+            Subject(git, log, commit), files, step + 1, s.Picks.Count, "", [], Ours: true);
     }
 
     /// <summary>

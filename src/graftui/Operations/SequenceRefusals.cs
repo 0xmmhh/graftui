@@ -58,6 +58,19 @@ public static class SequenceRefusals
 
     public static string Unresolved(IReadOnlyList<string> paths) => $"{Named(paths)} still has conflict markers: resolve them before continuing";
 
+    /// <summary>A conflicted file with no markers (binary, a link, a one-sided add or a delete): the user says which version to keep.</summary>
+    public static string NoMarkers(IReadOnlyList<string> paths) =>
+        $"{Named(paths)} has no conflict markers: say which version to keep before continuing";
+
+    /// <summary>The files a keep answer was about changed since the question, and none needs a question now: nothing was done.</summary>
+    public const string KeepChanged = "the conflicted files changed since you answered; nothing was done, press Enter again";
+
+    /// <summary>A conflicted submodule: graftui does not stage it, so the user stages it in a shell and then continues.</summary>
+    public static string Submodule(string path) => $"{path} is a submodule conflict: stage it in a shell, then press Enter";
+
+    /// <summary>A conflicted path that is a folder in the work tree: git add would stage what is inside it, so the user resolves it in a shell.</summary>
+    public static string Folder(string path) => $"{path} is a folder in the work tree: resolve it in a shell (git add or git rm), then press Enter";
+
     public static string StageFirst(string file) => $"{file} has unstaged changes: stage it first, then Amend & continue";
 
     public const string SkipOnlyConflict = "only a conflicted commit can be skipped";

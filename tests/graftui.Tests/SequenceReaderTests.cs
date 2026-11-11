@@ -58,15 +58,33 @@ public class SequenceReaderTests
     }
 
     [Fact]
-    public void ConflictState_reads_markers_from_the_work_tree()
+    public void Recheck_reads_markers_from_the_work_tree_and_leaves_the_other_kinds_alone()
     {
         using var repo = TempRepo.Create();
         File.WriteAllText(Path.Combine(repo.Dir, "app.txt"), "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\n");
         File.WriteAllText(Path.Combine(repo.Dir, "clean.txt"), "fine\n");
+        File.WriteAllBytes(Path.Combine(repo.Dir, "logo.bin"), [0, 1, 2]);
 
-        var files = SequenceReader.ConflictState(repo.Dir, ["app.txt", "clean.txt"]);
+        var files = SequenceReader.Recheck(repo.Dir,
+            [new ConflictFile("app.txt", false), new ConflictFile("clean.txt", false), new ConflictFile("logo.bin", false, ConflictKind.Binary)]);
 
-        Assert.Equal(new[] { new ConflictFile("app.txt", false), new ConflictFile("clean.txt", true) }, files);
+        Assert.Equal(new[] { ("app.txt", false, ConflictKind.Text), ("clean.txt", true, ConflictKind.Text), ("logo.bin", false, ConflictKind.Binary) },
+            files.Select(f => (f.Path, f.Resolved, f.Kind)));
+    }
+
+    [Fact]
+    public void A_binary_conflict_is_read_from_the_index_as_binary_and_unresolved()
+    {
+        using var repo = SequenceRepos.BinaryConflict();
+        var op = new RebaseOperation(repo.Git);
+        var request = new RebaseRequest("main");
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(request, op.Check(request)).Kind);
+
+        var file = new SequenceReader(repo.Git).ReadPaused()!.Files.Single();
+
+        Assert.Equal(("logo.bin", false, ConflictKind.Binary), (file.Path, file.Resolved, file.Kind));
+        Assert.NotEqual("", file.Ours);
+        Assert.NotEqual("", file.Theirs);
     }
 
     [Fact]

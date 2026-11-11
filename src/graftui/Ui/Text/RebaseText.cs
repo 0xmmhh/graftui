@@ -162,8 +162,49 @@ public static class RebaseText
 
     public static string MessagePause(SequenceStop stop) => $"Paused at {stop.ShortCommit} for its message · Continue opens it again";
 
-    /// <summary>One conflicted file: "✖ app.txt  both modified" until it is resolved, then "✔ app.txt  resolved".</summary>
-    public static string ConflictRow(ConflictFile f) => f.Resolved ? $"✔ {f.Path}  resolved" : $"✖ {f.Path}  both modified";
+    /// <summary>
+    /// The name of the "ours" side of a conflict: the onto branch of a rebase, the branch a pick lands on. Stage 2 is this side.
+    /// </summary>
+    public static string OursName(SequenceStop s)
+    {
+        if (s.Kind == SequenceKind.Rebase)
+            return s.Onto;
+        return s.Branch;
+    }
+
+    /// <summary>
+    /// The name of the "theirs" side of a conflict: the branch a rebase replays, the commit a pick applies. Stage 3 is this side.
+    /// </summary>
+    public static string TheirsName(SequenceStop s)
+    {
+        if (s.Kind == SequenceKind.Rebase)
+            return s.Branch;
+        return s.ShortCommit;
+    }
+
+    /// <summary>
+    /// One conflicted file's row. A text file reads "✖ app.txt  both modified" until its markers are gone, then "✔ app.txt  resolved". A binary
+    /// file, a submodule or a side's add or delete is never resolved by markers: it reads "not resolved" until the user keeps a version (a
+    /// submodule is staged in a shell instead).
+    /// </summary>
+    public static string ConflictRow(ConflictFile f, SequenceStop s)
+    {
+        if (f.Kind == ConflictKind.Binary)
+            return $"✖ {f.Path}  binary · not resolved";
+        if (f.Kind == ConflictKind.Submodule)
+            return $"✖ {f.Path}  submodule · not resolved";
+        if (f.Kind == ConflictKind.AddedOurs)
+            return $"✖ {f.Path}  added on {OursName(s)} only · not resolved";
+        if (f.Kind == ConflictKind.AddedTheirs)
+            return $"✖ {f.Path}  added on {TheirsName(s)} only · not resolved";
+        if (f.Kind == ConflictKind.DeletedOurs)
+            return $"✖ {f.Path}  deleted on {OursName(s)} · not resolved";
+        if (f.Kind == ConflictKind.DeletedTheirs)
+            return $"✖ {f.Path}  deleted on {TheirsName(s)} · not resolved";
+        if (f.Kind == ConflictKind.DeletedBoth)
+            return $"✖ {f.Path}  deleted on both sides · not resolved";
+        return f.Resolved ? $"✔ {f.Path}  resolved" : $"✖ {f.Path}  both modified";
+    }
 
     /// <summary>"(rebasing 2/3)": the step a paused rebase is on.</summary>
     public static string Rebasing(int step, int total) => $"(rebasing {step}/{total})";
@@ -191,10 +232,41 @@ public static class RebaseText
     public static string PauseCaption(SequenceStop s)
     {
         if (s.Pause == PauseKind.Conflict)
-            return $"✕ CONFLICT in {Files(s.Files.Select(f => f.Path).ToList())}: resolve it in your editor, then Enter continues, or press X to abort";
+        {
+            var listed = Files(s.Files.Select(f => f.Path).ToList());
+            if (HasSubmodule(s.Files))
+                return $"✕ CONFLICT in {listed}: stage a submodule in a shell, then Enter continues, or press X to abort";
+            if (AllWithoutMarkers(s.Files))
+                return $"✕ CONFLICT in {listed}: no conflict markers, so Enter asks before keeping the working tree's version, or press X to abort";
+            return $"✕ CONFLICT in {listed}: resolve it in your editor, then Enter continues, or press X to abort";
+        }
         if (s.Pause == PauseKind.Edit)
             return EditStop(s);
         return MessagePause(s);
+    }
+
+    /// <summary>True when there is a conflicted file and none of them is text (each is binary, a link or an add or delete on one side).</summary>
+    private static bool AllWithoutMarkers(IReadOnlyList<ConflictFile> files)
+    {
+        if (files.Count == 0)
+            return false;
+        foreach (var f in files)
+        {
+            if (f.Kind == ConflictKind.Text)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>True when one of the conflicted files is a submodule.</summary>
+    private static bool HasSubmodule(IReadOnlyList<ConflictFile> files)
+    {
+        foreach (var f in files)
+        {
+            if (f.Kind == ConflictKind.Submodule)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>The status bar's last words for a pause: what it waits for.</summary>
@@ -206,6 +278,45 @@ public static class RebaseText
             return "editing";
         return "waiting for a message";
     }
+
+    /// <summary>The title of the question that asks which version to keep of a file that has no conflict markers.</summary>
+    public const string KeepTitle = "Keep without markers?";
+
+    /// <summary>
+    /// What the working tree holds, for a question about a file without markers: "holds main's version", "holds your edited version" or
+    /// "has it deleted".
+    /// </summary>
+    public static string TreeText(SequenceStop s, KeptFile k)
+    {
+        if (k.Side == TreeSide.Ours)
+            return $"holds {OursName(s)}'s version";
+        if (k.Side == TreeSide.Theirs)
+            return $"holds {TheirsName(s)}'s version";
+        if (k.Side == TreeSide.Edited)
+            return "holds your edited version";
+        return "has it deleted";
+    }
+
+    /// <summary>
+    /// The question for files without markers: which version the working tree holds, and whether to keep it and continue. One file reads
+    /// "logo.bin has no conflict markers. The working tree holds main's version. Keep it and continue?"; a deleted one is kept deleted.
+    /// </summary>
+    public static string KeepText(SequenceStop s, IReadOnlyList<KeptFile> files)
+    {
+        if (files.Count == 1)
+        {
+            var k = files[0];
+            if (k.Side == TreeSide.Deleted)
+                return $"{k.Path} has no conflict markers. The working tree has it deleted. Keep it deleted and continue?";
+            return $"{k.Path} has no conflict markers. The working tree {TreeText(s, k)}. Keep it and continue?";
+        }
+        var parts = files.Select(k => $"{k.Path} {TreeText(s, k)}");
+        return $"{MergeScenes.Plural(files.Count, "file")} have no conflict markers: {string.Join("; ", parts)}. Keep them and continue?";
+    }
+
+    /// <summary>The question in fewer words, for an art too short for the full one.</summary>
+    public static string KeepShort(IReadOnlyList<KeptFile> files) =>
+        $"Keep {Files(files.Select(k => k.Path).ToList())} as the working tree holds it and continue?";
 
     public static string RewordTitle(string shortHash) => $"Reword {shortHash}";
 

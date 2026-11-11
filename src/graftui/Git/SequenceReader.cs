@@ -78,9 +78,11 @@ public sealed class SequenceReader(GitClient git)
         }
     }
 
-    /// <summary>Each path with whether its file in <paramref name="repoPath"/> is free of conflict markers.</summary>
-    public static IReadOnlyList<ConflictFile> ConflictState(string repoPath, IReadOnlyList<string> paths) =>
-        SequenceGit.ConflictState(repoPath, paths);
+    /// <summary>
+    /// The conflicted files with each text file's resolved state read again from <paramref name="repoPath"/> (no git runs).
+    /// </summary>
+    public static IReadOnlyList<ConflictFile> Recheck(string repoPath, IReadOnlyList<ConflictFile> files) =>
+        SequenceGit.Recheck(repoPath, files);
 
     /// <summary>The stop of a git sequence that graftui did not start (or whose state cannot be used).</summary>
     private static SequenceStop NotOurs(SequenceKind kind) =>
