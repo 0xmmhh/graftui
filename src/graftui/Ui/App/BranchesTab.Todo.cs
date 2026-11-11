@@ -42,6 +42,7 @@ internal sealed partial class BranchesTab
     /// </summary>
     private void ShowTodo()
     {
+        _shown = null;
         var todo = _todo!;
         var check = _todoCheck!;
         var L = _todoLayout!;

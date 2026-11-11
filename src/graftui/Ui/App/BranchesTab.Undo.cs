@@ -109,6 +109,7 @@ internal sealed partial class BranchesTab
     /// </summary>
     private void ShowUndoResult(UndoView v, string? selected)
     {
+        _shown = null;
         _app.LogCommands(v.Commands);
         foreach (var line in v.LogLines)
             _app.LogMessage(line, v.Style);

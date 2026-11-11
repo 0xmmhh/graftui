@@ -166,6 +166,7 @@ internal sealed partial class BranchesTab
     /// </summary>
     private void ShowBranchRefused(IReadOnlyList<GitResult> commands, string reason, GraphLayout? layout, Func<int, IReadOnlyList<Seg>> direction)
     {
+        _shown = null;
         _app.LogCommands(commands);
         foreach (var line in RefusalText.LogLines(reason))
             _app.LogMessage(line, WarnB);

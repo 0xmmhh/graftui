@@ -37,13 +37,22 @@ internal sealed partial class BranchesTab
 
     internal int Selected => _selected;
 
+    /// <summary>The number of the newest preview request. A load whose number is older is dropped. The tests read it.</summary>
+    internal int PreviewSeq => _previewSeq;
+
     /// <summary>The keys the tab is taking. Browse unless a question or the name box is open.</summary>
     internal BranchesMode Mode { get; private set; } = BranchesMode.Browse;
 
     /// <summary>Name of the selected branch, or null when there are no branches.</summary>
     internal string? SelectedName() => _app.Snapshot.Branches.Count > 0 ? _app.Snapshot.Branches[_selected].Name : null;
 
-    internal void ClearCache() => _cache.Clear();
+    internal void ClearCache()
+    {
+        _cache.Clear();
+        _forecasts.Clear();
+        _forecastNext = null;
+        _forecastGeneration++;
+    }
 
     /// <summary>The cached layout of a branch in the snapshot, or null. Reads the cache, so it is used on the UI thread only.</summary>
     private GraphLayout? CachedLayout(RepoSnapshot snap, Branch b) =>
@@ -209,14 +218,7 @@ internal sealed partial class BranchesTab
             try
             {
                 var layout = _app.Reader.LoadLayout(snap, b, ct);
-                _app.Ui(() =>
-                {
-                    if (seq != _previewSeq)
-                        return;
-                    _cache[key] = layout;
-                    if (MayDrawPreview)
-                        ShowPreview(layout);
-                });
+                _app.Ui(() => PreviewLoaded(seq, key, layout));
             }
             catch (OperationCanceledException)
             {
@@ -234,10 +236,27 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>
-    /// A preview may replace the art only when nothing is running, no change's result is shown, no question is open, and the help popup
-    /// is not drawn over the art. A preview that finishes meanwhile is cached; the popup's close asks for the preview again.
+    /// A preview load finished on a worker and is handed back on the UI thread. A load that is no longer the newest request read a
+    /// selection or a snapshot that has been replaced, so its layout is dropped: it is neither cached nor drawn, and so it cannot start a
+    /// forecast of tips the list no longer shows. UI thread only.
     /// </summary>
-    private bool MayDrawPreview => !_app.Busy && !_app.IsPaused && _app.Result is null && Mode == BranchesMode.Browse && !_app.HelpOpen;
+    internal void PreviewLoaded(int seq, (string Current, string Head, string Name, string Tip) key, GraphLayout layout)
+    {
+        if (seq != _previewSeq)
+            return;
+        _cache[key] = layout;
+        if (MayDrawPreview)
+            ShowPreview(layout);
+    }
+
+    /// <summary>
+    /// A preview may replace the art only when nothing is running, no change's result is shown, no question is open, the Branches tab is
+    /// the one on screen, and the help popup is not drawn over the art. A preview that finishes meanwhile is cached; the popup's close,
+    /// and the return to the Branches tab, ask for the preview again.
+    /// </summary>
+    private bool MayDrawPreview =>
+        !_app.Busy && !_app.IsPaused && _app.Result is null && Mode == BranchesMode.Browse
+        && _app.ActiveTab == AppController.TabKind.Branches && !_app.HelpOpen;
 
     internal void ShowInitialState()
     {
@@ -251,6 +270,7 @@ internal sealed partial class BranchesTab
 
     private void ShowLoading(Branch b)
     {
+        _shown = null;
         _app.Art.Title = "Preview";
         var selInk = _app.InkOf(b.Name);
         _app.Art.Direction = _ => DirectionLine.Loading(b.Name, selInk);
@@ -263,11 +283,27 @@ internal sealed partial class BranchesTab
     private void ShowPreview(GraphLayout layout)
     {
         // A preview that loaded is proof that git answers again, so an earlier preview error no longer applies.
+        // Only a loaded preview clears it: a forecast that finishes later draws through DrawPreview and leaves it alone.
         _app.Status.ErrorText = null;
         _app.Status.SetNeedsDraw();
+        DrawPreview(layout);
+    }
+
+    /// <summary>
+    /// Draws the preview art for a layout: with the forecast when it is known, else the plain one, and then the forecast is started.
+    /// It does not touch the status bar.
+    /// </summary>
+    internal void DrawPreview(GraphLayout layout)
+    {
+        _shown = layout;
         _app.Art.Title = "Preview";
         _app.Art.Direction = cols => DirectionLine.Browse(layout, cols);
-        _app.Art.Panel = CommitLists.Idle(layout);
+        // The forecast is read after the preview loads (see RequestForecast): until then the panel and the caption are the plain ones.
+        var forecast = CachedForecast(layout);
+        var clean = _app.Snapshot.Clean;
+        _app.Art.Panel = forecast is null
+            ? CommitLists.Idle(layout)
+            : ForecastText.WithFiles(CommitLists.Idle(layout), forecast, layout);
         _app.Art.FallbackCaption = null;
         // A straight graph's preview is drawn in the single-line art (see IsStraight).
         _app.Art.ShowScene(geo =>
@@ -290,9 +326,14 @@ internal sealed partial class BranchesTab
             }
             else if (layout.Kind == GraphKind.Unrelated)
                 caption = new Caption($"{layout.Selected} and {layout.Current} have no common history", Muted);
+            else if (forecast is not null)
+                caption = ForecastText.Caption(forecast, layout, clean);
             return new SceneFrame(grid, caption);
         }, IsStraight(layout));
         _app.Art.SetNeedsDraw();
+
+        if (forecast is null)
+            RequestForecast(layout);
     }
 
     /// <summary>
@@ -302,7 +343,7 @@ internal sealed partial class BranchesTab
     internal static bool IsStraight(GraphLayout L) =>
         !L.Detached && (L.Kind == GraphKind.FastForward || L.Kind == GraphKind.UpToDate || L.Kind == GraphKind.Same);
 
-    private static (string Current, string Head, string Name, string Tip) CacheKey(RepoSnapshot snap, Branch b) =>
+    internal static (string Current, string Head, string Name, string Tip) CacheKey(RepoSnapshot snap, Branch b) =>
         (snap.CurrentBranch, snap.HeadHash ?? "", b.Name, b.Hash);
 
     private static int FirstNonCurrent(RepoSnapshot s)

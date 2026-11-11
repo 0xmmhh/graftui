@@ -10,6 +10,42 @@ namespace graftui.Tests;
 /// </summary>
 internal sealed class TempRepo : IDisposable
 {
+    // The tests must not read the developer's global or system git config, so each test sees only the config it sets. A git-lfs
+    // install adds filter.lfs.* there, which the tests would otherwise inherit. GIT_CONFIG_GLOBAL points at an empty file and
+    // GIT_CONFIG_NOSYSTEM drops /etc/gitconfig for every git process the tests start.
+    static TempRepo()
+    {
+        RemoveInheritedGitConfig();
+
+        // A folder this process made, with a name nobody else can guess: a fixed path in the shared temp folder could hold a link
+        // planted by another user. CreateNew below fails, rather than follow or overwrite, if anything already sits at the file's path.
+        var dir = Directory.CreateTempSubdirectory("graftui-tests-config-").FullName;
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var emptyConfig = Path.Combine(dir, "empty.gitconfig");
+        using (new FileStream(emptyConfig, FileMode.CreateNew, FileAccess.Write))
+        {
+            // Created empty: nothing is written.
+        }
+        Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", emptyConfig);
+        Environment.SetEnvironmentVariable("GIT_CONFIG_NOSYSTEM", "1");
+    }
+
+    // Git reads GIT_CONFIG_COUNT, GIT_CONFIG_KEY_n, GIT_CONFIG_VALUE_n and GIT_CONFIG_PARAMETERS as config that overrides the local
+    // config of a repo. An inherited one would change what the tests read, so every GIT_CONFIG_* variable is dropped from this process.
+    private static void RemoveInheritedGitConfig()
+    {
+        var names = new List<string>();
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        {
+            var name = (string)entry.Key;
+            if (name.StartsWith("GIT_CONFIG_", StringComparison.Ordinal))
+                names.Add(name);
+        }
+        foreach (var name in names)
+            Environment.SetEnvironmentVariable(name, null);
+    }
+
     private TempRepo(string dir)
     {
         Dir = dir;

@@ -111,6 +111,7 @@ internal sealed partial class BranchesTab
     /// </summary>
     internal void OpenNameForm(bool rename, string old, string tip, GraphLayout layout)
     {
+        _shown = null;
         _nameRename = rename;
         _nameOld = old;
         _nameTip = tip;

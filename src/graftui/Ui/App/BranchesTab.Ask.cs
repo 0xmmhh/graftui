@@ -39,6 +39,7 @@ internal sealed partial class BranchesTab
     /// <summary>Shows a question over the preview. The art must fit, or nothing is asked.</summary>
     private void BeginQuestion(BranchQuestion q)
     {
+        _shown = null;
         if (!_app.ArtFits())
         {
             const string tooSmall = "Refused: widen the window to answer this question";
@@ -76,6 +77,7 @@ internal sealed partial class BranchesTab
     /// </summary>
     private void ShowTooSmall(BranchQuestion q, Caption caption)
     {
+        _shown = null;
         if (q.Base is null)
         {
             ShowFlash(q.Layout, caption);
@@ -142,6 +144,7 @@ internal sealed partial class BranchesTab
     /// <summary>The preview of a layout with one caption under it (a cancelled question's note). A null layout leaves an empty art.</summary>
     private void ShowFlash(GraphLayout? layout, Caption caption)
     {
+        _shown = null;
         var art = _app.Art;
         art.Title = "Preview";
         art.Direction = cols => layout is null ? Array.Empty<Seg>() : DirectionLine.Browse(layout, cols);

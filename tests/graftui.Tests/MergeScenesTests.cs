@@ -397,5 +397,27 @@ public class MergeScenesTests
         Assert.Contains(MergeScenes.SharedLabel, RowText(grid, narrow.A + 1), StringComparison.Ordinal);
         Assert.Equal('│', grid[narrow.XB, narrow.A + 1].Ch);
     }
-}
 
+    [Fact]
+    public void A_long_ascii_file_name_in_a_conflict_caption_keeps_its_last_23_characters()
+    {
+        var name = "a-very-long-directory-name/and-a-file-name-that-goes-on.txt";
+
+        var text = MergeScenes.ConflictFiles([name]);
+
+        Assert.Equal("…" + name[^23..], text);
+    }
+
+    [Fact]
+    public void A_wide_file_name_in_a_conflict_caption_is_shortened_by_columns_without_throwing()
+    {
+        // 13 wide characters are 26 columns but only 13 UTF-16 units: a cut by units would run past the start of the name.
+        var name = new string('日', 13) + ".txt";
+
+        var text = MergeScenes.ConflictFiles([name]);
+
+        Assert.StartsWith("…", text);
+        Assert.EndsWith(".txt", text);
+        Assert.True(TextFit.Columns(text) <= 24);
+    }
+}

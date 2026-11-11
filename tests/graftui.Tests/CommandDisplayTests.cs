@@ -66,6 +66,8 @@ public class CommandDisplayTests
     [InlineData("status --porcelain=v1 -z")]
     [InlineData("rev-list --parents -n 1 HEAD")]
     [InlineData("diff --name-only --diff-filter=U")]
+    [InlineData("merge-tree --write-tree -z 0123456789abcdef0123456789abcdef01234567 89abcdef0123456789abcdef0123456789abcdef")]
+    [InlineData("version")]
     public void Merge_reads_are_hidden(string line)
     {
         AssertHidden(L(line));

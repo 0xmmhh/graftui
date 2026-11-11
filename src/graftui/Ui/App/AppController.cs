@@ -38,6 +38,7 @@ public sealed class AppController
         RootGit = rootGit;
         RootReader = new RepoReader(rootGit);
         MergeOp = new MergeOperation(git);
+        Forecaster = new MergeForecaster(rootGit);
         StageOp = new StageOperation(rootGit);
         CommitOp = new CommitOperation(rootGit);
         DiscardOp = new DiscardOperation(rootGit);
@@ -115,6 +116,9 @@ public sealed class AppController
     internal GitClient Git { get; }
     internal RepoReader Reader { get; }
     internal MergeOperation MergeOp { get; }
+
+    /// <summary>The dry-run forecast of `m` for the selected branch. Read-only; its worker is single-flight (see BranchesTab.Forecast).</summary>
+    internal MergeForecaster Forecaster { get; }
     internal StageOperation StageOp { get; }
     internal CommitOperation CommitOp { get; }
     internal DiscardOperation DiscardOp { get; }
@@ -619,6 +623,8 @@ public sealed class AppController
 
         if (onChanges)
         {
+            // The art is the Changes tab's from now on: a forecast that finishes later must not draw the preview over it.
+            BranchesTab.ForgetShown();
             ChangesTab.Activate();
             return;
         }
@@ -655,6 +661,10 @@ public sealed class AppController
         BranchList.Selected = BranchesTab.Selected;
         BranchList.PausedBranch = SequenceStatus.PausedBranch(s);
         BranchList.SetNeedsDraw();
+
+        // The clear above dropped the shown branch's forecast, and a preview still loading reads the old snapshot: the Branches tab
+        // drops that load and reads the preview again, unless the art shows something else.
+        BranchesTab.SnapshotChanged();
     }
 
     /// <summary>True while a rebase or cherry-pick that graftui started is paused. Only that pause is shown as one.</summary>
