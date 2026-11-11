@@ -233,8 +233,11 @@ internal sealed partial class BranchesTab
         }, CancellationToken.None);
     }
 
-    /// <summary>A preview may replace the art only when nothing is running, no change's result is shown, and no question is open.</summary>
-    private bool MayDrawPreview => !_app.Busy && !_app.IsPaused && _app.Result is null && Mode == BranchesMode.Browse;
+    /// <summary>
+    /// A preview may replace the art only when nothing is running, no change's result is shown, no question is open, and the help popup
+    /// is not drawn over the art. A preview that finishes meanwhile is cached; the popup's close asks for the preview again.
+    /// </summary>
+    private bool MayDrawPreview => !_app.Busy && !_app.IsPaused && _app.Result is null && Mode == BranchesMode.Browse && !_app.HelpOpen;
 
     internal void ShowInitialState()
     {

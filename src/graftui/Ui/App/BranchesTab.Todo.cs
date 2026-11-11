@@ -59,11 +59,12 @@ internal sealed partial class BranchesTab
 
     /// <summary>
     /// Hides the art when the pane has no room for the todo rows beside it. The pane's height is current only after a layout, so the app calls
-    /// this from the art's viewport change (a resize lays the pane out again). Does nothing outside the todo list.
+    /// this from the art's viewport change (a resize lays the pane out again). Does nothing outside the todo list, and waits while the help
+    /// popup is open: the popup is drawn over the art, so hiding the art would hide the popup too. The popup's close calls this again.
     /// </summary>
     internal void RefreshTodoArt()
     {
-        if (Mode != BranchesMode.Todo)
+        if (Mode != BranchesMode.Todo || _app.HelpOpen)
             return;
         _app.Art.HideArt = ArtPaneView.ListNeedsWholePane(_app.Art.Viewport.Height, compact: true);
         _app.Art.SetNeedsDraw();

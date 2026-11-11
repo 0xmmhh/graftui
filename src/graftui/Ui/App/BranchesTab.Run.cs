@@ -124,6 +124,7 @@ internal sealed partial class BranchesTab
             return;
         if (!LeftPause(result))
             _pauseNote = result.Caption;
+        // While the help popup is open, ShowPause waits for the popup's close: the note is kept for that.
         ShowPause();
     }
 

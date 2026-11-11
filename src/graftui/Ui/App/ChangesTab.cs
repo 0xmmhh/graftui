@@ -228,14 +228,16 @@ internal sealed partial class ChangesTab
             _polling = false;
             return false;
         }
-        if (Mode == ChangesMode.Browse && !_app.Busy)
+        // While the help popup is open the art is its box: no refresh may draw over it (the close re-reads).
+        if (Mode == ChangesMode.Browse && !_app.Busy && !_app.HelpOpen)
             RequestRefresh();
         return true;
     }
 
     private void ApplyRefresh(int seq, ChangesSnapshot snap)
     {
-        if (seq != _refreshSeq || Mode != ChangesMode.Browse || _app.Busy || _app.ActiveTab != AppController.TabKind.Changes)
+        if (seq != _refreshSeq || Mode != ChangesMode.Browse || _app.Busy || _app.ActiveTab != AppController.TabKind.Changes
+            || _app.HelpOpen)
             return;
 
         // Nothing changed in the status or the head: keep the list as it is (no flicker), but re-read the diff in case
@@ -411,7 +413,8 @@ internal sealed partial class ChangesTab
                 var diff = reader.LoadDiff(row, ct);
                 _app.Ui(() =>
                 {
-                    if (seq != _diffSeq || Mode != ChangesMode.Browse)
+                    // The help popup owns the art while it is open: a diff that arrives now would draw over its box.
+                    if (seq != _diffSeq || Mode != ChangesMode.Browse || _app.HelpOpen)
                         return;
                     _diff = diff;
                     ShowBrowse();

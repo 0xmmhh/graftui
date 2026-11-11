@@ -36,6 +36,10 @@ internal sealed partial class BranchesTab
     /// </summary>
     internal void ShowPause()
     {
+        // The help popup is drawn over the art, so the pause screen waits: closing the popup asks for the preview, which draws it (RequestPreview).
+        if (_app.HelpOpen)
+            return;
+
         // A question can outlive the pause (the repo may have moved on): the normal preview is shown then.
         if (!_app.IsPaused)
         {

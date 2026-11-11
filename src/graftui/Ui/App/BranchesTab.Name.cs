@@ -107,7 +107,7 @@ internal sealed partial class BranchesTab
 
     /// <summary>
     /// Shows the box: the field on the commit rows (its label above it when the pane has two rows free), the preview of the layout
-    /// under it, and the hint as the caption. Opening takes the keys; the field has the focus.
+    /// under it, and the hint as the caption. Opening takes the keys; the field has the focus. Internal so the tests can open it without a git worker.
     /// </summary>
     internal void OpenNameForm(bool rename, string old, string tip, GraphLayout layout)
     {

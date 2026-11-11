@@ -261,6 +261,9 @@ public sealed class AppController
         };
         // The todo list hides its art by the pane's height. The viewport is current only after the layout, which runs after ScreenChanged.
         Art.ViewportChanged += (_, _) => BranchesTab.RefreshTodoArt();
+        // The help popup needs the art's room. ViewportChanged is not raised when the pane shrinks to no height at all, so this runs after
+        // every layout of the window instead, when the art's viewport is current.
+        window.SubViewsLaidOut += (_, _) => CloseHelpWithoutRoom();
         App.Keyboard.KeyDown += OnKeyDown;
 
         BranchesTab.RequestPreview();
@@ -375,8 +378,94 @@ public sealed class AppController
 
     // ---------- keys ----------
 
+    /// <summary>True while the ? help popup is open. Every key but ? and Esc waits until it closes.</summary>
+    internal bool HelpOpen { get; private set; }
+
+    private string _helpTitle = "";
+    private Func<ArtGeometry, SceneFrame>? _helpScene;
+    private bool _helpSingleLine;
+    private bool _helpHideArt;
+
+    /// <summary>Whether the key opens the help popup: a ? with no Ctrl or Alt. Typed in a text field, it edits instead.</summary>
+    private static bool IsHelpKey(Key e)
+    {
+        if (e.IsCtrl || e.IsAlt)
+            return false;
+        return ChangesTab.CharOf(e) == '?';
+    }
+
+    /// <summary>
+    /// Opens the help popup over the art: every key for the current tab and mode, in a centred box. The screen underneath is
+    /// saved and put back when the popup closes. Refused when the art cannot hold the box.
+    /// </summary>
+    internal void OpenHelp()
+    {
+        if (HelpOpen)
+            return;
+        if (!ArtFits())
+        {
+            LogMessage("Refused: widen the window to see every key", Bad);
+            return;
+        }
+        var named = HelpOverlay.ForBar(Keys);
+        _helpTitle = Art.Title;
+        _helpScene = Art.Scene;
+        _helpSingleLine = Art.SingleLine;
+        _helpHideArt = Art.HideArt;
+        HelpOpen = true;
+        Art.Title = named.Title;
+        var under = _helpScene;
+        var rows = named.Rows;
+        Art.Scene = geo => HelpFrame(geo, under, rows);
+        Art.SetNeedsDraw();
+    }
+
+    private static SceneFrame HelpFrame(ArtGeometry geo, Func<ArtGeometry, SceneFrame>? under, IReadOnlyList<HelpRow> rows)
+    {
+        ArtGrid grid;
+        if (under is null)
+            grid = new ArtGrid(geo.Width, geo.Height);
+        else
+            grid = under(geo).Grid;
+        return HelpOverlay.Frame(geo, grid, rows);
+    }
+
+    /// <summary>Closes the help popup and shows the screen it covered again, re-read if it may have gone stale.</summary>
+    internal void CloseHelp()
+    {
+        if (!HelpOpen)
+            return;
+        HelpOpen = false;
+        Art.Title = _helpTitle;
+        Art.ShowScene(_helpScene, _helpSingleLine);
+        Art.HideArt = _helpHideArt;
+        // The todo list's art follows the pane's height, which may have changed while the popup was open (its refresh waited).
+        BranchesTab.RefreshTodoArt();
+        Art.SetNeedsDraw();
+        if (ActiveTab == TabKind.Changes)
+            ChangesTab.RequestRefresh();
+        else
+            BranchesTab.RequestPreview();
+    }
+
+    /// <summary>The popup is drawn over the art: when the art no longer fits, the popup closes and the screen under it comes back.</summary>
+    private void CloseHelpWithoutRoom()
+    {
+        if (HelpOpen && !ArtFits())
+            CloseHelp();
+    }
+
     private void OnKeyDown(object? sender, Key e)
     {
+        // The help popup takes every key: ? or Esc closes it, anything else waits.
+        if (HelpOpen)
+        {
+            e.Handled = true;
+            if (e == Key.Esc || IsHelpKey(e))
+                CloseHelp();
+            return;
+        }
+
         // A branch change's animation holds Esc once git has answered: Esc would quit graftui before the change's last frame. Other keys are refused by Busy.
         if (e == Key.Esc && BranchAnimator.HoldsEsc)
         {
@@ -403,6 +492,15 @@ public sealed class AppController
         if (ActiveTab == TabKind.Branches && BranchesTab.Mode == BranchesMode.Ask)
         {
             BranchesTab.HandleAskKey(e);
+            return;
+        }
+
+        // ? opens the help popup over any screen but a text field (where it types): while git is busy it waits.
+        if (IsHelpKey(e))
+        {
+            e.Handled = true;
+            if (!Busy)
+                OpenHelp();
             return;
         }
 

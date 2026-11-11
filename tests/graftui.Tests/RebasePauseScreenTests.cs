@@ -507,4 +507,26 @@ public sealed class RebasePauseScreenTests : IDisposable
         Assert.Equal(RebaseText.PausedTitle, app.Art.Title);
         Assert.True(app.IsPaused);
     }
+
+    [Fact]
+    public void A_counts_read_that_ends_while_the_help_popup_is_open_keeps_the_popup_and_the_pause_screen_comes_after_it()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var app = OpenPaused(repo);
+        _ui.Keyboard.RaiseKeyDownEvent(new Key('?'));
+        Assert.True(app.HelpOpen);
+
+        // The counts read of a change that left the rebase paused ends while ? is open: the pause screen must not replace the popup.
+        app.BranchesTab.ShowPauseAfter(FailedResult());
+
+        Assert.True(app.HelpOpen);
+        Assert.Equal("Keys — Branches", app.Art.Title);
+
+        // Closing the popup draws the pause screen, with the note the change left for it.
+        _ui.Keyboard.RaiseKeyDownEvent(new Key('?'));
+
+        Assert.False(app.HelpOpen);
+        Assert.Equal(RebaseText.PausedTitle, app.Art.Title);
+        Assert.Equal("✕ Rebase failed: boom", Caption(app));
+    }
 }
