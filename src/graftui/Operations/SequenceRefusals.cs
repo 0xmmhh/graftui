@@ -58,9 +58,15 @@ public static class SequenceRefusals
 
     public static string Unresolved(IReadOnlyList<string> paths) => $"{Named(paths)} still has conflict markers: resolve them before continuing";
 
-    /// <summary>A conflicted file with no markers (binary, or a delete on one side): the user says which version to keep.</summary>
+    /// <summary>A conflicted file with no markers (binary, a link, a one-sided add or a delete): the user says which version to keep.</summary>
     public static string NoMarkers(IReadOnlyList<string> paths) =>
         $"{Named(paths)} has no conflict markers: say which version to keep before continuing";
+
+    /// <summary>A conflicted submodule: graftui does not stage it, so the user stages it in a shell and then continues.</summary>
+    public static string Submodule(string path) => $"{path} is a submodule conflict: stage it in a shell, then press Enter";
+
+    /// <summary>A conflicted path that is a folder in the work tree: git add would stage what is inside it, so the user moves it aside first.</summary>
+    public static string Folder(string path) => $"{path} is a folder in the work tree: move it aside, then press Enter";
 
     public static string StageFirst(string file) => $"{file} has unstaged changes: stage it first, then Amend & continue";
 

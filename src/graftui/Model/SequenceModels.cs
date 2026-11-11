@@ -37,11 +37,12 @@ public enum SequenceKind { Rebase, CherryPick }
 public enum PauseKind { Conflict, Edit, Reword, Squash }
 
 /// <summary>
-/// Text: git wrote markers (or could have), so the file is resolved once no marker line is left. Binary: git kept one side without
-/// markers (a binary file, a symlink or a submodule). DeletedOurs: the "ours" side (stage 2) deleted the file. DeletedTheirs: the
-/// "theirs" side (stage 3) deleted it.
+/// Text: a regular file git may have written markers into; it is resolved once the file is held with no marker line. Binary: git kept
+/// one side without markers (a binary file or a symlink). Submodule: a gitlink on a side; it is refused, not asked about. AddedOurs and
+/// AddedTheirs: only stage 2 (ours) or only stage 3 (theirs) has the file, and the base has none. DeletedOurs: the base and theirs have
+/// it and ours (stage 2) deleted it; DeletedTheirs is the same with theirs deleting it. DeletedBoth: only the base has it.
 /// </summary>
-public enum ConflictKind { Text, Binary, DeletedOurs, DeletedTheirs }
+public enum ConflictKind { Text, Binary, Submodule, AddedOurs, AddedTheirs, DeletedOurs, DeletedTheirs, DeletedBoth }
 
 /// <summary>Which version the work tree holds now: the stage 2 blob, the stage 3 blob, something else, or no file.</summary>
 public enum TreeSide { Ours, Theirs, Edited, Deleted }
@@ -50,8 +51,8 @@ public enum TreeSide { Ours, Theirs, Edited, Deleted }
 public sealed record KeptFile(string Path, ConflictKind Kind, TreeSide Side);
 
 /// <summary>
-/// A conflicted file. Resolved is only ever true for a Text file with no markers left. Ours and Theirs are the stage 2 and stage 3 blob
-/// hashes from <c>git ls-files -u</c>; "" when that stage is missing.
+/// A conflicted file. Resolved is only ever true for a Text file the work tree holds with no markers left. Ours and Theirs are the stage 2
+/// and stage 3 blob hashes from <c>git ls-files -u</c>; "" when that stage is missing.
 /// </summary>
 public sealed record ConflictFile(string Path, bool Resolved, ConflictKind Kind = ConflictKind.Text, string Ours = "", string Theirs = "");
 

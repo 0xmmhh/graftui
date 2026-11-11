@@ -215,8 +215,13 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         {
             case ResumeAction.Continue when stop.Pause == PauseKind.Conflict:
             {
-                // Marker files are refused first: the question about the others is asked only once every text file is resolved.
-                var marked = stop.Files.Where(f => f.Kind == ConflictKind.Text && !f.Resolved).Select(f => f.Path).ToList();
+                // A submodule or a folder is refused first: no question is asked about either, and git add would stage a folder's contents.
+                var stuck = UnstageableRefusal(stop);
+                if (stuck is not null)
+                    return stuck;
+
+                // Marker files are refused next: the question about the others is asked only once every text file is free of markers.
+                var marked = MarkedPaths(stop);
                 if (marked.Count > 0)
                     return SequenceRefusals.Unresolved(marked);
                 return KeepGate(request, stop, log, out ask);
@@ -245,8 +250,38 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
     }
 
     /// <summary>
-    /// The conflicted files without markers, each with the side the work tree holds now. Nothing is asked when there are none, or when the
-    /// answer (request.Keep) names exactly these sides. Otherwise ask is set to them and the refusal says which files need a choice.
+    /// The refusal for a conflicted path that cannot be staged as a file: a submodule, or a folder in the work tree. Null when every path
+    /// can be staged (or removed). No question is asked about these.
+    /// </summary>
+    private string? UnstageableRefusal(SequenceStop stop)
+    {
+        foreach (var f in stop.Files)
+        {
+            if (f.Kind == ConflictKind.Submodule)
+                return SequenceRefusals.Submodule(f.Path);
+            if (SequenceGit.IsFolder(Path.Combine(git.RepoPath, f.Path)))
+                return SequenceRefusals.Folder(f.Path);
+        }
+        return null;
+    }
+
+    /// <summary>The text files that still hold conflict markers. Those are refused before any question.</summary>
+    private List<string> MarkedPaths(SequenceStop stop)
+    {
+        var marked = new List<string>();
+        foreach (var f in stop.Files)
+        {
+            if (f.Kind == ConflictKind.Text && SequenceGit.HasMarkers(Path.Combine(git.RepoPath, f.Path)))
+                marked.Add(f.Path);
+        }
+        return marked;
+    }
+
+    /// <summary>
+    /// The files that need a version chosen, each with the side the work tree holds now: every file that is not text (binary, a link, a
+    /// one-sided add or a delete), and every text file the work tree holds as one side's bytes or not at all (a merge=binary, a custom driver,
+    /// or a file deleted by hand). A text file edited to something else is resolved and is not asked about. Nothing is asked when there are
+    /// none, or when the answer (request.Keep) names exactly these sides. Otherwise ask is set to them and the refusal names the files.
     /// </summary>
     private string? KeepGate(ResumeRequest request, SequenceStop stop, List<GitResult> log, out IReadOnlyList<KeptFile>? ask)
     {
@@ -254,8 +289,9 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
         var fresh = new List<KeptFile>();
         foreach (var f in stop.Files)
         {
-            if (f.Kind != ConflictKind.Text)
-                fresh.Add(new KeptFile(f.Path, f.Kind, SequenceGit.WorkTreeSide(git, log, f)));
+            var side = SequenceGit.WorkTreeSide(git, log, f);
+            if (f.Kind != ConflictKind.Text || side != TreeSide.Edited)
+                fresh.Add(new KeptFile(f.Path, f.Kind, side));
         }
         if (fresh.Count == 0 || Confirmed(request.Keep, fresh))
             return null;

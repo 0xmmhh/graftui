@@ -184,16 +184,25 @@ public static class RebaseText
 
     /// <summary>
     /// One conflicted file's row. A text file reads "✖ app.txt  both modified" until its markers are gone, then "✔ app.txt  resolved". A binary
-    /// file, or one side's delete, is never resolved by markers: it reads "not resolved" until the user keeps a version.
+    /// file, a submodule or a side's add or delete is never resolved by markers: it reads "not resolved" until the user keeps a version (a
+    /// submodule is staged in a shell instead).
     /// </summary>
     public static string ConflictRow(ConflictFile f, SequenceStop s)
     {
         if (f.Kind == ConflictKind.Binary)
             return $"✖ {f.Path}  binary · not resolved";
+        if (f.Kind == ConflictKind.Submodule)
+            return $"✖ {f.Path}  submodule · not resolved";
+        if (f.Kind == ConflictKind.AddedOurs)
+            return $"✖ {f.Path}  added on {OursName(s)} only · not resolved";
+        if (f.Kind == ConflictKind.AddedTheirs)
+            return $"✖ {f.Path}  added on {TheirsName(s)} only · not resolved";
         if (f.Kind == ConflictKind.DeletedOurs)
             return $"✖ {f.Path}  deleted on {OursName(s)} · not resolved";
         if (f.Kind == ConflictKind.DeletedTheirs)
             return $"✖ {f.Path}  deleted on {TheirsName(s)} · not resolved";
+        if (f.Kind == ConflictKind.DeletedBoth)
+            return $"✖ {f.Path}  deleted on both sides · not resolved";
         return f.Resolved ? $"✔ {f.Path}  resolved" : $"✖ {f.Path}  both modified";
     }
 
@@ -225,6 +234,8 @@ public static class RebaseText
         if (s.Pause == PauseKind.Conflict)
         {
             var listed = Files(s.Files.Select(f => f.Path).ToList());
+            if (HasSubmodule(s.Files))
+                return $"✕ CONFLICT in {listed}: stage a submodule in a shell, then Enter continues, or press X to abort";
             if (AllWithoutMarkers(s.Files))
                 return $"✕ CONFLICT in {listed}: no conflict markers, so Enter asks before keeping the working tree's version, or press X to abort";
             return $"✕ CONFLICT in {listed}: resolve it in your editor, then Enter continues, or press X to abort";
@@ -234,7 +245,7 @@ public static class RebaseText
         return MessagePause(s);
     }
 
-    /// <summary>True when there is a conflicted file and none of them has markers (each is binary or a delete on one side).</summary>
+    /// <summary>True when there is a conflicted file and none of them is text (each is binary, a link or an add or delete on one side).</summary>
     private static bool AllWithoutMarkers(IReadOnlyList<ConflictFile> files)
     {
         if (files.Count == 0)
@@ -245,6 +256,17 @@ public static class RebaseText
                 return false;
         }
         return true;
+    }
+
+    /// <summary>True when one of the conflicted files is a submodule.</summary>
+    private static bool HasSubmodule(IReadOnlyList<ConflictFile> files)
+    {
+        foreach (var f in files)
+        {
+            if (f.Kind == ConflictKind.Submodule)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>The status bar's last words for a pause: what it waits for.</summary>

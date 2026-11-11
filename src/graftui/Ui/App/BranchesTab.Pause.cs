@@ -25,8 +25,10 @@ internal sealed partial class BranchesTab
     private bool _pollArmed;
     private bool _pollBusy;
 
-    // The marker-less files the open question asks about. Its yes key resumes with exactly these, so the engine checks the answer against them.
+    // The marker-less files the open question asks about, and the commit the pause showed when it was asked. Its yes key resumes with exactly
+    // these, and only while the pause is still that commit, so an answer given for one stop never continues another.
     private IReadOnlyList<KeptFile>? _askedKeep;
+    private string? _askedCommit;
 
     /// <summary>
     /// The paused screen: the rebase's art with the progress in its direction line, the caption that says what stopped it (or the last
@@ -190,17 +192,40 @@ internal sealed partial class BranchesTab
             NoLabel = " back",
             CancelText = RebaseText.StillPaused,
             ShortText = RebaseText.KeepShort(files),
-            OnNo = ShowStillPaused,
+            OnNo = KeepDeclined,
             Base = geo => RebaseScenes.Paused(geo, stop, curInk, ontoInk).Grid,
         };
         _askedKeep = files;
+        _askedCommit = stop.Commit;
         BeginQuestion(question);
         if (Mode == BranchesMode.Ask)
             SetPauseRows(stop);
     }
 
-    /// <summary>The yes key of the keep question: continue, keeping the files the question asked about.</summary>
-    private void KeepAndContinue() => StartResume(ResumeAction.Continue, null, _askedKeep);
+    /// <summary>
+    /// The yes key of the keep question: continue, keeping the files the question asked about, at the commit it asked about. The question is
+    /// closed by then, so its memory goes with it.
+    /// </summary>
+    private void KeepAndContinue()
+    {
+        var keep = _askedKeep;
+        var commit = _askedCommit;
+        ForgetKeep();
+        StartResume(ResumeAction.Continue, null, keep, commit);
+    }
+
+    /// <summary>The keep question was answered no (or cancelled): its memory goes, and the pause screen comes back with "Still paused".</summary>
+    private void KeepDeclined()
+    {
+        ForgetKeep();
+        ShowStillPaused();
+    }
+
+    private void ForgetKeep()
+    {
+        _askedKeep = null;
+        _askedCommit = null;
+    }
 
     /// <summary>
     /// Runs the paused sequence's next step: Continue, Skip, AmendAndContinue, Message (a reword or squash keeps its message) or Abort. The
@@ -209,7 +234,7 @@ internal sealed partial class BranchesTab
     /// Keep is the answer to the question about marker-less files (null when there is none). Anything else is left as it is, and the pause
     /// screen (or the failure over it) says so.
     /// </summary>
-    internal void StartResume(ResumeAction action, string? message = null, IReadOnlyList<KeptFile>? keep = null)
+    internal void StartResume(ResumeAction action, string? message = null, IReadOnlyList<KeptFile>? keep = null, string? expectedCommit = null)
     {
         // The pause can be gone by now (a question was open while the repo moved on): the preview is shown instead.
         if (!_app.IsPaused)
@@ -219,9 +244,10 @@ internal sealed partial class BranchesTab
             return;
         }
 
+        // expectedCommit is the commit a question was asked about; the engine refuses the step when the pause has moved on since.
         var stop = _app.Snapshot.Paused!;
         var oldTip = _app.Snapshot.PausedOldTip;
-        var request = new ResumeRequest(action, message, stop.Commit, keep);
+        var request = new ResumeRequest(action, message, expectedCommit ?? stop.Commit, keep);
         var curInk = _app.InkOf(stop.Branch);
         var ontoInk = _app.InkOf(stop.Onto);
         var direction = PausedDirection(stop, curInk, ontoInk);

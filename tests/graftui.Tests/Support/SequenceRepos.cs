@@ -193,6 +193,102 @@ internal static class SequenceRepos
         return repo;
     }
 
+    /// <summary>
+    /// app.lock is set to merge=binary, so git does not merge it: it leaves the file unmerged with no markers, holding main's bytes. feature
+    /// and main both change app.lock ("Feature lock", "Main lock"). HEAD is on feature.
+    /// </summary>
+    public static TempRepo MergeBinaryLock()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit(".gitattributes", "*.lock merge=binary\n", "Mark lock files binary");
+        repo.Commit("app.lock", "base\n", "Add lock");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("app.lock", "feature\n", "Feature lock");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("app.lock", "main\n", "Main lock");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>
+    /// ln is a symbolic link to app.txt on the base. feature and main each turn it into a file with different text ("Feature ln", "Main ln"),
+    /// so the conflict has a link in the base and text on both sides. HEAD is on feature.
+    /// </summary>
+    public static TempRepo LinkReplacedByText()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("app.txt", "app\n", "Add app");
+        File.CreateSymbolicLink(Path.Combine(repo.Dir, "ln"), "app.txt");
+        repo.Run("add", "ln");
+        repo.Run("commit", "-q", "-m", "Add ln");
+        repo.Run("switch", "-q", "-c", "feature");
+        File.Delete(Path.Combine(repo.Dir, "ln"));
+        repo.Commit("ln", "feature text\n", "Feature ln");
+        repo.Run("switch", "-q", "main");
+        File.Delete(Path.Combine(repo.Dir, "ln"));
+        repo.Commit("ln", "main text\n", "Main ln");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>
+    /// main and feature both add a symbolic link named link, with different targets ("Main link" to b.txt, which does not exist, so the
+    /// link is dangling; "Feature link" to app.txt). HEAD is on feature.
+    /// </summary>
+    public static TempRepo SymlinkConflict()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("app.txt", "app\n", "Add app");
+        repo.Run("switch", "-q", "-c", "feature");
+        File.CreateSymbolicLink(Path.Combine(repo.Dir, "link"), "app.txt");
+        repo.Run("add", "link");
+        repo.Run("commit", "-q", "-m", "Feature link");
+        repo.Run("switch", "-q", "main");
+        File.CreateSymbolicLink(Path.Combine(repo.Dir, "link"), "b.txt");
+        repo.Run("add", "link");
+        repo.Run("commit", "-q", "-m", "Main link");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>
+    /// feature adds a file named dir ("Feature file dir"); main adds a folder named dir with x.txt in it ("Main dir"). Git's rebase keeps
+    /// main's folder and leaves the file under a longer name, so the conflict is a stage 3 entry alone: only theirs added it. HEAD is on feature.
+    /// </summary>
+    public static TempRepo FileVersusFolder()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("README", "base\n", "Add readme");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("dir", "file\n", "Feature file dir");
+        repo.Run("switch", "-q", "main");
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "dir"));
+        repo.Commit("dir/x.txt", "x\n", "Main dir");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>
+    /// Both branches add a submodule named sub, each pinned to a different commit (a gitlink needs no checkout of the submodule). HEAD is on
+    /// feature.
+    /// </summary>
+    public static TempRepo SubmoduleConflict()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("app.txt", "app\n", "Add app");
+        var baseCommit = repo.Head;
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Run("update-index", "--add", "--cacheinfo", "160000," + baseCommit + ",sub");
+        repo.Run("commit", "-q", "-m", "Feature sub");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("main.txt", "main\n", "Add main file");
+        var mainCommit = repo.Head;
+        repo.Run("update-index", "--add", "--cacheinfo", "160000," + mainCommit + ",sub");
+        repo.Run("commit", "-q", "-m", "Main sub");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
     /// <summary>The two logo.bin commits, with HEAD on main or on feature.</summary>
     private static TempRepo BinaryPair(bool headOnMain)
     {

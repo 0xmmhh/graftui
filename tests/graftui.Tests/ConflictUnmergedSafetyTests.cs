@@ -208,4 +208,147 @@ public class ConflictUnmergedSafetyTests
         Assert.False(PickInProgress(repo));
         Assert.True(repo.IsClean);
     }
+
+    [Fact]
+    public void A_text_file_that_is_missing_is_not_resolved_and_asks_to_keep_it_deleted()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var stop = PauseRebase(repo).Stop!;
+        File.Delete(Path.Combine(repo.Dir, "app.txt"));
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+
+        Assert.False(check.CanRun);
+        Assert.Equal(new[] { new KeptFile("app.txt", ConflictKind.Text, TreeSide.Deleted) }, check.Keep);
+        Assert.Equal("app.txt has no conflict markers. The working tree has it deleted. Keep it deleted and continue?",
+            RebaseText.KeepText(stop, check.Keep!));
+
+        var outcome = RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit, check.Keep));
+
+        Assert.Equal(SequenceOutcomeKind.Done, outcome.Kind);
+        Assert.Equal("", repo.Run("ls-tree", "feature", "--", "app.txt"));
+        Assert.Contains(outcome.Commands, c => c.Args.Contains("rm"));
+    }
+
+    [Fact]
+    public void A_text_file_with_no_markers_that_holds_one_side_asks_which_side_and_keeping_it_continues()
+    {
+        // merge=binary leaves app.lock unmerged with no markers, holding main's bytes: resolved by the marker rule, but not by the bytes.
+        using var repo = SequenceRepos.MergeBinaryLock();
+        var stop = PauseRebase(repo).Stop!;
+        Assert.True(stop.Files.Single().Resolved);
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+
+        Assert.False(check.CanRun);
+        Assert.Equal(new[] { new KeptFile("app.lock", ConflictKind.Text, TreeSide.Ours) }, check.Keep);
+        Assert.Equal("app.lock has no conflict markers. The working tree holds main's version. Keep it and continue?",
+            RebaseText.KeepText(stop, check.Keep!));
+
+        var outcome = RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit, check.Keep));
+
+        Assert.Equal(SequenceOutcomeKind.Done, outcome.Kind);
+        Assert.Equal(repo.Run("rev-parse", "main"), repo.Run("rev-parse", "feature"));
+        Assert.True(repo.IsClean);
+    }
+
+    [Fact]
+    public void A_hand_merged_text_that_matches_neither_side_continues_without_a_question()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        PauseRebase(repo);
+        repo.Write("app.txt", "merged by hand\n");
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue));
+
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Null(check.Keep);
+        Assert.Equal(SequenceOutcomeKind.Done, RunResume(repo, new ResumeRequest(ResumeAction.Continue)).Kind);
+    }
+
+    [Fact]
+    public void A_symlink_conflict_asks_which_link_to_keep_and_keeping_the_one_the_tree_holds_continues()
+    {
+        using var repo = SequenceRepos.SymlinkConflict();
+        var stop = PauseRebase(repo).Stop!;
+        Assert.Equal(ConflictKind.Binary, stop.Files.Single().Kind);
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+
+        Assert.Equal(new[] { new KeptFile("link", ConflictKind.Binary, TreeSide.Ours) }, check.Keep);
+        var outcome = RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit, check.Keep));
+
+        Assert.Equal(SequenceOutcomeKind.Done, outcome.Kind);
+        Assert.Equal(repo.Run("rev-parse", "main"), repo.Run("rev-parse", "feature"));
+        Assert.True(repo.IsClean);
+    }
+
+    [Fact]
+    public void A_link_edited_to_a_missing_target_is_asked_about_as_edited_and_is_not_a_git_error()
+    {
+        using var repo = SequenceRepos.SymlinkConflict();
+        var stop = PauseRebase(repo).Stop!;
+        var link = Path.Combine(repo.Dir, "link");
+        File.Delete(link);
+        File.CreateSymbolicLink(link, "missing.txt");
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+
+        Assert.False(check.CanRun);
+        Assert.Equal("link has no conflict markers: say which version to keep before continuing", check.Refusal);
+        Assert.Equal(new[] { new KeptFile("link", ConflictKind.Binary, TreeSide.Edited) }, check.Keep);
+        Assert.True(RebaseInProgress(repo));
+    }
+
+    [Fact]
+    public void A_submodule_conflict_is_refused_with_a_line_to_stage_it_in_a_shell()
+    {
+        using var repo = SequenceRepos.SubmoduleConflict();
+        var stop = PauseRebase(repo).Stop!;
+        Assert.Equal(ConflictKind.Submodule, stop.Files.Single().Kind);
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+
+        Assert.False(check.CanRun);
+        Assert.Equal("sub is a submodule conflict: stage it in a shell, then press Enter", check.Refusal);
+        Assert.Null(check.Keep);
+        Assert.Equal(SequenceOutcomeKind.Refused, RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit)).Kind);
+        Assert.True(RebaseInProgress(repo));
+    }
+
+    [Fact]
+    public void A_conflicted_path_that_is_now_a_folder_is_refused_and_nothing_is_staged()
+    {
+        using var repo = SequenceRepos.ModifyDelete();
+        var stop = PauseRebase(repo).Stop!;
+        // The work tree holds feature's file here; the user puts a folder in its place.
+        File.Delete(Path.Combine(repo.Dir, "gone.txt"));
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "gone.txt"));
+        File.WriteAllText(Path.Combine(repo.Dir, "gone.txt", "inner.txt"), "inner\n");
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+
+        Assert.False(check.CanRun);
+        Assert.Equal("gone.txt is a folder in the work tree: move it aside, then press Enter", check.Refusal);
+        Assert.Null(check.Keep);
+        Assert.Equal(SequenceOutcomeKind.Refused, RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit)).Kind);
+        Assert.True(RebaseInProgress(repo));
+        Assert.Contains("gone.txt", repo.Run("ls-files", "-u"));
+    }
+
+    [Fact]
+    public void A_file_added_only_by_the_replayed_side_is_asked_about_as_added_on_theirs()
+    {
+        using var repo = SequenceRepos.FileVersusFolder();
+        var stop = PauseRebase(repo).Stop!;
+        var file = stop.Files.Single();
+        Assert.Equal(ConflictKind.AddedTheirs, file.Kind);
+        Assert.False(file.Resolved);
+
+        var check = CheckResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit));
+
+        Assert.Equal(new[] { new KeptFile(file.Path, ConflictKind.AddedTheirs, TreeSide.Theirs) }, check.Keep);
+        Assert.Equal(SequenceOutcomeKind.Done, RunResume(repo, new ResumeRequest(ResumeAction.Continue, null, stop.Commit, check.Keep)).Kind);
+        Assert.False(RebaseInProgress(repo));
+    }
 }

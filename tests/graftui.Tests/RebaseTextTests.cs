@@ -209,6 +209,39 @@ public class RebaseTextTests
     }
 
     [Fact]
+    public void A_file_one_side_added_or_both_deleted_is_labelled_by_the_side_that_has_it()
+    {
+        var stop = RebaseStop();
+
+        Assert.Equal("✖ new.txt  added on main only · not resolved",
+            RebaseText.ConflictRow(new ConflictFile("new.txt", false, ConflictKind.AddedOurs), stop));
+        Assert.Equal("✖ new.txt  added on feature only · not resolved",
+            RebaseText.ConflictRow(new ConflictFile("new.txt", false, ConflictKind.AddedTheirs), stop));
+        Assert.Equal("✖ gone.txt  deleted on both sides · not resolved",
+            RebaseText.ConflictRow(new ConflictFile("gone.txt", false, ConflictKind.DeletedBoth), stop));
+    }
+
+    [Fact]
+    public void A_pick_names_the_picked_commit_for_a_file_added_only_by_the_pick()
+    {
+        var stop = PickStop("main", "abc1234");
+
+        Assert.Equal("✖ new.txt  added on abc1234 only · not resolved",
+            RebaseText.ConflictRow(new ConflictFile("new.txt", false, ConflictKind.AddedTheirs), stop));
+        Assert.Equal("✖ new.txt  added on main only · not resolved",
+            RebaseText.ConflictRow(new ConflictFile("new.txt", false, ConflictKind.AddedOurs), stop));
+    }
+
+    [Fact]
+    public void A_submodule_row_says_so_and_the_caption_says_to_stage_it_in_a_shell()
+    {
+        var stop = RebaseStop() with { Files = [new ConflictFile("sub", false, ConflictKind.Submodule)] };
+
+        Assert.Equal("✖ sub  submodule · not resolved", RebaseText.ConflictRow(stop.Files[0], stop));
+        Assert.Equal("✕ CONFLICT in sub: stage a submodule in a shell, then Enter continues, or press X to abort", RebaseText.PauseCaption(stop));
+    }
+
+    [Fact]
     public void The_tree_text_says_which_version_the_work_tree_holds()
     {
         var stop = RebaseStop();
