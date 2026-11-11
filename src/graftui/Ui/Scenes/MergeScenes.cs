@@ -350,6 +350,13 @@ public static class MergeScenes
     /// </summary>
     internal static void DrawShared(ArtGrid grid, ArtGeometry g, GraphLayout L)
     {
+        // Both names point at one commit: the row is that branch's own history, not history two branches share, so it stays bright.
+        if (L.Kind == GraphKind.Same)
+        {
+            DrawOwnHistory(grid, g, L);
+            return;
+        }
+
         var s = g.Step;
         var n = L.Shared.Count;
         for (var i = 0; i < n; i++)
@@ -363,6 +370,23 @@ public static class MergeScenes
         }
         if (n > 0)
             grid.Text(g.XB - SharedLabel.Length - 2, g.A + 1, SharedLabel, Dim);
+    }
+
+    /// <summary>The history row of a branch shown alone (the Same case): bright dots in the branch's colour, no "shared" label.</summary>
+    private static void DrawOwnHistory(ArtGrid grid, ArtGeometry g, GraphLayout L)
+    {
+        var own = new Style(BranchInks.Current(L));
+        var s = g.Step;
+        var n = L.Shared.Count;
+        for (var i = 0; i < n; i++)
+        {
+            var x = g.XB - s * (n - 1 - i);
+            if (i > 0)
+                grid.HLine(x - s + 1, x - 1, g.A, own);
+            else if (L.SharedMore)
+                grid.HLine(x - s + 2, x - 1, g.A, Dim, '┄');
+            grid.Put(x, g.A, Dot(L.Shared[i]), own);
+        }
     }
 
     internal static void DrawRowA(ArtGrid grid, ArtGeometry g, IReadOnlyList<CommitInfo> list, Style st, bool more,

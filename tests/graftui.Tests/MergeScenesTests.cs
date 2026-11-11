@@ -376,6 +376,18 @@ public class MergeScenesTests
     }
 
     [Fact]
+    public void A_branch_shown_alone_keeps_its_history_bright_with_no_shared_label()
+    {
+        var same = Shared3 with { Selected = Shared3.Current, SelectedTip = Shared3.CurrentTip, Kind = GraphKind.Same };
+
+        var grid = MergeScenes.Preview(Geo9, same).Grid;
+
+        Assert.DoesNotContain(MergeScenes.SharedLabel, RowText(grid, Geo9.A + 1), StringComparison.Ordinal);
+        Assert.DoesNotContain("·", RowText(grid, Geo9.A), StringComparison.Ordinal);
+        Assert.NotEqual(new Style(Ink.Dim), grid[Geo9.XB, Geo9.A].Style);
+    }
+
+    [Fact]
     public void The_narrowest_art_still_fits_the_shared_label()
     {
         var narrow = ArtGeometry.For(40, 9)!;
