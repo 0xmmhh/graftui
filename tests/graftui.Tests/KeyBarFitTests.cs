@@ -27,12 +27,12 @@ public class KeyBarFitTests
     // ----- fitting a narrow bar -----
 
     [Fact]
-    public void Changes_bar_at_80_columns_keeps_tab_space_c_x_z_and_esc_in_order()
+    public void Changes_bar_at_80_columns_keeps_everything_one_space_apart()
     {
-        // Tab is second only to Esc, so it stays; the lower ones (u, Z, A, a, U, ↑↓) go first.
+        // The slim bar: only the main keys stay, so at 80 columns everything fits with one space between items.
         var kept = KeyBarView.FitItems(KeyBarView.ChangesItems(AllChanges), 80, out var separator);
 
-        Assert.Equal(new[] { "Tab", "Space", "c", "x", "z", "Esc" }, Keys(kept));
+        Assert.Equal(new[] { "Tab", "↑↓", "Space", "c", "u", "?", "Esc" }, Keys(kept));
         Assert.Equal(1, separator);
     }
 
@@ -96,30 +96,31 @@ public class KeyBarFitTests
     }
 
     [Fact]
-    public void Branches_bar_at_40_columns_keeps_tab_merge_and_esc()
+    public void Branches_bar_at_40_columns_keeps_tab_help_and_esc()
     {
-        // At 64 columns every Branches key fits, so the narrow case is the one that drops keys.
+        // Narrow screens keep discoverability first: ? outranks the action keys, so m, s and u go before it does.
         var kept = KeyBarView.FitItems(KeyBarView.BranchesItems(AllBranches), 40, out _);
 
-        Assert.Equal(new[] { "Tab", "m", "Esc" }, Keys(kept));
+        Assert.Equal(new[] { "Tab", "?", "Esc" }, Keys(kept));
     }
 
     [Fact]
-    public void Branches_bar_at_64_columns_drops_rename_and_delete_and_the_arrows()
+    public void Branches_bar_at_64_columns_drops_only_undo()
     {
-        // With every key on, the bar is one space apart at 64 columns: ↑↓, D and R go first (lowest priority).
+        // The slim bar at 64 columns: Tab, m, s, ? and Esc fit one space apart; u goes first (lowest priority).
         var kept = KeyBarView.FitItems(KeyBarView.BranchesItems(AllBranches), 64, out var separator);
 
-        Assert.Equal(new[] { "Tab", "m", "s", "n", "u", "Esc" }, Keys(kept));
+        Assert.Equal(new[] { "Tab", "m", "s", "?", "Esc" }, Keys(kept));
         Assert.Equal(1, separator);
     }
 
     [Fact]
-    public void Branches_bar_at_80_columns_drops_only_the_arrows_and_delete()
+    public void Branches_bar_at_80_columns_keeps_everything_with_two_spaces()
     {
-        var kept = KeyBarView.FitItems(KeyBarView.BranchesItems(AllBranches), 80, out _);
+        var kept = KeyBarView.FitItems(KeyBarView.BranchesItems(AllBranches), 80, out var separator);
 
-        Assert.Equal(new[] { "Tab", "m", "s", "n", "R", "u", "Esc" }, Keys(kept));
+        Assert.Equal(new[] { "Tab", "m", "s", "u", "?", "Esc" }, Keys(kept));
+        Assert.Equal(2, separator);
     }
 
     [Fact]
@@ -127,12 +128,12 @@ public class KeyBarFitTests
     {
         var all = KeyBarView.BranchesItems(AllBranches);
 
-        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "u", "Esc" }, Names(all));
-        Assert.Equal("Tab changes  ↑↓ select  m merge  s switch  n new  R rename  D delete  u undo  Esc quit", Bar(all));
+        Assert.Equal(new[] { "Tab", "m", "s", "u", "?", "Esc" }, Names(all));
+        Assert.Equal("Tab changes  m merge  s switch  u undo  ? help  Esc quit", Bar(all));
     }
 
     [Fact]
-    public void Branches_bar_for_the_selected_current_branch_has_no_switch_merge_or_delete()
+    public void Branches_bar_for_the_selected_current_branch_has_no_merge_or_switch()
     {
         var snapshot = new RepoSnapshot("main", "a111111", true,
             [new Branch("main", "a111111", "a111111", true), new Branch("feature/x", "b222222", "b222222", false)],
@@ -140,11 +141,11 @@ public class KeyBarFitTests
 
         var state = BranchesKeyState.For(snapshot, snapshot.Branches[0]);
 
-        Assert.Equal("Tab changes  ↑↓ select  n new  R rename  Esc quit", Bar(KeyBarView.BranchesItems(state)));
+        Assert.Equal("Tab changes  ? help  Esc quit", Bar(KeyBarView.BranchesItems(state)));
     }
 
     [Fact]
-    public void Branches_bar_for_a_branch_ahead_has_every_key_it_can_act_on()
+    public void Branches_bar_for_a_branch_ahead_has_merge_switch_and_undo()
     {
         var snapshot = new RepoSnapshot("main", "a111111", true,
             [new Branch("main", "a111111", "a111111", true), new Branch("feature/x", "b222222", "b222222", false)],
@@ -152,7 +153,7 @@ public class KeyBarFitTests
 
         var state = BranchesKeyState.For(snapshot, snapshot.Branches[1]);
 
-        Assert.Equal("Tab changes  ↑↓ select  m merge  s switch  n new  R rename  D delete  u undo  Esc quit", Bar(KeyBarView.BranchesItems(state)));
+        Assert.Equal("Tab changes  m merge  s switch  u undo  ? help  Esc quit", Bar(KeyBarView.BranchesItems(state)));
     }
 
     [Fact]
@@ -191,9 +192,9 @@ public class KeyBarFitTests
     // ----- Changes: each key shows when it acts -----
 
     [Fact]
-    public void Nothing_to_act_on_leaves_only_tab_and_esc()
+    public void Nothing_to_act_on_leaves_only_tab_help_and_esc()
     {
-        Assert.Equal("Tab branches  Esc quit", Bar(KeyBarView.ChangesItems(ChangesKeyState.Empty)));
+        Assert.Equal("Tab branches  ? help  Esc quit", Bar(KeyBarView.ChangesItems(ChangesKeyState.Empty)));
     }
 
     [Fact]
@@ -212,68 +213,24 @@ public class KeyBarFitTests
     }
 
     [Fact]
-    public void a_shows_only_with_unstaged_files_and_U_and_c_only_with_staged_files()
+    public void The_slim_changes_bar_keeps_only_tab_arrows_space_commit_undo_help_and_esc()
     {
-        var none = AllChanges with { HasUnstaged = false, HasStaged = false };
-        Assert.DoesNotContain("a", Names(KeyBarView.ChangesItems(none)));
-        Assert.DoesNotContain("U", Names(KeyBarView.ChangesItems(none)));
-        Assert.DoesNotContain("c", Names(KeyBarView.ChangesItems(none)));
+        Assert.Equal("Tab branches  ↑↓ file  Space stage  c commit  u undo  ? help  Esc quit",
+            Bar(KeyBarView.ChangesItems(AllChanges)));
     }
 
     [Fact]
-    public void A_shows_only_when_head_exists()
+    public void The_dropped_changes_keys_still_work_but_are_not_on_the_bar()
     {
-        Assert.DoesNotContain("A", Names(KeyBarView.ChangesItems(AllChanges with { HasHead = false })));
-    }
+        // a, U, A, x, z and Z left the bar for the ? popup; their keys act as before.
+        var names = Names(KeyBarView.ChangesItems(AllChanges));
 
-    [Fact]
-    public void x_shows_only_for_an_unstaged_selected_row()
-    {
-        Assert.DoesNotContain("x", Names(KeyBarView.ChangesItems(AllChanges with { SelectedSide = ChangeSide.Staged })));
-        Assert.DoesNotContain("x", Names(KeyBarView.ChangesItems(AllChanges with { SelectedSide = null })));
-    }
-
-    [Fact]
-    public void z_shows_with_any_change_and_Z_and_u_with_a_stash_and_an_undo_step()
-    {
-        var none = AllChanges with { RowCount = 0, SelectedSide = null, HasStash = false, HasUndo = false };
-        Assert.DoesNotContain("z", Names(KeyBarView.ChangesItems(none)));
-        Assert.DoesNotContain("Z", Names(KeyBarView.ChangesItems(none)));
-        Assert.DoesNotContain("u", Names(KeyBarView.ChangesItems(none)));
-        Assert.Contains("z", Names(KeyBarView.ChangesItems(none with { RowCount = 1 })));
-        Assert.Contains("Z", Names(KeyBarView.ChangesItems(none with { HasStash = true })));
-        Assert.Contains("u", Names(KeyBarView.ChangesItems(none with { HasUndo = true })));
-    }
-
-    [Fact]
-    public void The_mock_bar_for_an_unstaged_file_selected_with_everything_in_reach()
-    {
-        // The mock's "unstaged file selected" bar, with the stash and undo step it names. The table says A shows whenever HEAD exists,
-        // so the bar also has A amend; the mock leaves it out.
-        var state = new ChangesKeyState(RowCount: 4, SelectedSide: ChangeSide.Unstaged, HasUnstaged: true, HasStaged: false, HasHead: true,
-            HasStash: true, HasUndo: true);
-
-        Assert.Equal("Tab branches  ↑↓ file  Space stage  a stage all  A amend  x discard  z stash  Z pop  u undo  Esc quit",
-            Bar(KeyBarView.ChangesItems(state)));
-    }
-
-    [Fact]
-    public void The_mock_bar_when_only_staged_files_exist()
-    {
-        var state = new ChangesKeyState(RowCount: 2, SelectedSide: ChangeSide.Staged, HasUnstaged: false, HasStaged: true, HasHead: true,
-            HasStash: false, HasUndo: false);
-
-        Assert.Equal("Tab branches  ↑↓ file  Space unstage  U unstage all  c commit  A amend  z stash  Esc quit",
-            Bar(KeyBarView.ChangesItems(state)));
-    }
-
-    [Fact]
-    public void The_mock_bar_with_nothing_changed_and_no_stash_or_undo_step()
-    {
-        var state = new ChangesKeyState(RowCount: 0, SelectedSide: null, HasUnstaged: false, HasStaged: false, HasHead: true,
-            HasStash: false, HasUndo: false);
-
-        Assert.Equal("Tab branches  A amend  Esc quit", Bar(KeyBarView.ChangesItems(state)));
+        Assert.DoesNotContain("a", names);
+        Assert.DoesNotContain("U", names);
+        Assert.DoesNotContain("A", names);
+        Assert.DoesNotContain("x", names);
+        Assert.DoesNotContain("z", names);
+        Assert.DoesNotContain("Z", names);
     }
 
     [Fact]
@@ -287,12 +244,12 @@ public class KeyBarFitTests
     // ----- Branches -----
 
     [Fact]
-    public void Branches_bar_on_the_current_branch_has_no_merge()
+    public void Branches_bar_on_the_current_branch_has_no_merge_or_switch()
     {
         // The mock: main (current) selected.
         var state = new BranchesKeyState(BranchCount: 3, CanMerge: false, HasUndo: false);
 
-        Assert.Equal("Tab changes  ↑↓ select  Esc quit", Bar(KeyBarView.BranchesItems(state)));
+        Assert.Equal("Tab changes  ? help  Esc quit", Bar(KeyBarView.BranchesItems(state)));
     }
 
     [Fact]
@@ -300,13 +257,13 @@ public class KeyBarFitTests
     {
         var state = new BranchesKeyState(BranchCount: 3, CanMerge: true, HasUndo: false);
 
-        Assert.Equal("Tab changes  ↑↓ select  m merge  Esc quit", Bar(KeyBarView.BranchesItems(state)));
+        Assert.Equal("Tab changes  m merge  ? help  Esc quit", Bar(KeyBarView.BranchesItems(state)));
     }
 
     [Fact]
-    public void Branches_bar_shows_undo_only_with_a_step_and_up_down_only_with_two_branches()
+    public void Branches_bar_shows_undo_only_with_a_step()
     {
-        Assert.Equal("Tab changes  m merge  u undo  Esc quit",
+        Assert.Equal("Tab changes  m merge  u undo  ? help  Esc quit",
             Bar(KeyBarView.BranchesItems(new BranchesKeyState(BranchCount: 1, CanMerge: true, HasUndo: true))));
     }
 
@@ -330,14 +287,18 @@ public class KeyBarFitTests
     }
 
     [Fact]
-    public void Branches_bar_lists_r_rebase_only_when_r_can_rebase()
+    public void Branches_bar_no_longer_lists_rebase_or_interactive_but_the_popup_does()
     {
         var with = BranchesKeyState.Empty with { BranchCount = 3, CanRebase = true };
-        var without = BranchesKeyState.Empty with { BranchCount = 3, CanRebase = false };
 
-        Assert.Contains("r rebase", Bar(KeyBarView.BranchesItems(with)));
-        Assert.DoesNotContain("r rebase", Bar(KeyBarView.BranchesItems(without)));
+        Assert.DoesNotContain("r", Names(KeyBarView.BranchesItems(with)));
+        Assert.DoesNotContain("i", Names(KeyBarView.BranchesItems(with)));
+        Assert.Contains("r", HelpRows().Select(r => r.Key));
+        Assert.Contains("i", HelpRows().Select(r => r.Key));
     }
+
+    private static IReadOnlyList<HelpRow> HelpRows() =>
+        HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Branches }, "").Rows;
 
     [Fact]
     public void Confirm_bar_lists_enter_rebase_and_esc_cancel()
@@ -354,13 +315,12 @@ public class KeyBarFitTests
     }
 
     [Fact]
-    public void Branches_bar_lists_i_interactive_with_r_rebase_and_only_when_rebase_is_offered()
+    public void Branches_bar_lists_nothing_extra_for_rebase_but_the_popup_names_it()
     {
-        var with = BranchesKeyState.Empty with { BranchCount = 3, CanRebase = true };
-        var without = BranchesKeyState.Empty with { BranchCount = 3, CanRebase = false };
+        var bar = new KeyBarView { Mode = KeyBarMode.Branches };
 
-        Assert.Contains("r rebase  i interactive", Bar(KeyBarView.BranchesItems(with)));
-        Assert.DoesNotContain("i interactive", Bar(KeyBarView.BranchesItems(without)));
+        Assert.DoesNotContain("i interactive", Bar(bar.Items()));
+        Assert.Contains("i", HelpOverlay.ForBar(bar, "").Rows.Select(r => r.Key));
     }
 
     [Fact]

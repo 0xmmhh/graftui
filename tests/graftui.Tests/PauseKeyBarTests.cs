@@ -49,19 +49,14 @@ public class PauseKeyBarTests
     }
 
     [Fact]
-    public void A_paused_changes_tab_hides_commit_amend_discard_stash_pop_and_undo_but_keeps_staging()
+    public void A_paused_changes_tab_hides_commit_and_undo_but_keeps_staging_and_help()
     {
         var items = Keys(KeyBarView.ChangesItems(AllChanges with { Paused = true }));
 
         Assert.DoesNotContain("c", items);
-        Assert.DoesNotContain("A", items);
-        Assert.DoesNotContain("x", items);
-        Assert.DoesNotContain("z", items);
-        Assert.DoesNotContain("Z", items);
         Assert.DoesNotContain("u", items);
         Assert.Contains("Space", items);
-        Assert.Contains("a", items);
-        Assert.Contains("U", items);
+        Assert.Contains("?", items);
         Assert.Contains("Tab", items);
         Assert.Contains("Esc", items);
     }

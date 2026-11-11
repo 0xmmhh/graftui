@@ -94,8 +94,9 @@ public sealed class KeyBarView : View
     };
 
     /// <summary>
-    /// The Changes tab's keys that act now, in the order they are listed. Priority decides what is dropped first when the bar is
-    /// narrow (higher is kept): Esc, Tab, Space, c, x, z, Z, u, A, a, U, ↑↓. Space says stage or unstage by the selected row.
+    /// The Changes tab's main keys in the order they are listed: the rest (stage and unstage all, amend, discard,
+    /// stash, pop, the arrows) still work and are listed in the ? popup. Priority decides what is dropped first when the
+    /// bar is narrow (higher is kept): Esc, Tab, Space, c, ?. Space says stage or unstage by the selected row.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> ChangesItems(ChangesKeyState s)
     {
@@ -104,23 +105,12 @@ public sealed class KeyBarView : View
             items.Add(("↑↓", " file", 1));
         if (s.SelectedSide is { } side)
             items.Add(("Space", side == ChangeSide.Staged ? " unstage" : " stage", 10));
-        if (s.HasUnstaged)
-            items.Add(("a", " stage all", 3));
-        if (s.HasStaged)
-            items.Add(("U", " unstage all", 2));
-        // A paused sequence owns the repo: commit, amend, discard, stash, pop and undo wait until it is finished.
+        // A paused sequence owns the repo: commit and undo wait until it is finished.
         if (s.HasStaged && !s.Paused)
             items.Add(("c", " commit", 9));
-        if (s.HasHead && !s.Paused)
-            items.Add(("A", " amend", 4));
-        if (s.SelectedSide == ChangeSide.Unstaged && !s.Paused)
-            items.Add(("x", " discard", 8));
-        if (s.RowCount > 0 && !s.Paused)
-            items.Add(("z", " stash", 7));
-        if (s.HasStash && !s.Paused)
-            items.Add(("Z", " pop", 6));
         if (s.HasUndo && !s.Paused)
-            items.Add(("u", " undo", 5));
+            items.Add(("u", " undo", 7));
+        items.Add(("?", " help", 8));
         items.Add(("Esc", " quit", 12));
         return items;
     }
@@ -173,8 +163,9 @@ public sealed class KeyBarView : View
         ];
 
     /// <summary>
-    /// The Branches tab's keys that act now, in the order they are listed. Priority decides what is dropped first when the bar is
-    /// narrow (higher is kept): Esc, Tab, m, s, u, r, i, n, R, D, ↑↓.
+    /// The Branches tab's main keys in the order they are listed: the rest (new, rename, delete, rebase, interactive,
+    /// the arrows) still work and are listed in the ? popup. Priority decides what is dropped first when the bar is narrow
+    /// (higher is kept): Esc, Tab, ?, m, s, u.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s)
     {
@@ -182,24 +173,13 @@ public sealed class KeyBarView : View
             return PauseItems(s.Pause.Value);
 
         var items = new List<(string Key, string Label, int Priority)> { ("Tab", " changes", 11) };
-        if (s.BranchCount >= 2)
-            items.Add(("↑↓", " select", 1));
         if (s.CanMerge)
-            items.Add(("m", " merge", 10));
+            items.Add(("m", " merge", 9));
         if (s.CanSwitch)
-            items.Add(("s", " switch", 9));
-        if (s.CanCreate)
-            items.Add(("n", " new", 4));
-        if (s.CanRename)
-            items.Add(("R", " rename", 3));
-        if (s.CanDelete)
-            items.Add(("D", " delete", 2));
-        if (s.CanRebase)
-            items.Add(("r", " rebase", 7));
-        if (s.CanRebase)
-            items.Add(("i", " interactive", 5));
+            items.Add(("s", " switch", 8));
         if (s.HasUndo)
-            items.Add(("u", " undo", 8));
+            items.Add(("u", " undo", 7));
+        items.Add(("?", " help", 10));
         items.Add(("Esc", " quit", 12));
         return items;
     }
