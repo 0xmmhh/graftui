@@ -236,9 +236,9 @@ internal sealed partial class ChangesTab
 
     /// <summary>
     /// Shows the message box: the subject and body fields over the art, with the counters and the hint. The fields take
-    /// the focus; the art pane becomes focusable while the box is open.
+    /// the focus; the art pane becomes focusable while the box is open. Internal so the tests can open it without a git worker.
     /// </summary>
-    private void OpenForm(bool amend, CommitCheck check, string subject, string body, bool pushedConfirmed, bool blankAfterSubject)
+    internal void OpenForm(bool amend, CommitCheck check, string subject, string body, bool pushedConfirmed, bool blankAfterSubject)
     {
         _formCheck = check;
         _formAmend = amend;

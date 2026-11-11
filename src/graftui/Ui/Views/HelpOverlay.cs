@@ -15,26 +15,23 @@ public sealed record HelpRow(string Key, string Text);
 public static class HelpOverlay
 {
     private static readonly Style Box = new(Ink.Warn);
-    private static readonly Style Key = new(Ink.Fg, true);
+    private static readonly Style KeyStyle = new(Ink.Fg, true);
     private static readonly Style Desc = new(Ink.Fg);
     private static readonly Style Dim = new(Ink.Dim);
 
-    /// <summary>The title and rows for the key bar's current mode. artTitle names an open question (Ask mode).</summary>
-    public static (string Title, IReadOnlyList<HelpRow> Rows) ForBar(KeyBarView bar, string artTitle)
+    /// <summary>
+    /// The title and rows for the key bar's current mode. The commit form, the message box and the yes/no question are not here:
+    /// AppController sends their keys to the tab first, so ? types a question mark in them and never opens the popup.
+    /// </summary>
+    public static (string Title, IReadOnlyList<HelpRow> Rows) ForBar(KeyBarView bar)
     {
         var mode = bar.Mode;
         if (mode == KeyBarMode.Changes)
             return ("Keys — Changes", ChangesRows(bar.ChangesState));
-        if (mode == KeyBarMode.Input)
-            return ("Keys — Commit", InputRows(bar.BodyFocused));
-        if (mode == KeyBarMode.Message)
-            return (MessageTitle(bar.MessageEnterLabel), MessageRows(bar.MessageEnterLabel));
         if (mode == KeyBarMode.Confirm)
             return ("Keys — Rebase", ConfirmRows());
         if (mode == KeyBarMode.Todo)
             return ("Keys — Todo", TodoRows());
-        if (mode == KeyBarMode.Ask)
-            return (AskTitle(bar, artTitle), AskRows(bar));
         if (bar.BranchesState.Pause is not null)
             return ("Keys — Branches", PauseRows(bar.BranchesState.Pause.Value));
         return ("Keys — Branches", BranchesRows());
@@ -55,7 +52,6 @@ public static class HelpOverlay
         new HelpRow("u", "undo"),
         new HelpRow("v", "exact commands"),
         new HelpRow("Esc", "quit"),
-        new HelpRow("Ctrl+C", "interrupt git"),
     ];
 
     /// <summary>The Changes tab's keys in browse mode. The bar shows only Tab, Space, c, u and ?; the rest still work.</summary>
@@ -76,7 +72,6 @@ public static class HelpOverlay
             new HelpRow("u", "undo"),
             new HelpRow("v", "exact commands"),
             new HelpRow("Esc", "quit"),
-            new HelpRow("Ctrl+C", "interrupt git"),
         };
         return rows;
     }
@@ -106,45 +101,6 @@ public static class HelpOverlay
         return rows;
     }
 
-    /// <summary>The commit form's keys. In the body Enter adds a line, so Ctrl+J saves there instead.</summary>
-    internal static IReadOnlyList<HelpRow> InputRows(bool bodyFocused)
-    {
-        if (bodyFocused)
-            return [new HelpRow("Ctrl+J", "save"), new HelpRow("Tab", "next field"), new HelpRow("Esc", "cancel")];
-        return
-        [
-            new HelpRow("Enter", "save"),
-            new HelpRow("Tab", "next field"),
-            new HelpRow("Ctrl+Enter", "save from body"),
-            new HelpRow("Esc", "cancel"),
-        ];
-    }
-
-    private static string MessageTitle(string enterLabel)
-    {
-        var verb = enterLabel.Trim();
-        if (verb == "create")
-            return "Keys — New branch";
-        if (verb == "rename")
-            return "Keys — Rename";
-        return "Keys — Stash";
-    }
-
-    /// <summary>The one-line box's keys: Enter runs the named action, Esc cancels.</summary>
-    internal static IReadOnlyList<HelpRow> MessageRows(string enterLabel) =>
-        [new HelpRow("Enter", enterLabel.Trim()), new HelpRow("Esc", "cancel")];
-
-    private static string AskTitle(KeyBarView bar, string artTitle)
-    {
-        if (artTitle.Length == 0)
-            return "Keys";
-        return "Keys — " + artTitle;
-    }
-
-    /// <summary>A question's keys: its yes key, n for no, Esc to cancel.</summary>
-    internal static IReadOnlyList<HelpRow> AskRows(KeyBarView bar) =>
-        [new HelpRow(bar.AskKey, bar.AskYesLabel.Trim()), new HelpRow("n", bar.AskNoLabel.Trim()), new HelpRow("Esc", "cancel")];
-
     /// <summary>The rebase confirm screen's keys.</summary>
     internal static IReadOnlyList<HelpRow> ConfirmRows() =>
         [new HelpRow("Enter", "run the rebase"), new HelpRow("Esc", "back to preview")];
@@ -154,6 +110,7 @@ public static class HelpOverlay
     [
         new HelpRow("↑↓←→", "move cursor"),
         new HelpRow("⇧↑↓", "move row"),
+        new HelpRow("Alt+↑↓", "move row"),
         new HelpRow("J K", "move row"),
         new HelpRow("p", "pick"),
         new HelpRow("r", "reword"),
@@ -185,7 +142,7 @@ public static class HelpOverlay
         var right = TakeRows(rows, half, rightCount);
         if (hidden > 0)
         {
-            var note = new HelpRow("…", hidden + " more: widen the window");
+            var note = MoreNote(hidden);
             if (right.Count > 0)
                 right[right.Count - 1] = note;
             else
@@ -211,6 +168,12 @@ public static class HelpOverlay
         }
         return new SceneFrame(grid, new Caption("? closes · Esc closes", Dim));
     }
+
+    /// <summary>
+    /// The note that stands in for the last shown row when rows do not fit. The note takes that row's slot, so the rows it
+    /// stands for are the hidden ones plus the slot's own row: <paramref name="hiddenRows"/> counts only the hidden ones.
+    /// </summary>
+    private static HelpRow MoreNote(int hiddenRows) => new HelpRow("…", (hiddenRows + 1) + " more: widen the window");
 
     private static List<HelpRow> TakeRows(IReadOnlyList<HelpRow> rows, int start, int count)
     {
@@ -262,13 +225,13 @@ public static class HelpOverlay
             var x = x0 + 2;
             if (i < left.Count)
             {
-                grid.Text(x, y, left[i].Key, Key);
+                grid.Text(x, y, left[i].Key, KeyStyle);
                 grid.Text(x + leftKey + 1, y, left[i].Text, Desc);
             }
             x += leftW + 2;
             if (i < right.Count)
             {
-                grid.Text(x, y, right[i].Key, Key);
+                grid.Text(x, y, right[i].Key, KeyStyle);
                 grid.Text(x + rightKey + 1, y, right[i].Text, Desc);
             }
         }
@@ -284,7 +247,7 @@ public static class HelpOverlay
         for (var i = 0; i < shown; i++)
             keys.Add(rows[i]);
         if (hidden > 0)
-            keys[keys.Count - 1] = new HelpRow("…", hidden + " more: widen the window");
+            keys[keys.Count - 1] = MoreNote(hidden);
         var keyW = KeyWidth(keys);
         var descW = geo.Width - 5 - keyW;
         if (descW < 8)
@@ -299,11 +262,11 @@ public static class HelpOverlay
         var boxH = rows.Count + 2;
         var x0 = Math.Max(0, (geo.Width - boxW) / 2);
         var y0 = Math.Max(0, (geo.Height - boxH) / 2);
+        var keyW = KeyWidth(rows);
         DrawBox(grid, x0, y0, boxW, boxH);
         for (var i = 0; i < rows.Count; i++)
         {
-            var keyW = KeyWidth(rows);
-            grid.Text(x0 + 2, y0 + 1 + i, rows[i].Key, Key);
+            grid.Text(x0 + 2, y0 + 1 + i, rows[i].Key, KeyStyle);
             grid.Text(x0 + 2 + keyW + 1, y0 + 1 + i, rows[i].Text, Desc);
         }
     }

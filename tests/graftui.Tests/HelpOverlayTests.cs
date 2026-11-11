@@ -25,28 +25,27 @@ public class HelpOverlayTests
     [Fact]
     public void The_branches_popup_lists_every_branch_key_with_its_title()
     {
-        var named = HelpOverlay.ForBar(BranchesBar(), "Preview");
+        var named = HelpOverlay.ForBar(BranchesBar());
 
         Assert.Equal("Keys — Branches", named.Title);
-        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "r", "i", "u", "v", "Esc", "Ctrl+C" }, RowKeys(named.Rows));
+        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "r", "i", "u", "v", "Esc" }, RowKeys(named.Rows));
     }
 
     [Fact]
     public void The_changes_popup_lists_every_change_key_with_its_title()
     {
-        var named = HelpOverlay.ForBar(ChangesBar(StagedSelected), "Diff");
+        var named = HelpOverlay.ForBar(ChangesBar(StagedSelected));
 
         Assert.Equal("Keys — Changes", named.Title);
-        Assert.Equal(new[] { "Tab", "↑↓", "Space", "a", "U", "c", "A", "x", "z", "Z", "u", "v", "Esc", "Ctrl+C" },
-            RowKeys(named.Rows));
+        Assert.Equal(new[] { "Tab", "↑↓", "Space", "a", "U", "c", "A", "x", "z", "Z", "u", "v", "Esc" }, RowKeys(named.Rows));
     }
 
     [Fact]
     public void The_space_row_says_stage_or_unstage_by_the_selected_row()
     {
-        var staged = HelpOverlay.ForBar(ChangesBar(StagedSelected), "").Rows.Single(r => r.Key == "Space");
-        var unstaged = HelpOverlay.ForBar(ChangesBar(UnstagedSelected), "").Rows.Single(r => r.Key == "Space");
-        var none = HelpOverlay.ForBar(ChangesBar(ChangesKeyState.Empty), "").Rows.Single(r => r.Key == "Space");
+        var staged = HelpOverlay.ForBar(ChangesBar(StagedSelected)).Rows.Single(r => r.Key == "Space");
+        var unstaged = HelpOverlay.ForBar(ChangesBar(UnstagedSelected)).Rows.Single(r => r.Key == "Space");
+        var none = HelpOverlay.ForBar(ChangesBar(ChangesKeyState.Empty)).Rows.Single(r => r.Key == "Space");
 
         Assert.Equal("unstage", staged.Text);
         Assert.Equal("stage", unstaged.Text);
@@ -59,7 +58,7 @@ public class HelpOverlayTests
         var bar = BranchesBar();
         bar.BranchesState = BranchesKeyState.Empty with { Pause = PauseKind.Conflict };
 
-        var named = HelpOverlay.ForBar(bar, "Paused");
+        var named = HelpOverlay.ForBar(bar);
 
         Assert.Equal("Keys — Branches", named.Title);
         Assert.Equal(new[] { "Enter", "S", "X", "Tab", "Esc" }, RowKeys(named.Rows));
@@ -78,52 +77,25 @@ public class HelpOverlayTests
     }
 
     [Fact]
-    public void The_commit_form_names_save_by_the_focused_field()
-    {
-        var subject = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Input, BodyFocused = false }, "Commit");
-        var body = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Input, BodyFocused = true }, "Commit");
-
-        Assert.Equal("Keys — Commit", subject.Title);
-        Assert.Equal(new[] { "Enter", "Tab", "Ctrl+Enter", "Esc" }, RowKeys(subject.Rows));
-        Assert.Equal(new[] { "Ctrl+J", "Tab", "Esc" }, RowKeys(body.Rows));
-    }
-
-    [Fact]
-    public void The_message_box_names_the_enter_action_and_esc_cancels()
-    {
-        var stash = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Message, MessageEnterLabel = " stash" }, "");
-        var create = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Message, MessageEnterLabel = " create" }, "");
-        var rename = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Message, MessageEnterLabel = " rename" }, "");
-
-        Assert.Equal("Keys — Stash", stash.Title);
-        Assert.Equal("Keys — New branch", create.Title);
-        Assert.Equal("Keys — Rename", rename.Title);
-        Assert.Equal("stash", stash.Rows[0].Text);
-    }
-
-    [Fact]
-    public void A_question_uses_its_own_yes_key_and_labels_with_the_art_title()
-    {
-        var bar = new KeyBarView { Mode = KeyBarMode.Ask, AskKey = "1", AskYesLabel = " yes, drop it", AskNoLabel = " keep" };
-
-        var named = HelpOverlay.ForBar(bar, "Delete branch?");
-
-        Assert.Equal("Keys — Delete branch?", named.Title);
-        Assert.Equal(new[] { "1", "n", "Esc" }, RowKeys(named.Rows));
-        Assert.Equal("yes, drop it", named.Rows[0].Text);
-    }
-
-    [Fact]
     public void The_confirm_and_todo_popups_name_their_screens()
     {
-        var confirm = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Confirm }, "");
-        var todo = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Todo }, "");
+        var confirm = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Confirm });
+        var todo = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Todo });
 
         Assert.Equal("Keys — Rebase", confirm.Title);
         Assert.Equal(new[] { "Enter", "Esc" }, RowKeys(confirm.Rows));
         Assert.Equal("Keys — Todo", todo.Title);
         Assert.Contains("Enter", RowKeys(todo.Rows));
         Assert.Contains("d", RowKeys(todo.Rows));
+    }
+
+    [Fact]
+    public void The_todo_popup_lists_alt_up_and_down_as_moving_a_row()
+    {
+        var todo = HelpOverlay.TodoRows();
+
+        var alt = todo.Single(r => r.Key == "Alt+↑↓");
+        Assert.Equal("move row", alt.Text);
     }
 
     [Fact]
@@ -154,6 +126,32 @@ public class HelpOverlayTests
         var frame = HelpOverlay.Frame(geo, grid, rows);
 
         Assert.Contains("more: widen the window", GridText(frame.Grid));
+    }
+
+    [Fact]
+    public void The_more_note_counts_the_row_it_takes_the_place_of_in_two_columns()
+    {
+        // 14 rows on a room of 5 in each column: 10 rows would show, but the note takes one of them, so 5 rows are hidden.
+        var rows = Enumerable.Range(1, 14).Select(i => new HelpRow("k", "row " + i)).ToList();
+        var geo = new ArtGeometry(60, 7, 6, 2, 6, 20);
+        var grid = new ArtGrid(geo.Width, geo.Height);
+
+        var frame = HelpOverlay.Frame(geo, grid, rows);
+
+        Assert.Contains("5 more: widen the window", GridText(frame.Grid));
+    }
+
+    [Fact]
+    public void The_more_note_counts_the_row_it_takes_the_place_of_in_one_column()
+    {
+        // Too narrow for two columns: 14 rows on a room of 5 show 5, the note takes one, so 10 rows are hidden.
+        var rows = Enumerable.Range(1, 14).Select(i => new HelpRow("k", "row " + i)).ToList();
+        var geo = new ArtGeometry(24, 7, 6, 2, 6, 20);
+        var grid = new ArtGrid(geo.Width, geo.Height);
+
+        var frame = HelpOverlay.Frame(geo, grid, rows);
+
+        Assert.Contains("10 more", GridText(frame.Grid));
     }
 
     [Fact]

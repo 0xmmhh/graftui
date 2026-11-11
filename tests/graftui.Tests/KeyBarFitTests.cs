@@ -298,7 +298,7 @@ public class KeyBarFitTests
     }
 
     private static IReadOnlyList<HelpRow> HelpRows() =>
-        HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Branches }, "").Rows;
+        HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Branches }).Rows;
 
     [Fact]
     public void Confirm_bar_lists_enter_rebase_and_esc_cancel()
@@ -320,7 +320,7 @@ public class KeyBarFitTests
         var bar = new KeyBarView { Mode = KeyBarMode.Branches };
 
         Assert.DoesNotContain("i interactive", Bar(bar.Items()));
-        Assert.Contains("i", HelpOverlay.ForBar(bar, "").Rows.Select(r => r.Key));
+        Assert.Contains("i", HelpOverlay.ForBar(bar).Rows.Select(r => r.Key));
     }
 
     [Fact]

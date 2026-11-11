@@ -261,6 +261,9 @@ public sealed class AppController
         };
         // The todo list hides its art by the pane's height. The viewport is current only after the layout, which runs after ScreenChanged.
         Art.ViewportChanged += (_, _) => BranchesTab.RefreshTodoArt();
+        // The help popup needs the art's room. ViewportChanged is not raised when the pane shrinks to no height at all, so this runs after
+        // every layout of the window instead, when the art's viewport is current.
+        window.SubViewsLaidOut += (_, _) => CloseHelpWithoutRoom();
         App.Keyboard.KeyDown += OnKeyDown;
 
         BranchesTab.RequestPreview();
@@ -385,13 +388,14 @@ public sealed class AppController
     /// </summary>
     internal void OpenHelp()
     {
-        if (HelpOpen || !ArtFits())
+        if (HelpOpen)
+            return;
+        if (!ArtFits())
         {
-            if (!ArtFits())
-                LogMessage("Refused: widen the window to see every key", Bad);
+            LogMessage("Refused: widen the window to see every key", Bad);
             return;
         }
-        var named = HelpOverlay.ForBar(Keys, Art.Title);
+        var named = HelpOverlay.ForBar(Keys);
         _helpTitle = Art.Title;
         _helpScene = Art.Scene;
         _helpSingleLine = Art.SingleLine;
@@ -423,11 +427,20 @@ public sealed class AppController
         Art.Title = _helpTitle;
         Art.ShowScene(_helpScene, _helpSingleLine);
         Art.HideArt = _helpHideArt;
+        // The todo list's art follows the pane's height, which may have changed while the popup was open (its refresh waited).
+        BranchesTab.RefreshTodoArt();
         Art.SetNeedsDraw();
         if (ActiveTab == TabKind.Changes)
             ChangesTab.RequestRefresh();
         else
             BranchesTab.RequestPreview();
+    }
+
+    /// <summary>The popup is drawn over the art: when the art no longer fits, the popup closes and the screen under it comes back.</summary>
+    private void CloseHelpWithoutRoom()
+    {
+        if (HelpOpen && !ArtFits())
+            CloseHelp();
     }
 
     private void OnKeyDown(object? sender, Key e)

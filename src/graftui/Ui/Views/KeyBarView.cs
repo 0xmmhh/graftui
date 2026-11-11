@@ -95,8 +95,9 @@ public sealed class KeyBarView : View
 
     /// <summary>
     /// The Changes tab's main keys in the order they are listed: the rest (stage and unstage all, amend, discard,
-    /// stash, pop, the arrows) still work and are listed in the ? popup. Priority decides what is dropped first when the
-    /// bar is narrow (higher is kept): Esc, Tab, Space, c, ?. Space says stage or unstage by the selected row.
+    /// stash, pop) still work and are listed in the ? popup. Priority decides what is dropped first when the bar is
+    /// narrow (higher is kept): the file arrows go first, then u, ?, c, Space, Tab and Esc last. Space says stage or unstage
+    /// by the selected row.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> ChangesItems(ChangesKeyState s)
     {
