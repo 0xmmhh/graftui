@@ -11,7 +11,7 @@ using Terminal.Gui.Time;
 namespace graftui.Tests;
 
 /// <summary>
-/// The preview after a branch change (switch, rebase, interactive rebase) finishes. The change's result owns the art, so the preview must
+/// The preview after a branch change (switch, rebase, interactive rebase, resume) finishes. The change's result owns the art, so the preview must
 /// not draw "Loading…" over it, and the art must never be left on "Loading…" after the result. The workers of a change deliver through the
 /// app's UI queue, which never runs headless, so each test hands the change's finish to the tab directly, as the worker would.
 /// </summary>
@@ -36,16 +36,21 @@ public sealed class PreviewAfterChangeTests : IDisposable
         var snapshot = ReadSnapshot(repo);
         var app = OpenApp(repo, snapshot);
         app.BranchesTab.SelectName("feature");
-        app.BranchesTab.DrawPreview(LayoutOf(repo, snapshot, "feature"));
+        var before = LayoutOf(repo, snapshot, "feature");
+        app.BranchesTab.DrawPreview(before);
 
-        repo.Run("switch", "-q", "feature");
+        var outcome = SwitchToFeature(repo);
         var after = ReadSnapshot(repo);
-        app.BranchesTab.EndBranchChange(SwitchFinish("feature", after));
+        var finish = BranchesTab.SwitchFinish(outcome, "feature", after, before);
+
+        var frame = app.Art.Scene;
+        app.BranchesTab.EndBranchChange(finish);
         // The counts read that follows applies the same snapshot again.
         app.ApplySnapshot(after);
 
         Assert.NotNull(app.Result);
         Assert.False(ShowsLoading(app));
+        Assert.Same(frame, app.Art.Scene);
     }
 
     // B2 and B3: a plain rebase (`r`) or an interactive one (`i`) finishes with the preview on the art.
@@ -67,13 +72,52 @@ public sealed class PreviewAfterChangeTests : IDisposable
         var after = ReadSnapshot(repo);
         var finish = BranchesTab.RebaseFinish(outcome, after, check.Rows, before, EngineOf(repo), interactive);
 
+        var frame = app.Art.Scene;
         app.BranchesTab.EndBranchChange(finish);
         app.ApplySnapshot(after);
 
         Assert.NotNull(app.Result);
         Assert.False(ShowsLoading(app));
+        Assert.Same(frame, app.Art.Scene);
     }
 
+    // A paused rebase resumed to the end (Enter, once the conflict is resolved): the resume's finish runs with the art showing the pause's layout.
+    [Fact]
+    public void A_resume_that_finishes_a_paused_rebase_leaves_the_result_on_the_art_not_Loading()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var oldTip = repo.Head;
+        var op = new RebaseOperation(repo.Git);
+        var request = new RebaseRequest("main");
+        var check = op.Check(request);
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(request, check).Kind);
+        repo.Write("app.txt", "resolved\n");
+
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        var stop = snapshot.Paused!;
+        var bare = GraphLayout.Minimal(snapshot.CurrentBranch, snapshot.CurrentBranch.Length == 0, "main", snapshot.HeadHash ?? "", "mainhash");
+        var before = app.BranchesTab.ResumeLayout(stop, oldTip, snapshot, bare);
+        app.BranchesTab.DrawPreview(before);
+
+        var resume = new ResumeSequenceOperation(repo.Git);
+        var resumeRequest = new ResumeRequest(ResumeAction.Continue);
+        var outcome = resume.Run(resumeRequest, resume.Check(resumeRequest));
+        Assert.Equal(SequenceOutcomeKind.Done, outcome.Kind);
+        var after = ReadSnapshot(repo);
+        var finish = BranchesTab.SequenceFinish(outcome, after, stop.Rows ?? [], before, EngineOf(repo), interactive: false);
+
+        var frame = app.Art.Scene;
+        app.BranchesTab.EndBranchChange(finish);
+        app.ApplySnapshot(after);
+
+        Assert.NotNull(app.Result);
+        Assert.False(ShowsLoading(app));
+        Assert.Same(frame, app.Art.Scene);
+    }
+
+    // Guards the hand-back path only, so it passes with or without the fix in EndBranchChange.
     // The hand-back: a key that gives the art back to the browse preview asks for the preview of the current snapshot, and that load draws.
     [Fact]
     public void A_key_that_hands_the_art_back_after_a_change_draws_the_preview_of_the_current_snapshot()
@@ -82,11 +126,12 @@ public sealed class PreviewAfterChangeTests : IDisposable
         var snapshot = ReadSnapshot(repo);
         var app = OpenApp(repo, snapshot);
         app.BranchesTab.SelectName("feature");
-        app.BranchesTab.DrawPreview(LayoutOf(repo, snapshot, "feature"));
+        var before = LayoutOf(repo, snapshot, "feature");
+        app.BranchesTab.DrawPreview(before);
 
-        repo.Run("switch", "-q", "feature");
+        var outcome = SwitchToFeature(repo);
         var after = ReadSnapshot(repo);
-        app.BranchesTab.EndBranchChange(SwitchFinish("feature", after));
+        app.BranchesTab.EndBranchChange(BranchesTab.SwitchFinish(outcome, "feature", after, before));
 
         _ui.Keyboard.RaiseKeyDownEvent(Key.CursorDown);
 
@@ -114,10 +159,17 @@ public sealed class PreviewAfterChangeTests : IDisposable
             (snap, b) => reader.LoadLayout(snap, b, CancellationToken.None));
     }
 
-    /// <summary>The finish a switch gives on success: the result caption and the branch to select.</summary>
-    private static BranchesTab.BranchFinish SwitchFinish(string name, RepoSnapshot after) =>
-        new(new BranchResult(true, "Switched", new Caption($"✔ Switched to {name}", new Style(Ink.Ok, true)), null), [], [],
-            $"graftui: switched to {name}", after, name);
+    /// <summary>Runs the switch to feature the way the Branches tab runs it (Check, then Run) and returns git's outcome.</summary>
+    private static SwitchOutcome SwitchToFeature(TempRepo repo)
+    {
+        var op = new SwitchOperation(repo.Git);
+        var request = new SwitchRequest("feature");
+        var check = op.Check(request);
+        Assert.True(check.CanRun, check.Refusal);
+        var outcome = op.Run(request, check);
+        Assert.Equal(SwitchKind.Switched, outcome.Kind);
+        return outcome;
+    }
 
     private AppController OpenApp(TempRepo repo, RepoSnapshot snapshot)
     {
