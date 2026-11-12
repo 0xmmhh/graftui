@@ -143,6 +143,26 @@ public sealed class PreviewAfterChangeTests : IDisposable
         Assert.Same(layout, app.BranchesTab.Shown);
     }
 
+    // An exception on the worker of m or u (before any screen of theirs is up) gives the keys and the preview back.
+    [Fact]
+    public void A_failed_merge_or_undo_gives_the_keys_and_the_preview_back()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        app.BranchesTab.SelectName("feature");
+        app.Busy = true;
+        app.Keys.Busy = true;
+        app.Result = "feature";
+
+        app.BranchesTab.FailMergeOrUndo(new InvalidOperationException("git broke"));
+
+        Assert.False(app.Busy);
+        Assert.False(app.Keys.Busy);
+        Assert.Null(app.Result);
+        Assert.Equal("git broke", app.Status.ErrorText);
+    }
+
     private static bool ShowsLoading(AppController app) => app.Art.Scene is null && app.Art.FallbackCaption?.Text == "Loading…";
 
     private static RepoSnapshot ReadSnapshot(TempRepo repo) => new RepoReader(repo.Git).LoadSnapshot(withCounts: true, CancellationToken.None);

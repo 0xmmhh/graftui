@@ -155,6 +155,18 @@ internal sealed partial class BranchesTab
         RestoreAfterError();
     }
 
+    /// <summary>
+    /// An exception on the worker of a merge or an undo, before any screen of theirs is up: shown on the status bar, the keys come back, the
+    /// preview of the selection is drawn again and the counts are re-read (the stale snapshot is what the preview just used).
+    /// </summary>
+    internal void FailMergeOrUndo(Exception ex)
+    {
+        _app.ShowGitError(ex);
+        _app.MarkChangeOutcomeShown();
+        RestoreAfterError();
+        _app.ReloadCountsAsync();
+    }
+
     /// <summary>Gives the keys back after a check failed before anything started: the preview of the selection comes back.</summary>
     private void RestoreAfterError()
     {

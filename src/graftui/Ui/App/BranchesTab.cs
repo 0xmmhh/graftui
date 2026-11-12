@@ -150,13 +150,7 @@ internal sealed partial class BranchesTab
             }
             catch (Exception ex)
             {
-                _app.Ui(() =>
-                {
-                    _app.ShowGitError(ex);
-                    // The preview and the counts come back, as after a failed branch change.
-                    RestoreAfterError();
-                    _app.ReloadCountsAsync();
-                });
+                _app.Ui(() => FailMergeOrUndo(ex));
                 return null;
             }
         }, CancellationToken.None);
