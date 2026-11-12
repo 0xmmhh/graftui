@@ -117,6 +117,29 @@ public class HelpOverlayTests
     }
 
     [Fact]
+    public void The_branches_popup_explains_the_dim_dots_in_the_caption_and_keeps_every_key_row()
+    {
+        var geo = new ArtGeometry(60, 8, 6, 2, 5, 20);
+        var rows = HelpOverlay.BranchesRows();
+
+        var frame = HelpOverlay.Frame(geo, new ArtGrid(geo.Width, geo.Height), rows, HelpOverlay.SharedLegend);
+
+        Assert.Equal("dim dots: shared history · ? closes · Esc closes", frame.Caption!.Text);
+        Assert.Contains("quit", GridText(frame.Grid));
+    }
+
+    [Fact]
+    public void The_legend_is_left_out_of_a_narrow_caption_and_of_the_other_popups()
+    {
+        var narrow = new ArtGeometry(50, 9, 6, 2, 6, 20);
+
+        var frame = HelpOverlay.Frame(narrow, new ArtGrid(50, 9), HelpOverlay.BranchesRows(), HelpOverlay.SharedLegend);
+
+        Assert.Equal("? closes · Esc closes", frame.Caption!.Text);
+        Assert.Null(HelpOverlay.LegendFor(ChangesBar(StagedSelected)));
+    }
+
+    [Fact]
     public void The_frame_fits_a_short_art_with_a_note_naming_how_many_keys_are_hidden()
     {
         var rows = HelpOverlay.BranchesRows();
