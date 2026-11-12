@@ -340,12 +340,9 @@ public static class MergeScenes
         return first + (files.Count > 1 ? $" +{files.Count - 1} more" : "");
     }
 
-    /// <summary>The dim label under the shared history, two columns clear of the fork point's column.</summary>
-    internal const string SharedLabel = "shared";
-
     /// <summary>
-    /// The commits both branches share, left of the fork point: dim grey small dots on dim segments, with a dim "shared" label
-    /// under them, so the shared history recedes and each branch's own commits stay bright. At most three are drawn; a dim ┄
+    /// The commits both branches share, left of the fork point: dim grey small dots on dim segments, with no label (the
+    /// help popup has a legend line), so the shared history recedes and each branch's own commits stay bright. At most three are drawn; a dim ┄
     /// tail says older commits were left out.
     /// </summary>
     internal static void DrawShared(ArtGrid grid, ArtGeometry g, GraphLayout L)
@@ -368,11 +365,9 @@ public static class MergeScenes
                 grid.HLine(x - s + 2, x - 1, g.A, Dim, '┄');
             grid.Put(x, g.A, '·', Dim);
         }
-        if (n > 0)
-            grid.Text(g.XB - SharedLabel.Length - 2, g.A + 1, SharedLabel, Dim);
     }
 
-    /// <summary>The history row of a branch shown alone (the Same case): bright dots in the branch's colour, no "shared" label.</summary>
+    /// <summary>The history row of a branch shown alone (the Same case): bright dots in the branch's colour.</summary>
     private static void DrawOwnHistory(ArtGrid grid, ArtGeometry g, GraphLayout L)
     {
         var own = new Style(BranchInks.Current(L));

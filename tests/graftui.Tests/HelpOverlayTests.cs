@@ -28,7 +28,7 @@ public class HelpOverlayTests
         var named = HelpOverlay.ForBar(BranchesBar());
 
         Assert.Equal("Keys — Branches", named.Title);
-        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "r", "i", "u", "v", "Esc" }, RowKeys(named.Rows));
+        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "r", "i", "u", "v", "Esc", "· · ·" }, RowKeys(named.Rows));
     }
 
     [Fact]
@@ -114,6 +114,14 @@ public class HelpOverlayTests
         Assert.Contains("┌", text);
         Assert.Contains("┐", text);
         Assert.Contains("└", text);
+    }
+
+    [Fact]
+    public void The_branches_help_has_a_legend_line_for_the_dim_shared_dots()
+    {
+        var rows = HelpOverlay.BranchesRows();
+
+        Assert.Contains(rows, r => r.Text.Contains("both branches share"));
     }
 
     [Fact]

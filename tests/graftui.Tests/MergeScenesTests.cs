@@ -352,49 +352,34 @@ public class MergeScenesTests
     }
 
     [Fact]
-    public void The_shared_label_sits_under_the_dots_clear_of_the_fork_points_column()
+    public void The_shared_dots_have_no_label_under_them_and_the_connector_is_still_drawn()
     {
         var grid = MergeScenes.Preview(Geo9, Shared3).Grid;
         var row = RowText(grid, Geo9.A + 1);
 
-        Assert.Contains(MergeScenes.SharedLabel, row, StringComparison.Ordinal);
-        Assert.Equal(new Style(Ink.Dim), grid[row.IndexOf(MergeScenes.SharedLabel, StringComparison.Ordinal), Geo9.A + 1].Style);
-        // The two cells left of the connector stay blank, and the connector is still drawn.
-        Assert.Equal(' ', grid[Geo9.XB - 2, Geo9.A + 1].Ch);
-        Assert.Equal(' ', grid[Geo9.XB - 1, Geo9.A + 1].Ch);
+        Assert.DoesNotContain("shared", row, StringComparison.Ordinal);
         Assert.Equal('│', grid[Geo9.XB, Geo9.A + 1].Ch);
     }
 
     [Fact]
-    public void No_shared_commits_means_no_shared_label()
-    {
-        var unrelated = Layouts.Diverged() with { Shared = [], MergeBase = null, Kind = GraphKind.Unrelated };
-
-        var grid = MergeScenes.Preview(Geo9, unrelated).Grid;
-
-        Assert.DoesNotContain(MergeScenes.SharedLabel, RowText(grid, Geo9.A + 1), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_branch_shown_alone_keeps_its_history_bright_with_no_shared_label()
+    public void A_branch_shown_alone_keeps_its_history_bright()
     {
         var same = Shared3 with { Selected = Shared3.Current, SelectedTip = Shared3.CurrentTip, Kind = GraphKind.Same };
 
         var grid = MergeScenes.Preview(Geo9, same).Grid;
 
-        Assert.DoesNotContain(MergeScenes.SharedLabel, RowText(grid, Geo9.A + 1), StringComparison.Ordinal);
         Assert.DoesNotContain("·", RowText(grid, Geo9.A), StringComparison.Ordinal);
         Assert.NotEqual(new Style(Ink.Dim), grid[Geo9.XB, Geo9.A].Style);
     }
 
     [Fact]
-    public void The_narrowest_art_still_fits_the_shared_label()
+    public void The_narrowest_art_has_no_label_and_keeps_the_connector()
     {
         var narrow = ArtGeometry.For(40, 9)!;
 
         var grid = MergeScenes.Preview(narrow, Layouts.Diverged()).Grid;
 
-        Assert.Contains(MergeScenes.SharedLabel, RowText(grid, narrow.A + 1), StringComparison.Ordinal);
+        Assert.DoesNotContain("shared", RowText(grid, narrow.A + 1), StringComparison.Ordinal);
         Assert.Equal('│', grid[narrow.XB, narrow.A + 1].Ch);
     }
 

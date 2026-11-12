@@ -52,6 +52,7 @@ public static class HelpOverlay
         new HelpRow("u", "undo"),
         new HelpRow("v", "exact commands"),
         new HelpRow("Esc", "quit"),
+        new HelpRow("· · ·", "dim dots: history both branches share"),
     ];
 
     /// <summary>The Changes tab's keys in browse mode. The bar shows only Tab, Space, c, u and ?; the rest still work.</summary>
