@@ -7,6 +7,8 @@ namespace graftui.Tests;
 /// <summary>Pop (Z) against throwaway repos: a clean pop restores the entry, and a pop that git cannot apply leaves the state as it was.</summary>
 public class PopSafetyTests
 {
+    private const string StashMergeMessage = "graftui: before merging x into main";
+
     private static PopOutcome Pop(TempRepo repo, string? expectedTop = null)
     {
         var op = new PopOperation(repo.Git);
@@ -239,5 +241,129 @@ public class PopSafetyTests
         Assert.Equal(earlier, repo.Run("rev-parse", "refs/graftui/rescue/pop"));
         Assert.Equal(seen, repo.Run("rev-parse", "stash@{0}"));
         Assert.Equal(before, repo.Status());
+    }
+
+    [Fact]
+    public void A_stash_merge_entry_whose_index_pop_conflicts_in_the_tree_is_rolled_back_and_the_entry_is_kept()
+    {
+        // HEAD's B equals the stash's index B, so git skips the index step. The tree merge of A to C, against B, then conflicts.
+        using var repo = TempRepo.Create();
+        repo.Commit("f.txt", "A\n", "Add f");
+        repo.Write("f.txt", "B\n");
+        repo.Run("add", "f.txt");
+        repo.Write("f.txt", "C\n");
+        repo.Run("stash", "push", "-m", StashMergeMessage);
+        repo.Commit("f.txt", "B\n", "Move f on main");
+        var stashed = repo.Run("rev-parse", "stash@{0}");
+        var statusBefore = repo.Status();
+        var headBefore = repo.Head;
+
+        var outcome = Pop(repo, stashed);
+
+        Assert.Equal(PopKind.Conflict, outcome.Kind);
+        Assert.Equal(new[] { "f.txt" }, outcome.ConflictFiles);
+        Assert.Equal(statusBefore, repo.Status());
+        Assert.Equal(headBefore, repo.Head);
+        Assert.Equal("B\n", File.ReadAllText(Path.Combine(repo.Dir, "f.txt")));
+        Assert.DoesNotContain("<<<<<<<", File.ReadAllText(Path.Combine(repo.Dir, "f.txt")));
+        Assert.Equal("", repo.Run("diff", "--name-only", "--diff-filter=U"));
+        Assert.Equal(stashed, repo.Run("rev-parse", "stash@{0}"));
+        Assert.Contains(StashMergeMessage, repo.Run("stash", "list"));
+        Assert.Equal("", RescueRefs(repo));
+        Assert.Null(outcome.Undo);
+
+        // The failed `pop --index` ran, and the plain pop did not run after it.
+        Assert.Contains(outcome.Commands, c => c.Args.SequenceEqual(["stash", "pop", "--index"]) && c.ExitCode != 0);
+        Assert.DoesNotContain(outcome.Commands, c => c.Args.SequenceEqual(["stash", "pop"]));
+    }
+
+    [Fact]
+    public void Up_front_refusal_is_decided_from_the_repo_and_not_from_git_text()
+    {
+        // RefusedUpFront never reads the text git printed, so an untouched repo counts as refused up front, with or without any stderr.
+        using var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Write("app.txt", "one\n");
+        repo.Run("stash", "push", "-q");
+        var top = repo.Run("rev-parse", "stash@{0}");
+        var log = new List<GitResult>();
+        var gitDir = RepoState.GitDir(repo.Git, log)!;
+        var state = new WorkState(repo.Git, gitDir);
+        var before = state.Take(log)!;
+        var op = new PopOperation(repo.Git);
+
+        Assert.True(op.RefusedUpFront(state, before, top, log));
+
+        // The stash entry is not the one that was popped: not a refusal, so the state is restored instead.
+        Assert.False(op.RefusedUpFront(state, before, repo.Head, log));
+
+        // The files changed since the snapshot: not a refusal.
+        repo.Write("app.txt", "two\n");
+        Assert.False(op.RefusedUpFront(state, before, top, log));
+    }
+
+    /// <summary>The first line git printed on stderr for the command with these arguments.</summary>
+    private static string FirstStderrLine(PopOutcome outcome, string[] args)
+    {
+        var result = outcome.Commands.First(c => c.Args.SequenceEqual(args));
+        return result.StdErr.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
+    }
+
+    [Fact]
+    public void A_stash_merge_entry_that_an_unstaged_edit_overlaps_is_refused_with_the_git_line_and_changes_nothing()
+    {
+        // f.txt is staged as B over A, and the stash keeps C in the tree. The user then edits f.txt again, unstaged. git will not
+        // let either pop overwrite that edit. The staged part differs from the working part, so Z refuses and names it.
+        using var repo = TempRepo.Create();
+        repo.Commit("f.txt", "A\n", "Add f");
+        repo.Write("f.txt", "B\n");
+        repo.Run("add", "f.txt");
+        repo.Write("f.txt", "C\n");
+        repo.Run("stash", "push", "-m", StashMergeMessage);
+        var stashed = repo.Run("rev-parse", "stash@{0}");
+        repo.Write("f.txt", "D\n");
+        var statusBefore = repo.Status();
+        var headBefore = repo.Head;
+
+        var outcome = Pop(repo, stashed);
+
+        Assert.Equal(PopKind.Refused, outcome.Kind);
+        Assert.Contains(FirstStderrLine(outcome, ["stash", "pop", "--index"]), outcome.Message);
+        Assert.Contains("your staged f.txt can't be put back", outcome.Message);
+        Assert.Equal(statusBefore, repo.Status());
+        Assert.Equal(headBefore, repo.Head);
+        Assert.Equal("D\n", File.ReadAllText(Path.Combine(repo.Dir, "f.txt")));
+        Assert.Equal(stashed, repo.Run("rev-parse", "stash@{0}"));
+        Assert.Contains(StashMergeMessage, repo.Run("stash", "list"));
+        Assert.Equal("", RescueRefs(repo));
+        Assert.Null(outcome.Undo);
+    }
+
+    [Fact]
+    public void A_stash_merge_entry_with_nothing_staged_at_risk_is_still_refused_when_the_plain_pop_also_refuses()
+    {
+        // f.txt is staged as B and kept as B, so no staged content can be lost and the plain pop runs. Git refuses that pop too,
+        // because the user's unstaged edit overlaps the entry. The refusal comes back as Refused, and nothing changes.
+        using var repo = TempRepo.Create();
+        repo.Commit("f.txt", "A\n", "Add f");
+        repo.Write("f.txt", "B\n");
+        repo.Run("add", "f.txt");
+        repo.Run("stash", "push", "-m", StashMergeMessage);
+        var stashed = repo.Run("rev-parse", "stash@{0}");
+        repo.Write("f.txt", "D\n");
+        var statusBefore = repo.Status();
+        var headBefore = repo.Head;
+
+        var outcome = Pop(repo, stashed);
+
+        Assert.Equal(PopKind.Refused, outcome.Kind);
+        Assert.Contains("nothing changed, the stash entry is kept", outcome.Message);
+        Assert.Contains(FirstStderrLine(outcome, ["stash", "pop"]), outcome.Message);
+        Assert.Contains(outcome.Commands, c => c.Args.SequenceEqual(["stash", "pop"]) && c.ExitCode != 0);
+        Assert.Equal(statusBefore, repo.Status());
+        Assert.Equal(headBefore, repo.Head);
+        Assert.Equal("D\n", File.ReadAllText(Path.Combine(repo.Dir, "f.txt")));
+        Assert.Equal(stashed, repo.Run("rev-parse", "stash@{0}"));
+        Assert.Equal("", RescueRefs(repo));
     }
 }
