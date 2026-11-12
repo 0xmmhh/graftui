@@ -150,13 +150,7 @@ internal sealed partial class BranchesTab
             }
             catch (Exception ex)
             {
-                _app.Ui(() =>
-                {
-                    _app.ShowGitError(ex);
-                    _app.Busy = false;
-                    _app.Keys.Busy = false;
-                    _app.Keys.SetNeedsDraw();
-                });
+                _app.Ui(() => FailMergeOrUndo(ex));
                 return null;
             }
         }, CancellationToken.None);
