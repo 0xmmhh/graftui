@@ -153,9 +153,9 @@ internal sealed partial class BranchesTab
                 _app.Ui(() =>
                 {
                     _app.ShowGitError(ex);
-                    _app.Busy = false;
-                    _app.Keys.Busy = false;
-                    _app.Keys.SetNeedsDraw();
+                    // The preview and the counts come back, as after a failed branch change.
+                    RestoreAfterError();
+                    _app.ReloadCountsAsync();
                 });
                 return null;
             }
