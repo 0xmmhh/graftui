@@ -147,7 +147,7 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         var indexed = Call(log, GitArgs.Stash, "pop", "--index");
         if (indexed.Success)
             return Popped(state, check, copy, log);
-        if (!IndexRefused(indexed) || state.Take(log) != before)
+        if (!RefusedUpFront(state, before, top, log))
             return Conflicted(state, check, before, copy, indexed, log);
 
         // The plain pop would apply the working-tree part only. It is run when that loses nothing of the staged part.
@@ -179,9 +179,26 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         }
     }
 
-    /// <summary>git's refusal of `pop --index` when the staged part cannot apply. The tree is untouched when git says so.</summary>
-    private static bool IndexRefused(GitResult r) =>
-        (r.StdErr + "\n" + r.StdOut).Contains("Try without --index", StringComparison.Ordinal);
+    /// <summary>
+    /// True when a failed `pop --index` changed nothing, so the plain pop may be tried. It decides from the repo, not from git's
+    /// words: there are no unmerged files, the working tree and index equal the saved snapshot, and the stash entry is still the
+    /// one that was popped. Anything else goes to <see cref="Conflicted"/>, which restores the state from the copy if it changed.
+    /// </summary>
+    internal bool RefusedUpFront(WorkState state, WorkSnapshot before, string top, List<GitResult> log)
+    {
+        // Unmerged files mean git began to apply the entry, so the pop is not a plain refusal.
+        var unmerged = Call(log, "ls-files", "-u", "-z");
+        if (!unmerged.Success || unmerged.StdOut.Length > 0)
+            return false;
+
+        // The files and the index are exactly as they were before the pop.
+        if (state.Take(log) != before)
+            return false;
+
+        // The stash entry is still the one that was popped.
+        var now = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, StashRef);
+        return now.Success && now.StdOut.Trim() == top;
+    }
 
     /// <summary>
     /// The files whose staged version (the stash's index tree, S^2) differs from its working-tree version (S's tree). Empty when a plain
