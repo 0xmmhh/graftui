@@ -28,7 +28,7 @@ public class HelpOverlayTests
         var named = HelpOverlay.ForBar(BranchesBar());
 
         Assert.Equal("Keys — Branches", named.Title);
-        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "r", "i", "u", "v", "Esc", "· · ·" }, RowKeys(named.Rows));
+        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "r", "i", "u", "v", "Esc" }, RowKeys(named.Rows));
     }
 
     [Fact]
@@ -117,11 +117,26 @@ public class HelpOverlayTests
     }
 
     [Fact]
-    public void The_branches_help_has_a_legend_line_for_the_dim_shared_dots()
+    public void The_branches_popup_explains_the_dim_dots_in_the_caption_and_keeps_every_key_row()
     {
+        var geo = new ArtGeometry(60, 8, 6, 2, 5, 20);
         var rows = HelpOverlay.BranchesRows();
 
-        Assert.Contains(rows, r => r.Text.Contains("shared history"));
+        var frame = HelpOverlay.Frame(geo, new ArtGrid(geo.Width, geo.Height), rows, HelpOverlay.SharedLegend);
+
+        Assert.Equal("dim dots: shared history · ? closes · Esc closes", frame.Caption!.Text);
+        Assert.Contains("quit", GridText(frame.Grid));
+    }
+
+    [Fact]
+    public void The_legend_is_left_out_of_a_narrow_caption_and_of_the_other_popups()
+    {
+        var narrow = new ArtGeometry(50, 9, 6, 2, 6, 20);
+
+        var frame = HelpOverlay.Frame(narrow, new ArtGrid(50, 9), HelpOverlay.BranchesRows(), HelpOverlay.SharedLegend);
+
+        Assert.Equal("? closes · Esc closes", frame.Caption!.Text);
+        Assert.Null(HelpOverlay.LegendFor(ChangesBar(StagedSelected)));
     }
 
     [Fact]

@@ -420,18 +420,19 @@ public sealed class AppController
         Art.Title = named.Title;
         var under = _helpScene;
         var rows = named.Rows;
-        Art.Scene = geo => HelpFrame(geo, under, rows);
+        var legend = HelpOverlay.LegendFor(Keys);
+        Art.Scene = geo => HelpFrame(geo, under, rows, legend);
         Art.SetNeedsDraw();
     }
 
-    private static SceneFrame HelpFrame(ArtGeometry geo, Func<ArtGeometry, SceneFrame>? under, IReadOnlyList<HelpRow> rows)
+    private static SceneFrame HelpFrame(ArtGeometry geo, Func<ArtGeometry, SceneFrame>? under, IReadOnlyList<HelpRow> rows, string? legend)
     {
         ArtGrid grid;
         if (under is null)
             grid = new ArtGrid(geo.Width, geo.Height);
         else
             grid = under(geo).Grid;
-        return HelpOverlay.Frame(geo, grid, rows);
+        return HelpOverlay.Frame(geo, grid, rows, legend);
     }
 
     /// <summary>Closes the help popup and shows the screen it covered again, re-read if it may have gone stale.</summary>

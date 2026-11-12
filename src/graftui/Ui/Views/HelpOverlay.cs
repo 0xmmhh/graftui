@@ -37,6 +37,16 @@ public static class HelpOverlay
         return ("Keys — Branches", BranchesRows());
     }
 
+    /// <summary>The caption legend for the key bar's mode: only the Branches browse popup sits over the dim shared-history dots.</summary>
+    public static string? LegendFor(KeyBarView bar)
+    {
+        if (bar.Mode == KeyBarMode.Changes || bar.Mode == KeyBarMode.Confirm || bar.Mode == KeyBarMode.Todo)
+            return null;
+        if (bar.BranchesState.Pause is not null)
+            return null;
+        return SharedLegend;
+    }
+
     /// <summary>The Branches tab's keys in browse mode. The bar shows only Tab, m, s, u and ?; the rest still work.</summary>
     internal static IReadOnlyList<HelpRow> BranchesRows() =>
     [
@@ -52,7 +62,6 @@ public static class HelpOverlay
         new HelpRow("u", "undo"),
         new HelpRow("v", "exact commands"),
         new HelpRow("Esc", "quit"),
-        new HelpRow("· · ·", "shared history, dimmed"),
     ];
 
     /// <summary>The Changes tab's keys in browse mode. The bar shows only Tab, Space, c, u and ?; the rest still work.</summary>
@@ -125,11 +134,16 @@ public static class HelpOverlay
         new HelpRow("Esc", "close"),
     ];
 
+    /// <summary>The legend for the dim dots of the shared history, shown in the Branches popup's caption.</summary>
+    public const string SharedLegend = "dim dots: shared history";
+
+    private const int LegendMinWidth = 60;
+
     /// <summary>
     /// The popup over the art: the dimmed grid behind it with a centred box of key rows in two columns (one when narrow).
     /// Rows that do not fit are replaced by a note naming how many are hidden. The caption says how the popup closes.
     /// </summary>
-    public static SceneFrame Frame(ArtGeometry geo, ArtGrid grid, IReadOnlyList<HelpRow> rows)
+    public static SceneFrame Frame(ArtGeometry geo, ArtGrid grid, IReadOnlyList<HelpRow> rows, string? legend = null)
     {
         grid.DimAll();
         if (rows.Count == 0 || geo.Width < 20 || geo.Height < 4)
@@ -166,7 +180,11 @@ public static class HelpOverlay
         {
             return new SceneFrame(grid, new Caption("Widen the window to see every key", Dim));
         }
-        return new SceneFrame(grid, new Caption("? closes · Esc closes", Dim));
+        // The legend explains something in the art behind the popup, so it goes in the caption, never in a key row that could push Esc out.
+        var closes = "? closes · Esc closes";
+        if (legend is not null && geo.Width >= LegendMinWidth)
+            closes = legend + " · " + closes;
+        return new SceneFrame(grid, new Caption(closes, Dim));
     }
 
     /// <summary>

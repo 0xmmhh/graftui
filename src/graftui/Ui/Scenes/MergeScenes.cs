@@ -341,9 +341,9 @@ public static class MergeScenes
     }
 
     /// <summary>
-    /// The commits both branches share, left of the fork point: dim grey small dots on dim segments, with no label (the
-    /// help popup has a legend line), so the shared history recedes and each branch's own commits stay bright. At most three are drawn; a dim ┄
-    /// tail says older commits were left out.
+    /// The commits both branches share, left of the fork point: dim grey small dots on dim segments, unlabelled (the ? popup
+    /// explains them), so the shared history recedes and each branch's own commits stay bright. At most three are drawn; a dim ┄ tail says
+    /// older commits were left out.
     /// </summary>
     internal static void DrawShared(ArtGrid grid, ArtGeometry g, GraphLayout L)
     {
