@@ -103,6 +103,9 @@ internal sealed partial class BranchesTab
     {
         if (f.HoldWidth)
             _app.HoldBranchWidth();
+        // The result takes the art before the snapshot is applied. Applying it asks for the preview: with the art still free, that request
+        // draws "Loading…" over the change's last frame, and once the result is set nothing clears it. The name is set again below.
+        _app.Result = f.Select ?? SelectedName() ?? "";
         if (f.After is not null)
             _app.ApplySnapshot(f.After);
         if (f.Select is { } name)
