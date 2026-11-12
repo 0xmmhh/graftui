@@ -7,8 +7,9 @@ namespace graftui.Operations;
 /// <summary>
 /// Pop for the Changes tab (Z). An ordinary stash entry gets a plain `git stash pop` (no --index), so staged changes come back
 /// unstaged, as git does. graftui's own stash-merge entry (see <see cref="StashMergeOperation.MessageStart"/>) is popped with
-/// `--index`, so its staged changes stay staged. When git refuses that up front (the staged part cannot apply, tree untouched),
-/// the plain pop is used only if it loses nothing: every file's staged version must equal its working-tree version. Otherwise
+/// `--index`, so its staged changes stay staged. When `pop --index` fails and changes nothing (git can refuse it for any reason,
+/// and graftui does not read git's words to decide), the plain pop is used only if it loses nothing: every file's staged version
+/// must equal its working-tree version. Otherwise
 /// the pop is refused, nothing changes and the entry is kept. A plain pop that runs says that the staged changes came back unstaged.
 /// Check reads the repo and refuses when there is no stash, no commit, a merge in progress, conflicts, a nested repo or a
 /// submodule. It also refuses when the stash top is not the one the user saw.
@@ -136,8 +137,9 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
             return Done(PopKind.Failed, check.TopMessage, [], null,
                 $"could not save a safety copy ({GitClient.Describe(saved)}); nothing was popped", log);
 
-        // 3. The pop itself. A stash-merge entry is popped with its index first. git refuses --index before it touches the tree
-        // when the staged part cannot apply; then the plain pop runs, and the staged changes come back unstaged.
+        // 3. The pop itself. A stash-merge entry is popped with its index first. git can refuse --index before it touches the tree,
+        // for any reason (the staged part cannot apply, a local change is in the way). Then the plain pop may run, and the staged
+        // changes come back unstaged.
         if (!IsStashMergeEntry(check.TopMessage))
         {
             var plain = Call(log, GitArgs.Stash, "pop");
@@ -156,7 +158,8 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
             return Unchanged(check, copy,
                 "could not compare the staged and working versions of the stash; nothing was popped, the stash entry is kept", log);
         if (differing.Count > 0)
-            return Unchanged(check, copy, ChangeRefusals.StagedWouldBeLost(differing), log);
+            return Unchanged(check, copy,
+                $"git refused `stash pop --index` ({FirstLine(indexed)}); " + ChangeRefusals.StagedWouldBeLost(differing), log);
 
         var fallback = Call(log, GitArgs.Stash, "pop");
         if (!fallback.Success)

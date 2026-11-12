@@ -70,7 +70,8 @@ public class PopStashMergeEntryTests
         var outcome = Pop(repo);
 
         Assert.Equal(PopKind.Refused, outcome.Kind);
-        Assert.Equal(ChangeRefusals.StagedWouldBeLost(["f.txt"]), outcome.Message);
+        Assert.StartsWith("git refused `stash pop --index` (", outcome.Message);
+        Assert.EndsWith(ChangeRefusals.StagedWouldBeLost(["f.txt"]), outcome.Message);
         Assert.False(outcome.StagedCameBackUnstaged);
         Assert.Equal(statusBefore, repo.Status());
         Assert.Equal("D\n", File.ReadAllText(Path.Combine(repo.Dir, "f.txt")));
@@ -136,7 +137,7 @@ public class PopStashMergeEntryTests
         var outcome = Pop(repo);
 
         Assert.Equal(PopKind.Refused, outcome.Kind);
-        Assert.StartsWith("your staged a.txt, b.txt, c.txt +1 more can't be put back", outcome.Message);
+        Assert.Contains("your staged a.txt, b.txt, c.txt +1 more can't be put back", outcome.Message);
         Assert.Contains(StashMergeMessage, repo.Run("stash", "list"));
     }
 
