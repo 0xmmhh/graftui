@@ -121,7 +121,7 @@ public class HelpOverlayTests
     {
         var rows = HelpOverlay.BranchesRows();
 
-        Assert.Contains(rows, r => r.Text.Contains("both branches share"));
+        Assert.Contains(rows, r => r.Text.Contains("shared history"));
     }
 
     [Fact]
