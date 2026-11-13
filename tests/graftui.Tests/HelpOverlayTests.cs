@@ -210,7 +210,8 @@ public class HelpOverlayTests
     public void No_row_is_skipped_when_the_left_column_is_shorter_than_half()
     {
         // 14 change rows on a room of 6: the left column shows the first 6, so the right one must start at row 7 ("A", the seventh),
-        // not at row 8. The last right slot holds the note: "l" and "Esc" are the 2 hidden rows, and the note counts itself, so 3 more.
+        // not at row 8. The note takes the last right slot (the one "v" would have), so the 3 hidden rows are "v", "l" and "Esc", and
+        // the note reads "3 more" (it counts the rows it stands for).
         var rows = HelpOverlay.ChangesRows(StagedSelected);
         var geo = new ArtGeometry(100, 8, 6, 2, 6, 20);
         var grid = new ArtGrid(geo.Width, geo.Height);

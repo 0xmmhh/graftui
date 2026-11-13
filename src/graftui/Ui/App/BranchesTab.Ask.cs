@@ -48,6 +48,7 @@ internal sealed partial class BranchesTab
             return;
         }
 
+        _app.CloseLog();
         _question = q;
         Mode = BranchesMode.Ask;
         _app.Keys.Mode = KeyBarMode.Ask;

@@ -5,8 +5,8 @@ using Terminal.Gui.Drawing;
 namespace graftui.Ui.Views;
 
 /// <summary>
-/// The Commands pane, in two looks. Closed (the default), it is a strip: one row under the top panes, showing the newest line,
-/// or the newest failure of the current step in red. Open (<see cref="Open"/>, toggled with l), it is a framed list over the
+/// The Commands pane, in two looks. Closed (the default), it is a strip: one row under the top panes, showing the step's failure
+/// or refusal, else the newest line that is not git's output (see <see cref="StripLine"/>). Open (<see cref="Open"/>, toggled with l), it is a framed list over the
 /// bottom rows of the top panes: the newest lines, unless an anchor is set. Then the anchor entry is at the top as far as the
 /// end of the log allows (v1's rule, computed at draw time so it survives a resize).
 /// Each git invocation is one <see cref="LogEntry"/>. The list shows either the simplified lines or the exact lines
@@ -147,28 +147,69 @@ public sealed class LogView : PaneView
     }
 
     /// <summary>
-    /// The strip's line. The newest line of the list, unless the step (the lines from <paramref name="stepStart"/> on) holds a failure:
-    /// then the newest failure of the step wins, so a conflict's failed merge stays in view after the abort that follows it.
+    /// The strip's line. The rules, in order: the newest failure of the step (a failed command or a message in the failure colour);
+    /// else the newest "Refused:" message of the step, which stands for its indented detail lines; else the newest line that is
+    /// not git's output and not an indented detail line. Null when no line qualifies.
+    /// The lines from <paramref name="stepStart"/> on are the step. A failed merge followed by its abort shows the merge; a
+    /// "Conflicting files" message after it is a newer failure and shows instead.
     /// </summary>
     internal static LogLine? StripLine(IReadOnlyList<LogLine> lines, int stepStart)
     {
-        if (lines.Count == 0)
-            return null;
-        for (var i = lines.Count - 1; i >= Math.Max(0, stepStart); i--)
-            if (IsFailure(lines[i]))
-                return lines[i];
-        return lines[^1];
+        var first = Math.Max(0, stepStart);
+        var failure = NewestInStep(lines, first, IsFailure);
+        if (failure is not null)
+            return failure;
+        var refusal = NewestInStep(lines, first, IsRefusal);
+        if (refusal is not null)
+            return refusal;
+        return NewestShowable(lines);
     }
 
-    /// <summary>A failed command, or a message in the failure colour. Both show in red on the strip with "l details".</summary>
+    /// <summary>A failed command, or a message in the failure colour (bold or not). Shown on the strip in red, with "l details".</summary>
     internal static bool IsFailure(LogLine? line)
     {
         if (line is null)
             return false;
         if (line.Kind == LogKind.Command)
             return line.Failed;
-        return line.Kind == LogKind.Message && line.Style == new Style(Ink.Bad);
+        return line.Kind == LogKind.Message && line.Style.Ink == Ink.Bad;
     }
+
+    /// <summary>A "Refused:" message: a step that did not run, with its reason in the detail lines under it. Shown with "l details".</summary>
+    internal static bool IsRefusal(LogLine? line)
+    {
+        if (line is null)
+            return false;
+        return line.Kind == LogKind.Message && line.Text.StartsWith("Refused:", StringComparison.Ordinal);
+    }
+
+    /// <summary>A line that the strip may show: never git's output, and never an indented detail line of a message.</summary>
+    private static bool IsShowable(LogLine line)
+    {
+        if (line.Kind == LogKind.Output)
+            return false;
+        return !(line.Kind == LogKind.Message && line.Text.StartsWith(" ", StringComparison.Ordinal));
+    }
+
+    // The newest line from first on that matches the test, or null. Written out per rule so each one reads on its own.
+    private static LogLine? NewestInStep(IReadOnlyList<LogLine> lines, int first, Func<LogLine?, bool> matches)
+    {
+        for (var i = lines.Count - 1; i >= first; i--)
+            if (matches(lines[i]))
+                return lines[i];
+        return null;
+    }
+
+    private static LogLine? NewestShowable(IReadOnlyList<LogLine> lines)
+    {
+        for (var i = lines.Count - 1; i >= 0; i--)
+            if (IsShowable(lines[i]))
+                return lines[i];
+        return null;
+    }
+
+    /// <summary>True when the strip's line gets the "l details" hint: a failure or a refusal, which both have a reason to read.</summary>
+    internal static bool HasDetails(LogLine? line) => IsFailure(line) || IsRefusal(line);
 
     // The index of the first line that belongs to the current step: the first line of the first entry added since MarkStep.
     private int StepFirstLine(List<(LogLine Line, int Entry)> flat)
@@ -196,7 +237,8 @@ public sealed class LogView : PaneView
         var withHint = Count > 0 && w - 5 - hintCols >= MinStripText;
         if (!withHint)
         {
-            DrawStripText(line, w - 3);
+            // The line runs from x=1 to the column w-2: one blank column at each edge, as with the hint.
+            DrawStripText(line, w - 2);
             return;
         }
 
@@ -217,11 +259,11 @@ public sealed class LogView : PaneView
 
     /// <summary>
     /// The strip's hint: "l commands · v all" on the simplified list, "l commands · v simplified" on the exact one. When the line
-    /// shown is a failure, "l details" instead.
+    /// shown is a failure or a refusal, "l details" instead.
     /// </summary>
     private List<Seg> StripHint(LogLine? line)
     {
-        var first = IsFailure(line) ? " details · " : " commands · ";
+        var first = HasDetails(line) ? " details · " : " commands · ";
         var last = ShowExact ? " simplified" : " all";
         return [new Seg("l", FgB), new Seg(first, Dim), new Seg("v", FgB), new Seg(last, Dim)];
     }

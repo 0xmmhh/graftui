@@ -304,4 +304,72 @@ public class LogViewTests
 
         Assert.Equal(Abort(), log.StripLineNow());
     }
+
+    [Fact]
+    public void A_bold_red_message_is_a_failure_like_a_plain_red_one()
+    {
+        var bold = new LogLine(LogKind.Message, "Conflicting files: a.txt", 0, new Style(Ink.Bad, true));
+
+        Assert.True(LogView.IsFailure(bold));
+        Assert.Equal(bold, LogView.StripLine([Abort(), bold], 0));
+    }
+
+    [Fact]
+    public void A_refusal_in_the_step_wins_over_its_indented_detail_lines()
+    {
+        var refused = new LogLine(LogKind.Message, "Refused: working tree has uncommitted changes", 0, new Style(Ink.Warn, true));
+        var detail = new LogLine(LogKind.Message, "    commit or stash them first", 0);
+
+        Assert.Equal(refused, LogView.StripLine([refused, detail], 0));
+        Assert.True(LogView.HasDetails(refused));
+        Assert.False(LogView.IsFailure(refused));
+    }
+
+    [Fact]
+    public void A_failure_in_the_step_wins_over_a_newer_refusal()
+    {
+        var refused = new LogLine(LogKind.Message, "Refused: working tree has uncommitted changes", 0, new Style(Ink.Warn, true));
+
+        Assert.Equal(Merge(failed: true), LogView.StripLine([Merge(failed: true), refused], 0));
+    }
+
+    [Fact]
+    public void A_refusal_from_an_earlier_step_does_not_win()
+    {
+        var refused = new LogLine(LogKind.Message, "Refused: working tree has uncommitted changes", 0, new Style(Ink.Warn, true));
+
+        Assert.Equal(Abort(), LogView.StripLine([refused, Abort()], 1));
+    }
+
+    [Fact]
+    public void Git_output_is_never_the_strip_line_so_a_fast_forward_shows_its_command()
+    {
+        var merge = new LogLine(LogKind.Command, "git merge feature/x", 0, Simple: true);
+        var chatter = new LogLine(LogKind.Output, "Updating 1a2b3c4..5d6e7f8");
+        var stat = new LogLine(LogKind.Output, " file.txt | 2 +-");
+
+        Assert.Equal(merge, LogView.StripLine([merge, chatter, stat], 0));
+    }
+
+    [Fact]
+    public void An_indented_detail_line_is_not_the_strip_line_on_its_own()
+    {
+        var detail = new LogLine(LogKind.Message, "    a detail", 0);
+
+        Assert.Equal(Abort(), LogView.StripLine([Abort(), detail], 0));
+    }
+
+    [Fact]
+    public void A_step_of_only_git_output_has_no_strip_line()
+    {
+        Assert.Null(LogView.StripLine([new LogLine(LogKind.Output, "Updating 1a2b3c4")], 0));
+    }
+
+    [Fact]
+    public void A_conflicting_files_message_after_the_failed_merge_is_the_newer_failure()
+    {
+        var conflict = new LogLine(LogKind.Message, "Conflicting files: a.txt", 0, new Style(Ink.Bad));
+
+        Assert.Equal(conflict, LogView.StripLine([Merge(failed: true), Abort(), conflict], 0));
+    }
 }

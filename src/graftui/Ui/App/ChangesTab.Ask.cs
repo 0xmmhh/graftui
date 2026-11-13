@@ -30,6 +30,7 @@ internal sealed partial class ChangesTab
             return;
         }
 
+        _app.CloseLog();
         _yesNo = q;
         _result = null;
         _flash = null;

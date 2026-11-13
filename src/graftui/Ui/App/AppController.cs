@@ -464,19 +464,37 @@ public sealed class AppController
     /// </summary>
     private void RedrawUnderLog()
     {
+        // The list's position is a Pos.Func, so the panes need a layout as well as a draw: the list moves when it opens and closes.
         _window?.SetNeedsLayout();
         _window?.SetNeedsDraw();
+        Art.SetNeedsLayout();
         Art.SetNeedsDraw();
+        BranchList.SetNeedsLayout();
         BranchList.SetNeedsDraw();
+        ChangesList.SetNeedsLayout();
         ChangesList.SetNeedsDraw();
+        Log.SetNeedsLayout();
         Log.SetNeedsDraw();
     }
 
-    /// <summary>Closes the full Commands list. The strip stays, and the panes under the list are redrawn.</summary>
-    private void CloseLog()
+    /// <summary>
+    /// Closes the full Commands list when it is open, and redraws the panes under it. A question or a text field calls it as it
+    /// opens, so the list is never open under one. Does nothing when the list is closed or the window is not built yet.
+    /// </summary>
+    internal void CloseLog()
     {
+        if (Log is null || !Log.Open)
+            return;
         Log.Close();
         RedrawUnderLog();
+    }
+
+    /// <summary>True while a tab shows a question or a text field: its keys answer it or type, so the Commands list must not take them.</summary>
+    private bool QuestionOrFormOpen()
+    {
+        if (ChangesTab.Mode == ChangesMode.Ask || ChangesTab.Mode == ChangesMode.Input)
+            return true;
+        return BranchesTab.Mode == BranchesMode.Ask || BranchesTab.Mode == BranchesMode.Input;
     }
 
     /// <summary>Closes the help popup and shows the screen it covered again, re-read if it may have gone stale.</summary>
@@ -506,10 +524,6 @@ public sealed class AppController
 
     private void OnKeyDown(object? sender, Key e)
     {
-        // Every key but v and l starts a new step, so the strip shows a failure from the current step only.
-        if (e != Key.V && e != Key.L)
-            Log.MarkStep();
-
         // The help popup takes every key: ? or Esc closes it, anything else waits.
         if (HelpOpen)
         {
@@ -519,10 +533,22 @@ public sealed class AppController
             return;
         }
 
+        // On a screen too small for the list, it closes, so Esc quits there as it does without the list.
+        if (Log.Open && CurrentLayout().TooSmall)
+            CloseLog();
+
         // The open Commands list is a peek over the top panes: Esc or l closes it. v switches its list (below). Any other key closes it
         // and is then handled as usual.
         if (Log.Open)
         {
+            // A question or a text field is open on a tab: the list closes and the key is spent, so a y or a typed letter is not taken
+            // as an answer or typed by accident.
+            if (QuestionOrFormOpen())
+            {
+                e.Handled = true;
+                CloseLog();
+                return;
+            }
             if (e == Key.Esc || e == Key.L)
             {
                 e.Handled = true;
@@ -539,6 +565,11 @@ public sealed class AppController
             e.Handled = true;
             return;
         }
+
+        // Every key but v, l and ? starts a step of git work, and so does not leave the strip showing the last step's failure. While git
+        // is busy the keys change nothing, so they start no step: a failure that is still arriving stays on the strip.
+        if (!Busy && e != Key.V && e != Key.L && !IsHelpKey(e))
+            Log.MarkStep();
 
         // The message box and the amend confirmations take every key first, so Esc cancels them rather than quitting.
         if (ActiveTab == TabKind.Changes && ChangesTab.Mode == ChangesMode.Input)

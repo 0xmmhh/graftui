@@ -26,6 +26,7 @@ internal sealed partial class BranchesTab
     /// <summary>The todo list opens on a check that passed: its rows are the plan, and the cursor starts on the first row.</summary>
     private void OpenTodo(RebaseCheck check, GraphLayout? layout)
     {
+        _app.CloseLog();
         _todo = new TodoState(check.Rows);
         _todoCheck = check;
         _todoLayout = Or(layout, _app.Snapshot, check.Onto, check.OntoTip);

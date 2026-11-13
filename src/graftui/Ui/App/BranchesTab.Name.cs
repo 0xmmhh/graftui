@@ -117,6 +117,7 @@ internal sealed partial class BranchesTab
         _nameTip = tip;
         _nameLayout = layout;
         _nameNote = null;
+        _app.CloseLog();
         Mode = BranchesMode.Input;
 
         _app.FieldPlacement = AppController.FieldSpot.BranchName;
