@@ -202,7 +202,7 @@ public sealed class HelpPopupScreenTests : IDisposable
     }
 
     [Fact]
-    public void The_todo_art_is_not_hidden_under_the_popup_and_is_hidden_again_when_the_popup_closes()
+    public void The_todo_art_is_not_hidden_under_the_popup_and_stays_shown_when_the_popup_closes_at_22_rows()
     {
         using var repo = SequenceRepos.Feature4();
         _ui.Driver!.SetScreenSize(80, 40);
@@ -212,16 +212,16 @@ public sealed class HelpPopupScreenTests : IDisposable
         _ui.Keyboard.RaiseKeyDownEvent(new Key('?'));
         Assert.True(app.HelpOpen);
 
-        // The pane is now too short for the todo rows beside the art, but the popup is drawn over the art: it stays, and the art stays shown.
+        // The popup is drawn over the art, so it stays open at this size and the art stays shown.
         _ui.Driver.SetScreenSize(80, 22);
         window.Layout(new Size(80, 22));
         Assert.True(app.ArtFits());
         Assert.True(app.HelpOpen);
         Assert.False(app.Art.HideArt);
 
-        // Closing the popup asks for the art again, and the short pane hides it.
+        // Closing the popup asks for the art again. At 22 rows the top panes are tall enough for the todo rows, so the art stays.
         _ui.Keyboard.RaiseKeyDownEvent(new Key('?'));
         Assert.False(app.HelpOpen);
-        Assert.True(app.Art.HideArt);
+        Assert.False(app.Art.HideArt);
     }
 }

@@ -11,9 +11,32 @@ public class ScreenLayoutTests
         var layout = ScreenLayout.Compute(64, 22, 0);
 
         Assert.False(layout.TooSmall);
-        Assert.Equal(5, layout.LogHeight);
-        Assert.Equal(15, layout.TopHeight);
+        Assert.Equal(1, layout.LogHeight);
+        Assert.Equal(19, layout.TopHeight);
         Assert.Equal(24, layout.BranchWidth);
+    }
+
+    [Theory]
+    [InlineData(64, 22)]
+    [InlineData(80, 24)]
+    [InlineData(120, 36)]
+    [InlineData(200, 60)]
+    public void The_commands_strip_is_one_row_and_the_top_panes_get_the_rest(int cols, int rows)
+    {
+        var layout = ScreenLayout.Compute(cols, rows, 0);
+
+        Assert.Equal(1, layout.LogHeight);
+        Assert.Equal(rows - 3, layout.TopHeight);
+    }
+
+    [Theory]
+    [InlineData(64, 22, 7)]
+    [InlineData(80, 24, 8)]
+    [InlineData(120, 36, 12)]
+    [InlineData(200, 60, 12)]
+    public void The_open_commands_list_is_a_third_of_the_rows_from_five_to_twelve(int cols, int rows, int openHeight)
+    {
+        Assert.Equal(openHeight, ScreenLayout.Compute(cols, rows, 0).OpenLogHeight);
     }
 
     [Theory]

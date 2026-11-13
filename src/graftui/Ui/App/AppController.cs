@@ -211,12 +211,13 @@ public sealed class AppController
             DirectionRule = false,
             CompactArt = true,
         };
+        // Added after the top panes, so it draws over them when open. The strip is the row under them.
         Log = new LogView
         {
             X = 0,
-            Y = Pos.Func(_ => 1 + CurrentLayout().TopHeight),
+            Y = Pos.Func(_ => LogPaneY()),
             Width = Dim.Fill(),
-            Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().LogHeight),
+            Height = Dim.Func(_ => LogPaneHeight()),
         };
         ChangesList = new ChangesView
         {
@@ -435,6 +436,49 @@ public sealed class AppController
         return HelpOverlay.Frame(geo, grid, rows, legend);
     }
 
+    /// <summary>
+    /// The Commands pane's top row. The strip sits under the top panes; the open list ends on the same row, over their bottom rows.
+    /// </summary>
+    private int LogPaneY()
+    {
+        var layout = CurrentLayout();
+        if (Log.Open)
+            return 1 + layout.TopHeight + layout.LogHeight - layout.OpenLogHeight;
+        return 1 + layout.TopHeight;
+    }
+
+    /// <summary>The Commands pane's height: one row for the strip, the list's height when it is open, nothing when the screen is too small.</summary>
+    private int LogPaneHeight()
+    {
+        var layout = CurrentLayout();
+        if (layout.TooSmall)
+            return 0;
+        if (Log.Open)
+            return layout.OpenLogHeight;
+        return layout.LogHeight;
+    }
+
+    /// <summary>
+    /// After the Commands list opens or closes, the panes under it are redrawn: the art and the lists come back where the list was.
+    /// The top panes keep their size either way.
+    /// </summary>
+    private void RedrawUnderLog()
+    {
+        _window?.SetNeedsLayout();
+        _window?.SetNeedsDraw();
+        Art.SetNeedsDraw();
+        BranchList.SetNeedsDraw();
+        ChangesList.SetNeedsDraw();
+        Log.SetNeedsDraw();
+    }
+
+    /// <summary>Closes the full Commands list. The strip stays, and the panes under the list are redrawn.</summary>
+    private void CloseLog()
+    {
+        Log.Close();
+        RedrawUnderLog();
+    }
+
     /// <summary>Closes the help popup and shows the screen it covered again, re-read if it may have gone stale.</summary>
     internal void CloseHelp()
     {
@@ -462,6 +506,10 @@ public sealed class AppController
 
     private void OnKeyDown(object? sender, Key e)
     {
+        // Every key but v and l starts a new step, so the strip shows a failure from the current step only.
+        if (e != Key.V && e != Key.L)
+            Log.MarkStep();
+
         // The help popup takes every key: ? or Esc closes it, anything else waits.
         if (HelpOpen)
         {
@@ -469,6 +517,20 @@ public sealed class AppController
             if (e == Key.Esc || IsHelpKey(e))
                 CloseHelp();
             return;
+        }
+
+        // The open Commands list is a peek over the top panes: Esc or l closes it. v switches its list (below). Any other key closes it
+        // and is then handled as usual.
+        if (Log.Open)
+        {
+            if (e == Key.Esc || e == Key.L)
+            {
+                e.Handled = true;
+                CloseLog();
+                return;
+            }
+            if (e != Key.V)
+                CloseLog();
         }
 
         // A branch change's animation holds Esc once git has answered: Esc would quit graftui before the change's last frame. Other keys are refused by Busy.
@@ -514,6 +576,18 @@ public sealed class AppController
         {
             e.Handled = true;
             Log.ToggleExact();
+            return;
+        }
+
+        // l opens the full Commands list over the top panes, also while git is busy: it only changes the display. Not when the screen is too small.
+        if (e == Key.L)
+        {
+            e.Handled = true;
+            if (!CurrentLayout().TooSmall)
+            {
+                Log.Toggle();
+                RedrawUnderLog();
+            }
             return;
         }
 

@@ -61,6 +61,7 @@ public static class HelpOverlay
         new HelpRow("i", "interactive rebase"),
         new HelpRow("u", "undo"),
         new HelpRow("v", "exact commands"),
+        new HelpRow("l", "commands list"),
         new HelpRow("Esc", "quit"),
     ];
 
@@ -81,6 +82,7 @@ public static class HelpOverlay
             new HelpRow("Z", "pop stash"),
             new HelpRow("u", "undo"),
             new HelpRow("v", "exact commands"),
+            new HelpRow("l", "commands list"),
             new HelpRow("Esc", "quit"),
         };
         return rows;
@@ -108,13 +110,19 @@ public static class HelpOverlay
         rows.Add(new HelpRow("X", "abort"));
         rows.Add(new HelpRow("Tab", "changes tab"));
         rows.Add(new HelpRow("v", "exact commands"));
+        rows.Add(new HelpRow("l", "commands list"));
         rows.Add(new HelpRow("Esc", "quit, the pause stays"));
         return rows;
     }
 
     /// <summary>The rebase confirm screen's keys.</summary>
     internal static IReadOnlyList<HelpRow> ConfirmRows() =>
-        [new HelpRow("Enter", "run the rebase"), new HelpRow("v", "exact commands"), new HelpRow("Esc", "back to preview")];
+        [
+            new HelpRow("Enter", "run the rebase"),
+            new HelpRow("v", "exact commands"),
+            new HelpRow("l", "commands list"),
+            new HelpRow("Esc", "back to preview"),
+        ];
 
     /// <summary>The todo list's keys. The bar shows only some of them; the letters still set the row's action.</summary>
     internal static IReadOnlyList<HelpRow> TodoRows() =>
@@ -131,6 +139,7 @@ public static class HelpOverlay
         new HelpRow("d", "drop"),
         new HelpRow("Enter", "start"),
         new HelpRow("v", "exact commands"),
+        new HelpRow("l", "commands list"),
         new HelpRow("Esc", "close"),
     ];
 

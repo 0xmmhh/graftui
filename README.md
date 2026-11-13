@@ -143,7 +143,8 @@ graftui --version
 | `Tab` | Switch between Branches and Changes |
 | `↑` / `↓` | Select a branch (Branches) or a file (Changes) |
 | `u` | Undo the last step, on either tab |
-| `v` | Switch the Commands pane between the simplified list and the exact list |
+| `v` | Switch the Commands list between the simplified list and the exact list |
+| `l` | Open the Commands list over the top panes (`l` or `Esc` closes it) |
 | `Esc` | Quit. If a merge, a commit or another change is running, graftui waits for it to finish first |
 
 **Branches**
@@ -227,7 +228,7 @@ The other branch keys are refused until the rebase is finished or aborted. On th
 - **Status bar (top):** the repository (shown as `▸ ~/.graftui/sandbox`), the current branch, and whether the working tree is clean. When merging is disabled, the bar says why.
 - **Branches (left):** every local branch. `▸` marks the selected row and `*` the current branch. `↑2` means the branch has 2 commits the current branch lacks; `↓1` means the current branch has 1 commit the branch lacks. The column is headed `vs <current branch>`.
 - **Preview and animation (right):** how the selected branch relates to the current one, a picture of the two branches, a caption and the commits involved. The commits are listed side by side: the selected branch's on the left, the current branch's on the right, under headers in each branch's colour. Each row shows a short age (`2h`, `3d`, `5w`), and each list shows as many of its newest commits as fit. Narrower terminals (under 70 columns) stack them. During a merge the two lines grow together; afterwards it shows the result.
-- **Commands:** the git commands graftui ran, each as the command you would type (`$ git merge feature/x  ✔`), with git's output. A failed command is shown exactly, with its exit code. Press `v` to see the exact list instead: every git call, with its exit code and the reads graftui hides by default. Each saved undo step shows as `↶ saved an undo step (u)`. The `v` hint sits on the pane's border.
+- **Commands:** the git commands graftui ran, each as the command you would type (`$ git merge feature/x  ✔`), with git's output. A failed command is shown exactly, with its exit code. The Commands pane is one row under the branches and the art, showing the newest line. A failure from the current step shows in red with `l details`. Press `l` to open the full list over the top panes, and `v` in that list to see the exact list instead: every git call, with its exit code and the reads graftui hides by default. Each saved undo step shows as `↶ saved an undo step (u)`.
 - **Key bar (bottom):** the keys that work right now.
 
 **Branch colours.** Each branch has one colour. It colours the branch's name in the list, its line and label in the graph, and its commit-list header. `main` (or `master`, when there is no `main`) is always the first colour, blue in every theme. The other branches get their colour from their name, so a branch keeps its colour when you select it or switch to it. Neighbours in the list never share a colour. With more than five other branches, colours repeat. Selecting or switching never changes a colour. Adding or removing a branch can shift another branch's colour when two names want the same one. The merge commit's `◉` is gold.
@@ -344,7 +345,7 @@ Develop against the sandbox, never against the graftui repository itself. Warnin
 
 Contributions are welcome: bug reports, ideas and pull requests.
 
-- **Found a bug?** [Open an issue](https://github.com/0xmmhh/graftui/issues) with what you did, what you expected and what happened. Include the Commands pane output if it's relevant: press `v` for the exact list of every git command graftui ran.
+- **Found a bug?** [Open an issue](https://github.com/0xmmhh/graftui/issues) with what you did, what you expected and what happened. Include the Commands pane output if it's relevant: press `l`, then `v`, for the exact list of every git command graftui ran.
 - **Have an idea?** Open an issue before starting anything big, so we can agree on the approach first. The plans above are a good place to start.
 - **Sending a pull request?** Keep it focused on one change, make sure `dotnet build` has no warnings and `dotnet test` passes, and add a test for anything that changes how graftui touches a repository.
 

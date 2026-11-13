@@ -225,4 +225,83 @@ public class LogViewTests
         log.ToggleExact();
         Assert.False(log.ShowsEmptyHint);
     }
+
+    private static LogLine Merge(bool failed)
+    {
+        var exitCode = failed ? 1 : 0;
+        return new LogLine(LogKind.Command, "git merge feature/x", exitCode, Simple: true, Failed: failed);
+    }
+
+    private static LogLine Abort() => new LogLine(LogKind.Command, "git merge --abort", 0, Simple: true);
+
+    [Fact]
+    public void The_commands_list_opens_and_closes_and_the_strip_is_the_default()
+    {
+        var log = new LogView();
+        Assert.False(log.Open);
+
+        log.Toggle();
+        Assert.True(log.Open);
+        log.Close();
+        Assert.False(log.Open);
+        log.Close();
+        Assert.False(log.Open);
+    }
+
+    [Fact]
+    public void An_empty_log_has_no_strip_line()
+    {
+        Assert.Null(new LogView().StripLineNow());
+        Assert.Null(LogView.StripLine([], 0));
+    }
+
+    [Fact]
+    public void The_strip_shows_the_newest_line_when_nothing_failed()
+    {
+        var older = new LogLine(LogKind.Command, "git add -A", 0, Simple: true);
+        var newest = Abort();
+
+        Assert.Equal(newest, LogView.StripLine([older, newest], 0));
+    }
+
+    [Fact]
+    public void A_failed_merge_in_the_current_step_wins_over_the_newer_abort_after_a_conflict()
+    {
+        var log = new LogView();
+        log.Add(new LogEntry([Merge(failed: true)], [Merge(failed: true)]));
+        log.Add(new LogEntry([Abort()], [Abort()]));
+
+        Assert.Equal(Merge(failed: true), log.StripLineNow());
+    }
+
+    [Fact]
+    public void A_failure_from_an_earlier_step_does_not_win_after_a_key_press()
+    {
+        var log = new LogView();
+        log.Add(new LogEntry([Merge(failed: true)], [Merge(failed: true)]));
+        log.MarkStep();
+        log.Add(new LogEntry([Abort()], [Abort()]));
+
+        Assert.Equal(Abort(), log.StripLineNow());
+    }
+
+    [Fact]
+    public void A_bad_message_in_the_current_step_wins_like_a_failed_command()
+    {
+        var bad = new LogLine(LogKind.Message, "Refused: working tree has uncommitted changes", 0, new Style(Ink.Bad));
+        var lines = new List<LogLine> { bad, Abort() };
+
+        Assert.Equal(bad, LogView.StripLine(lines, 0));
+        Assert.Equal(Abort(), LogView.StripLine(lines, 1));
+    }
+
+    [Fact]
+    public void A_step_with_no_lines_yet_shows_the_newest_line_of_the_log()
+    {
+        var log = new LogView();
+        log.Add(new LogEntry([Abort()], [Abort()]));
+        log.MarkStep();
+
+        Assert.Equal(Abort(), log.StripLineNow());
+    }
 }
