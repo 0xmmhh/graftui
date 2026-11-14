@@ -37,7 +37,7 @@ public class UndoLogSafetyTests
         Assert.Equal(repo.Run("rev-parse", top.Ref), top.Commit);
         AssertSameRecord(step, top.Step);
         Assert.Equal(new[] { UndoLog.Prefix + "000001" }, UndoRefs(repo));
-        Assert.False(File.Exists(Path.Combine(repo.Dir, ".git", UndoLog.MessageFile)));
+        Assert.Empty(repo.TempFiles(GitDirTemp.UndoMessage));
         Assert.Contains(log, c => c.Command.StartsWith("git commit-tree --no-gpg-sign", StringComparison.Ordinal) && c.Success);
     }
 
@@ -159,7 +159,7 @@ public class UndoLogSafetyTests
         var top = new UndoLog(repo.Git).Top(log)!;
         Assert.Equal($"100644 blob {blob}\tapp.txt", repo.Run("ls-tree", "-r", top.Commit + "^{tree}"));
         Assert.Contains(log, c => c.Command.StartsWith("GIT_INDEX_FILE=.git/", StringComparison.Ordinal));
-        Assert.False(File.Exists(Path.Combine(repo.Dir, ".git", WorkState.TempIndex)));
+        Assert.Empty(repo.TempFiles(GitDirTemp.Index));
         AssertSameRecord(step, top.Step);
     }
 
@@ -175,7 +175,7 @@ public class UndoLogSafetyTests
         Assert.NotNull(problem);
         Assert.Empty(UndoRefs(repo));
         Assert.Contains(log, c => c.Command.StartsWith("git commit-tree", StringComparison.Ordinal) && !c.Success);
-        Assert.False(File.Exists(Path.Combine(repo.Dir, ".git", UndoLog.MessageFile)));
+        Assert.Empty(repo.TempFiles(GitDirTemp.UndoMessage));
     }
 
     [Fact]

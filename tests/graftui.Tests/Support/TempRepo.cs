@@ -150,6 +150,14 @@ internal sealed class TempRepo : IDisposable
         File.WriteAllText(Path.Combine(Dir, file), content, new UTF8Encoding(false));
 
     /// <summary>`git status --porcelain` lines, untrimmed so the leading space of " M" rows survives.</summary>
+    /// <summary>graftui's temporary files of one kind (see GitDirTemp) left in the git dir.</summary>
+    public IReadOnlyList<string> TempFiles(string stem) =>
+        Directory.EnumerateFileSystemEntries(Path.Combine(Dir, ".git"))
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Where(name => name.StartsWith(stem + "-", StringComparison.Ordinal))
+            .ToList();
+
     public string Status() => Git.Run("status", "--porcelain").StdOut.TrimEnd('\n');
 
     /// <summary>Installs an executable hook. core.hooksPath points at .git/hooks, so git runs it.</summary>

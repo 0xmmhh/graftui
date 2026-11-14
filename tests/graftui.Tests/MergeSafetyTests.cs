@@ -156,8 +156,8 @@ public class MergeSafetyTests
     public void A_merge_whose_undo_step_cannot_be_saved_stands_and_says_so()
     {
         using var repo = TempRepo.Diverged(conflict: false);
-        // A folder where the message file goes makes the save fail after the merge has landed.
-        Directory.CreateDirectory(Path.Combine(repo.Dir, ".git", UndoLog.MessageFile));
+        // A file where the undo refs' folder goes makes the save fail after the merge has landed.
+        CommitSafetyTests.BlockUndoRefs(repo);
         var op = new MergeOperation(repo.Git);
 
         var outcome = op.Run(new MergeRequest("feature"), op.Check(new MergeRequest("feature")));

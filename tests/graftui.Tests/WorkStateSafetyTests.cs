@@ -43,7 +43,7 @@ public class WorkStateSafetyTests
         Assert.Contains("staged.txt", all);
         Assert.Contains("app.txt", all);
         Assert.DoesNotContain("b.txt", all);
-        Assert.False(File.Exists(Path.Combine(repo.Dir, ".git", WorkState.TempIndex)));
+        Assert.Empty(repo.TempFiles(GitDirTemp.Index));
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class WorkStateSafetyTests
         Assert.False(File.Exists(Path.Combine(repo.Dir, "b.txt")));
         Assert.False(File.Exists(Path.Combine(repo.Dir, "x.txt")));
         Assert.False(File.Exists(Path.Combine(repo.Dir, "y.txt")));
-        Assert.False(File.Exists(Path.Combine(repo.Dir, ".git", WorkState.PathsFile)));
+        Assert.Empty(repo.TempFiles(GitDirTemp.Paths));
     }
 
     [Fact]

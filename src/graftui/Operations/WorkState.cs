@@ -8,23 +8,20 @@ internal sealed record WorkSnapshot(string IndexTree, string AllTree);
 
 /// <summary>
 /// Captures and restores the index and the working tree.
-/// Take reads both through a temporary index file, so the real index is not changed.
+/// Take reads both through a temporary index file, so the real index is not changed. The temporary files get a new name on every call
+/// (see <see cref="GitDirTemp"/>), so two graftui windows on one repo never share one.
 /// Save stores a snapshot as a commit: its tree is AllTree, its parents are HEAD and an index commit whose tree is IndexTree.
 /// RestoreTo is destructive: it resets tracked files to HEAD and then writes the snapshot over them. Callers must have saved
 /// the current state (or checked that it is the expected one) before they call it.
 /// </summary>
 internal sealed class WorkState(GitClient git, string gitDir)
 {
-    public const string TempIndex = "graftui-index.tmp", PathsFile = "GRAFTUI_PATHS";
-
     private const int CleanBatch = 200;
-
-    private readonly string _tempIndex = Path.Combine(gitDir, TempIndex);
-    private readonly string _pathsFile = Path.Combine(gitDir, PathsFile);
 
     /// <summary>The current snapshot, or null when any git call fails (for example on unmerged entries).</summary>
     public WorkSnapshot? Take(List<GitResult> log)
     {
+        string? tempIndex = null;
         try
         {
             // The index tree fails on unmerged entries; callers refuse conflicts before they get here.
@@ -38,14 +35,16 @@ internal sealed class WorkState(GitClient git, string gitDir)
                 return null;
             var realIndex = Path.Combine(git.RepoPath, indexPath.StdOut.Trim());
 
-            TryDelete(_tempIndex);
+            // The name is taken with an empty file; git needs the index file absent or valid, so it is removed before git runs.
+            tempIndex = GitDirTemp.NewPath(gitDir, GitDirTemp.Index);
+            TryDelete(tempIndex);
             if (File.Exists(realIndex))
-                File.Copy(realIndex, _tempIndex, overwrite: true);
+                File.Copy(realIndex, tempIndex, overwrite: true);
 
-            var add = CallWithIndex(log, "add", "-A", "--", ".");
+            var add = CallWithIndex(tempIndex, log, "add", "-A", "--", ".");
             if (!add.Success)
                 return null;
-            var allTree = Hash(CallWithIndex(log, "write-tree"));
+            var allTree = Hash(CallWithIndex(tempIndex, log, "write-tree"));
             return allTree is null ? null : new WorkSnapshot(indexTree, allTree);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -54,7 +53,8 @@ internal sealed class WorkState(GitClient git, string gitDir)
         }
         finally
         {
-            TryDelete(_tempIndex);
+            if (tempIndex is not null)
+                TryDelete(tempIndex);
         }
     }
 
@@ -64,21 +64,23 @@ internal sealed class WorkState(GitClient git, string gitDir)
     /// </summary>
     public string? PathTree(string path, bool untracked, List<GitResult> log)
     {
+        string? tempIndex = null;
         try
         {
-            TryDelete(_tempIndex);
+            tempIndex = GitDirTemp.NewPath(gitDir, GitDirTemp.Index);
+            TryDelete(tempIndex);
             GitResult add;
             if (untracked)
-                add = CallWithIndex(log, "add", "--", path);
+                add = CallWithIndex(tempIndex, log, "add", "--", path);
             else
             {
                 // Copying the real index keeps its stat data; only the path is read from the disk.
                 var real = Path.Combine(gitDir, "index");
                 if (File.Exists(real))
-                    File.Copy(real, _tempIndex, overwrite: true);
-                add = CallWithIndex(log, "add", "-A", "--", path);
+                    File.Copy(real, tempIndex, overwrite: true);
+                add = CallWithIndex(tempIndex, log, "add", "-A", "--", path);
             }
-            return add.Success ? Hash(CallWithIndex(log, "write-tree")) : null;
+            return add.Success ? Hash(CallWithIndex(tempIndex, log, "write-tree")) : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -86,7 +88,8 @@ internal sealed class WorkState(GitClient git, string gitDir)
         }
         finally
         {
-            TryDelete(_tempIndex);
+            if (tempIndex is not null)
+                TryDelete(tempIndex);
         }
     }
 
@@ -114,6 +117,7 @@ internal sealed class WorkState(GitClient git, string gitDir)
     /// </summary>
     public string? RestoreTo(WorkSnapshot target, string targetCommit, IReadOnlySet<string> removable, List<GitResult> log)
     {
+        string? pathsFile = null;
         try
         {
             // Tracked files go back to HEAD; this also clears unmerged index entries.
@@ -127,9 +131,10 @@ internal sealed class WorkState(GitClient git, string gitDir)
                 return Problem("could not list the changed files", diff);
             if (diff.StdOut.Length > 0)
             {
-                File.WriteAllBytes(_pathsFile, new UTF8Encoding(false).GetBytes(diff.StdOut));
+                pathsFile = GitDirTemp.NewPath(gitDir, GitDirTemp.Paths);
+                File.WriteAllBytes(pathsFile, new UTF8Encoding(false).GetBytes(diff.StdOut));
                 var restore = CallLiteral(log, "restore", "-q", GitArgs.SourcePrefix + targetCommit, "--worktree",
-                    "--pathspec-from-file=" + RepoState.ArgPath(git, _pathsFile), "--pathspec-file-nul");
+                    "--pathspec-from-file=" + RepoState.ArgPath(git, pathsFile), "--pathspec-file-nul");
                 if (!restore.Success)
                     return Problem("could not restore the files", restore);
             }
@@ -173,7 +178,8 @@ internal sealed class WorkState(GitClient git, string gitDir)
         }
         finally
         {
-            TryDelete(_pathsFile);
+            if (pathsFile is not null)
+                TryDelete(pathsFile);
         }
     }
 
@@ -191,9 +197,9 @@ internal sealed class WorkState(GitClient git, string gitDir)
         return r;
     }
 
-    private GitResult CallWithIndex(List<GitResult> log, params string[] args)
+    private GitResult CallWithIndex(string tempIndex, List<GitResult> log, params string[] args)
     {
-        var r = git.RunWithIndex(_tempIndex, args);
+        var r = git.RunWithIndex(tempIndex, args);
         log.Add(r);
         return r;
     }

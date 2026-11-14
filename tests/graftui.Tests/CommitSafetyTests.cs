@@ -19,8 +19,23 @@ public class CommitSafetyTests
 
     private static void StageAll(TempRepo repo) => repo.Run("add", "-A");
 
+    // The commit read its message from a new graftui-msg-<pid>-<hex> file in the git dir.
+    private static bool IsMessageCommit(string command, string start)
+    {
+        if (!command.StartsWith(start + ".git/", StringComparison.Ordinal))
+            return false;
+        return GitDirTemp.IsNameOf(command[(start.Length + 5)..], GitDirTemp.Message);
+    }
+
+    /// <summary>Puts a file where the undo refs' folder goes, so saving an undo step fails.</summary>
+    internal static void BlockUndoRefs(TempRepo repo)
+    {
+        Directory.CreateDirectory(Path.Combine(repo.Dir, ".git", "refs"));
+        File.WriteAllText(Path.Combine(repo.Dir, ".git", "refs", "graftui"), "");
+    }
+
     private static void AssertNoMessageFile(TempRepo repo) =>
-        Assert.False(File.Exists(Path.Combine(repo.Dir, ".git", CommitOperation.MessageFileName)));
+        Assert.Empty(repo.TempFiles(GitDirTemp.Message));
 
     [Fact]
     public void Commit_with_subject_and_body_writes_the_built_message_and_advances_head()
@@ -43,7 +58,7 @@ public class CommitSafetyTests
         Assert.Equal("refs/heads/main", change.Ref);
         Assert.Equal(oldHead, change.Before);
         Assert.Equal(repo.Head, change.After);
-        Assert.Contains(outcome.Commands, c => c.Command == "git commit --cleanup=whitespace -F .git/GRAFTUI_MSG" && c.ExitCode == 0);
+        Assert.Contains(outcome.Commands, c => IsMessageCommit(c.Command, "git commit --cleanup=whitespace -F ") && c.ExitCode == 0);
         AssertNoMessageFile(repo);
     }
 
@@ -77,7 +92,7 @@ public class CommitSafetyTests
 
         Assert.Equal(CommitKind.Amended, outcome.Kind);
         Assert.Equal("# Kept", repo.Run("log", "-1", "--format=%s"));
-        Assert.Contains(outcome.Commands, c => c.Command == "git commit --amend --cleanup=whitespace -F .git/GRAFTUI_MSG");
+        Assert.Contains(outcome.Commands, c => IsMessageCommit(c.Command, "git commit --amend --cleanup=whitespace -F "));
     }
 
     [Fact]
@@ -99,7 +114,7 @@ public class CommitSafetyTests
         Assert.Equal(oldHead, repo.Head);
         Assert.Equal(cached, repo.Run("diff", "--cached", "--name-only"));
         Assert.Equal(worktree, File.ReadAllBytes(Path.Combine(repo.Dir, "app.txt")));
-        Assert.Contains(outcome.Commands, c => c.Command == "git commit --cleanup=whitespace -F .git/GRAFTUI_MSG" && c.ExitCode == 1);
+        Assert.Contains(outcome.Commands, c => IsMessageCommit(c.Command, "git commit --cleanup=whitespace -F ") && c.ExitCode == 1);
         AssertNoMessageFile(repo);
     }
 
@@ -279,8 +294,8 @@ public class CommitSafetyTests
         var oldHead = repo.Head;
         repo.Write("b.txt", "b\n");
         StageAll(repo);
-        // A folder where the message file goes makes the save fail after the commit has landed.
-        Directory.CreateDirectory(Path.Combine(repo.Dir, ".git", UndoLog.MessageFile));
+        // A file where the undo refs' folder goes makes the save fail after the commit has landed.
+        BlockUndoRefs(repo);
 
         var outcome = Run(new CommitOperation(repo.Git), Commit("Second"));
 
