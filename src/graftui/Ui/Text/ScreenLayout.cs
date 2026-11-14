@@ -1,7 +1,11 @@
 namespace graftui.Ui.Text;
 
-/// <summary>Row and column budget for the panes. TopHeight holds the branches and the art; LogHeight is the Commands pane.</summary>
-public sealed record ScreenLayout(bool TooSmall, int Cols, int Rows, int BranchWidth, int TopHeight, int LogHeight)
+/// <summary>
+/// Row and column budget for the panes. TopHeight holds the branches and the art. LogHeight is the Commands strip, always one row
+/// under the top panes. OpenLogHeight is the height of the full Commands list when it is open: it covers the bottom rows of the top
+/// panes, and the art underneath keeps its size.
+/// </summary>
+public sealed record ScreenLayout(bool TooSmall, int Cols, int Rows, int BranchWidth, int TopHeight, int LogHeight, int OpenLogHeight)
 {
     public const int MinCols = 64, MinRows = 22;
 
@@ -18,15 +22,17 @@ public sealed record ScreenLayout(bool TooSmall, int Cols, int Rows, int BranchW
     /// never narrower than <see cref="MinBranchWidth"/> and never wider than about 40% of the screen, so long names
     /// are cut only when that upper bound is hit. Below 70 columns the pane shrinks, down to
     /// <see cref="NarrowBranchWidth"/>, so the art pane keeps <see cref="MinArtPaneWidth"/> columns.
+    /// The Commands strip is always one row; the open list is a third of the rows, from 5 to 12.
     /// </summary>
     public static ScreenLayout Compute(int cols, int rows, int wantedBranchWidth)
     {
-        var logHeight = Math.Clamp(rows / 4, 5, 11);
+        const int logHeight = 1;
         var topHeight = rows - 2 - logHeight;
+        var openLogHeight = Math.Clamp(rows / 3, 5, 12);
         var floor = Math.Max(NarrowBranchWidth, Math.Min(MinBranchWidth, cols - MinArtPaneWidth));
         var upper = Math.Max(floor, Math.Min(cols * 2 / 5, cols - MinArtPaneWidth));
         var branchWidth = Math.Min(upper, Math.Max(floor, wantedBranchWidth));
         var tooSmall = cols < MinCols || rows < MinRows;
-        return new ScreenLayout(tooSmall, cols, rows, branchWidth, topHeight, logHeight);
+        return new ScreenLayout(tooSmall, cols, rows, branchWidth, topHeight, logHeight, openLogHeight);
     }
 }

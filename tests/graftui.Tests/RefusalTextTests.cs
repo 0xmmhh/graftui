@@ -103,7 +103,7 @@ public class RefusalTextTests
     [Fact]
     public void At_80_by_24_the_detail_fits_the_commands_pane_without_scrolling()
     {
-        var paneRows = ScreenLayout.Compute(80, 24, wantedBranchWidth: 30).LogHeight - 2;
+        var paneRows = ScreenLayout.Compute(80, 24, wantedBranchWidth: 30).OpenLogHeight - 2;
         var paneColumns = 80 - 4;
 
         foreach (var sample in Samples)

@@ -151,6 +151,7 @@ internal sealed partial class ChangesTab
     /// <summary>The message box: one field over the art, with the hint. An empty message means git's default.</summary>
     private void OpenStashForm(int count)
     {
+        _app.CloseLog();
         _stashForm = true;
         Mode = ChangesMode.Input;
         _app.Keys.Mode = KeyBarMode.Message;

@@ -175,6 +175,7 @@ internal sealed partial class ChangesTab
     /// <summary>Starts the three questions for amending a commit that a remote branch already has.</summary>
     private void BeginAsk(CommitCheck check)
     {
+        _app.CloseLog();
         Mode = ChangesMode.Ask;
         _app.Keys.Mode = KeyBarMode.Ask;
         _askCheck = check;
@@ -240,6 +241,7 @@ internal sealed partial class ChangesTab
     /// </summary>
     internal void OpenForm(bool amend, CommitCheck check, string subject, string body, bool pushedConfirmed, bool blankAfterSubject)
     {
+        _app.CloseLog();
         _formCheck = check;
         _formAmend = amend;
         _formPushedConfirmed = pushedConfirmed;

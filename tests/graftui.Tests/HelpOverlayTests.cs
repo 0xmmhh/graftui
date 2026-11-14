@@ -28,7 +28,7 @@ public class HelpOverlayTests
         var named = HelpOverlay.ForBar(BranchesBar());
 
         Assert.Equal("Keys — Branches", named.Title);
-        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "r", "i", "u", "v", "Esc" }, RowKeys(named.Rows));
+        Assert.Equal(new[] { "Tab", "↑↓", "m", "s", "n", "R", "D", "r", "i", "u", "v", "l", "Esc" }, RowKeys(named.Rows));
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public class HelpOverlayTests
         var named = HelpOverlay.ForBar(ChangesBar(StagedSelected));
 
         Assert.Equal("Keys — Changes", named.Title);
-        Assert.Equal(new[] { "Tab", "↑↓", "Space", "a", "U", "c", "A", "x", "z", "Z", "u", "v", "Esc" }, RowKeys(named.Rows));
+        Assert.Equal(new[] { "Tab", "↑↓", "Space", "a", "U", "c", "A", "x", "z", "Z", "u", "v", "l", "Esc" }, RowKeys(named.Rows));
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class HelpOverlayTests
         var named = HelpOverlay.ForBar(bar);
 
         Assert.Equal("Keys — Branches", named.Title);
-        Assert.Equal(new[] { "Enter", "S", "X", "Tab", "v", "Esc" }, RowKeys(named.Rows));
+        Assert.Equal(new[] { "Enter", "S", "X", "Tab", "v", "l", "Esc" }, RowKeys(named.Rows));
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class HelpOverlayTests
         var todo = HelpOverlay.ForBar(new KeyBarView { Mode = KeyBarMode.Todo });
 
         Assert.Equal("Keys — Rebase", confirm.Title);
-        Assert.Equal(new[] { "Enter", "v", "Esc" }, RowKeys(confirm.Rows));
+        Assert.Equal(new[] { "Enter", "v", "l", "Esc" }, RowKeys(confirm.Rows));
         Assert.Equal("Keys — Todo", todo.Title);
         Assert.Contains("Enter", RowKeys(todo.Rows));
         Assert.Contains("d", RowKeys(todo.Rows));
@@ -119,7 +119,8 @@ public class HelpOverlayTests
     [Fact]
     public void The_branches_popup_explains_the_dim_dots_in_the_caption_and_keeps_every_key_row()
     {
-        var geo = new ArtGeometry(60, 8, 6, 2, 5, 20);
+        // 13 key rows (the list grew by l) need 7 rows a column at this width: a 9-high popup has them.
+        var geo = new ArtGeometry(60, 9, 6, 2, 5, 20);
         var rows = HelpOverlay.BranchesRows();
 
         var frame = HelpOverlay.Frame(geo, new ArtGrid(geo.Width, geo.Height), rows, HelpOverlay.SharedLegend);
@@ -208,8 +209,9 @@ public class HelpOverlayTests
     [Fact]
     public void No_row_is_skipped_when_the_left_column_is_shorter_than_half()
     {
-        // 13 change rows on a room of 6: the left column shows the first 6, so the right one must start at row 7 ("A", the seventh),
-        // not at row 8. The last right slot holds the note: "v" and "Esc" are the 2 hidden rows.
+        // 14 change rows on a room of 6: the left column shows the first 6, so the right one must start at row 7 ("A", the seventh),
+        // not at row 8. The note takes the last right slot (the one "v" would have), so the 3 hidden rows are "v", "l" and "Esc", and
+        // the note reads "3 more" (it counts the rows it stands for).
         var rows = HelpOverlay.ChangesRows(StagedSelected);
         var geo = new ArtGeometry(100, 8, 6, 2, 6, 20);
         var grid = new ArtGrid(geo.Width, geo.Height);
@@ -218,7 +220,7 @@ public class HelpOverlayTests
 
         Assert.Contains("amend last commit", text);
         Assert.Contains("commit staged", text);
-        Assert.Contains("2 more: make the window taller", text);
+        Assert.Contains("3 more: make the window taller", text);
         Assert.DoesNotContain("exact commands", text);
     }
 

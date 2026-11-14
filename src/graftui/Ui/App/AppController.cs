@@ -211,12 +211,13 @@ public sealed class AppController
             DirectionRule = false,
             CompactArt = true,
         };
+        // Added after the top panes, so it draws over them when open. The strip is the row under them.
         Log = new LogView
         {
             X = 0,
-            Y = Pos.Func(_ => 1 + CurrentLayout().TopHeight),
+            Y = Pos.Func(_ => LogPaneY()),
             Width = Dim.Fill(),
-            Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().LogHeight),
+            Height = Dim.Func(_ => LogPaneHeight()),
         };
         ChangesList = new ChangesView
         {
@@ -435,6 +436,67 @@ public sealed class AppController
         return HelpOverlay.Frame(geo, grid, rows, legend);
     }
 
+    /// <summary>
+    /// The Commands pane's top row. The strip sits under the top panes; the open list ends on the same row, over their bottom rows.
+    /// </summary>
+    private int LogPaneY()
+    {
+        var layout = CurrentLayout();
+        if (Log.Open)
+            return 1 + layout.TopHeight + layout.LogHeight - layout.OpenLogHeight;
+        return 1 + layout.TopHeight;
+    }
+
+    /// <summary>The Commands pane's height: one row for the strip, the list's height when it is open, nothing when the screen is too small.</summary>
+    private int LogPaneHeight()
+    {
+        var layout = CurrentLayout();
+        if (layout.TooSmall)
+            return 0;
+        if (Log.Open)
+            return layout.OpenLogHeight;
+        return layout.LogHeight;
+    }
+
+    /// <summary>
+    /// After the Commands list opens or closes, the panes under it are redrawn: the art and the lists come back where the list was.
+    /// The top panes keep their size either way.
+    /// </summary>
+    private void RedrawUnderLog()
+    {
+        // The list's position is a Pos.Func, so the panes need a layout as well as a draw: the list moves when it opens and closes.
+        _window?.SetNeedsLayout();
+        _window?.SetNeedsDraw();
+        Art.SetNeedsLayout();
+        Art.SetNeedsDraw();
+        BranchList.SetNeedsLayout();
+        BranchList.SetNeedsDraw();
+        ChangesList.SetNeedsLayout();
+        ChangesList.SetNeedsDraw();
+        Log.SetNeedsLayout();
+        Log.SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// Closes the full Commands list when it is open, and redraws the panes under it. A question or a text field calls it as it
+    /// opens, so the list is never open under one. Does nothing when the list is closed or the window is not built yet.
+    /// </summary>
+    internal void CloseLog()
+    {
+        if (Log is null || !Log.Open)
+            return;
+        Log.Close();
+        RedrawUnderLog();
+    }
+
+    /// <summary>True while a tab shows a question or a text field: its keys answer it or type, so the Commands list must not take them.</summary>
+    private bool QuestionOrFormOpen()
+    {
+        if (ChangesTab.Mode == ChangesMode.Ask || ChangesTab.Mode == ChangesMode.Input)
+            return true;
+        return BranchesTab.Mode == BranchesMode.Ask || BranchesTab.Mode == BranchesMode.Input;
+    }
+
     /// <summary>Closes the help popup and shows the screen it covered again, re-read if it may have gone stale.</summary>
     internal void CloseHelp()
     {
@@ -471,12 +533,43 @@ public sealed class AppController
             return;
         }
 
+        // On a screen too small for the list, it closes, so Esc quits there as it does without the list.
+        if (Log.Open && CurrentLayout().TooSmall)
+            CloseLog();
+
+        // The open Commands list is a peek over the top panes: Esc or l closes it. v switches its list (below). Any other key closes it
+        // and is then handled as usual.
+        if (Log.Open)
+        {
+            // A question or a text field is open on a tab: the list closes and the key is spent, so a y or a typed letter is not taken
+            // as an answer or typed by accident.
+            if (QuestionOrFormOpen())
+            {
+                e.Handled = true;
+                CloseLog();
+                return;
+            }
+            if (e == Key.Esc || e == Key.L)
+            {
+                e.Handled = true;
+                CloseLog();
+                return;
+            }
+            if (e != Key.V)
+                CloseLog();
+        }
+
         // A branch change's animation holds Esc once git has answered: Esc would quit graftui before the change's last frame. Other keys are refused by Busy.
         if (e == Key.Esc && BranchAnimator.HoldsEsc)
         {
             e.Handled = true;
             return;
         }
+
+        // Every key but v, l and ? starts a step of git work, and so does not leave the strip showing the last step's failure. While git
+        // is busy the keys change nothing, so they start no step: a failure that is still arriving stays on the strip.
+        if (!Busy && e != Key.V && e != Key.L && !IsHelpKey(e))
+            Log.MarkStep();
 
         // The message box and the amend confirmations take every key first, so Esc cancels them rather than quitting.
         if (ActiveTab == TabKind.Changes && ChangesTab.Mode == ChangesMode.Input)
@@ -514,6 +607,18 @@ public sealed class AppController
         {
             e.Handled = true;
             Log.ToggleExact();
+            return;
+        }
+
+        // l opens the full Commands list over the top panes, also while git is busy: it only changes the display. Not when the screen is too small.
+        if (e == Key.L)
+        {
+            e.Handled = true;
+            if (!CurrentLayout().TooSmall)
+            {
+                Log.Toggle();
+                RedrawUnderLog();
+            }
             return;
         }
 

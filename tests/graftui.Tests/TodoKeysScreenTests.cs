@@ -136,7 +136,7 @@ public sealed class TodoKeysScreenTests : IDisposable
     }
 
     [Fact]
-    public void The_todo_art_is_hidden_on_a_short_pane_and_drawn_again_when_the_pane_grows()
+    public void The_todo_art_stays_on_the_smallest_screen_because_the_commands_strip_gives_the_top_panes_its_rows()
     {
         using var repo = SequenceRepos.Feature4();
         _ui.Driver!.SetScreenSize(80, 40);
@@ -145,12 +145,9 @@ public sealed class TodoKeysScreenTests : IDisposable
         window.Layout(new Size(80, 40));
         Assert.False(app.Art.HideArt);
 
+        // At 22 rows the top panes are 19 rows (the strip is one row), which is enough for the todo rows beside the art.
         _ui.Driver.SetScreenSize(80, 22);
         window.Layout(new Size(80, 22));
-        Assert.True(app.Art.HideArt);
-
-        _ui.Driver.SetScreenSize(80, 40);
-        window.Layout(new Size(80, 40));
         Assert.False(app.Art.HideArt);
         Assert.Equal(ArtPaneView.ListNeedsWholePane(app.Art.Viewport.Height, compact: true), app.Art.HideArt);
     }

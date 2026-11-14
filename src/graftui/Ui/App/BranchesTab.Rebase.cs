@@ -106,6 +106,7 @@ internal sealed partial class BranchesTab
     /// <summary>The confirm screen: the current branch's commits, each marked as rewritten, above the new base. Enter runs it.</summary>
     private void OpenConfirm(RebaseCheck check, GraphLayout? layout)
     {
+        _app.CloseLog();
         var L = Or(layout, _app.Snapshot, check.Onto, check.OntoTip);
         _confirm = check;
         _confirmLayout = L;
