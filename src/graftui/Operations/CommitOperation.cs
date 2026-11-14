@@ -5,7 +5,7 @@ using graftui.Model;
 namespace graftui.Operations;
 
 /// <summary>
-/// Commit and amend for the Changes tab. The message is written to GRAFTUI_MSG in the git dir and passed with -F,
+/// Commit and amend for the Changes tab. The message is written to a new graftui-msg-… file in the git dir and passed with -F,
 /// so no editor can open. Hooks run as usual.
 /// Check: CheckRepo (the repo state) plus the subject, the expected HEAD and the pushed-amend confirmation.
 /// Run: re-checks HEAD and the pushed state, writes the message file, runs git commit, deletes the file, then verifies
@@ -15,7 +15,6 @@ namespace graftui.Operations;
 /// </summary>
 public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest, CommitCheck, CommitOutcome>
 {
-    public const string MessageFileName = "GRAFTUI_MSG";
 
     private const string RemotePrefix = "refs/remotes/";
     private static readonly string[] StatusArgs = ["status", "--porcelain=v2", "-z", "--untracked-files=all"];
@@ -99,15 +98,17 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
                     return Done(CommitKind.Failed, null, null, ChangeRefusals.PushedNotConfirmed(pushed[0]));
             }
 
-            // 3. The message goes to a file in the git dir. The path is shown relative to the repo, as .git/GRAFTUI_MSG.
+            // 3. The message goes to a new file in the git dir. The path is shown relative to the repo, as .git/graftui-msg-<pid>-<hex>.
             //    --cleanup=whitespace keeps every line that was typed, so a commit.cleanup=strip setting cannot drop a "#" line.
-            var messagePath = Path.Combine(check.GitDir, MessageFileName);
-            var messageArg = Path.GetRelativePath(git.RepoPath, messagePath);
+            string? messagePath = null;
+            var messageArg = "";
             GitResult? commit = null;
             string? writeError = null;
-            bool deleteFailed;
+            var deleteFailed = false;
             try
             {
+                messagePath = GitDirTemp.NewPath(check.GitDir, GitDirTemp.Message);
+                messageArg = Path.GetRelativePath(git.RepoPath, messagePath);
                 File.WriteAllText(messagePath, CommitMessage.Build(request.Subject, request.Body, request.BlankAfterSubject), new UTF8Encoding(false));
                 commit = request.Amend
                     ? Call(log, "commit", "--amend", "--cleanup=whitespace", "-F", messageArg)
@@ -119,7 +120,8 @@ public sealed class CommitOperation(GitClient git) : IGitOperation<CommitRequest
             }
             finally
             {
-                deleteFailed = !TryDelete(messagePath);
+                if (messagePath is not null)
+                    deleteFailed = !TryDelete(messagePath);
             }
             var deleteNote = deleteFailed ? $"could not delete {messageArg}" : null;
 

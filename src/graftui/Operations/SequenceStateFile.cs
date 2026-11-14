@@ -19,7 +19,7 @@ internal sealed record SequenceState(int V, SequenceKind Kind, string Branch, st
 /// </summary>
 internal static class SequenceStateFile
 {
-    public const string FileName = "GRAFTUI_SEQUENCE", TodoFile = "GRAFTUI_REBASE_TODO", MessageFile = "GRAFTUI_SEQUENCE_MSG";
+    public const string FileName = "GRAFTUI_SEQUENCE", TodoFile = "GRAFTUI_REBASE_TODO";
 
     private const int Version = 1;
 

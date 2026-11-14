@@ -15,7 +15,7 @@ internal sealed record UndoEntry(string Ref, string Commit, UndoRecord? Step);
 /// </summary>
 internal sealed class UndoLog(GitClient git)
 {
-    public const string Prefix = "refs/graftui/undo/", MessageFile = "GRAFTUI_UNDO_MSG";
+    public const string Prefix = "refs/graftui/undo/";
     public const int Max = 50;
 
     private string? _gitDir;
@@ -33,9 +33,10 @@ internal sealed class UndoLog(GitClient git)
             if (tree is null)
                 return "could not make the undo step's tree";
 
-            var msgPath = Path.Combine(gitDir, MessageFile);
+            string? msgPath = null;
             try
             {
+                msgPath = GitDirTemp.NewPath(gitDir, GitDirTemp.UndoMessage);
                 File.WriteAllText(msgPath, UndoJson.Message(r), new UTF8Encoding(false));
 
                 var args = new List<string> { GitArgs.CommitTree, GitArgs.NoGpgSign, tree };
@@ -56,7 +57,8 @@ internal sealed class UndoLog(GitClient git)
             }
             finally
             {
-                TryDelete(msgPath);
+                if (msgPath is not null)
+                    TryDelete(msgPath);
             }
         }
         catch (Exception ex)
@@ -95,9 +97,10 @@ internal sealed class UndoLog(GitClient git)
     /// <summary>A tree with the saved index entries of an unstage, so their blobs are reachable. Built in a temporary index.</summary>
     private string? UnstageTree(UndoRecord r, string gitDir, List<GitResult> log)
     {
-        var tempIndex = Path.Combine(gitDir, WorkState.TempIndex);
+        string? tempIndex = null;
         try
         {
+            tempIndex = GitDirTemp.NewPath(gitDir, GitDirTemp.Index);
             TryDelete(tempIndex);
             foreach (var e in (r.IndexBefore ?? []).Where(e => e.Mode.Length > 0))
             {
@@ -109,7 +112,8 @@ internal sealed class UndoLog(GitClient git)
         }
         finally
         {
-            TryDelete(tempIndex);
+            if (tempIndex is not null)
+                TryDelete(tempIndex);
         }
     }
 

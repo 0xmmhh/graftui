@@ -384,15 +384,17 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
     /// </summary>
     private GitResult AmendMessage(string gitDir, string text, List<GitResult> log)
     {
-        var path = Path.Combine(gitDir, SequenceStateFile.MessageFile);
+        string? path = null;
         try
         {
+            path = GitDirTemp.NewPath(gitDir, GitDirTemp.SequenceMessage);
             File.WriteAllText(path, text, new UTF8Encoding(false));
             return BranchGit.Call(git, log, "commit", "--amend", "--only", "--cleanup=whitespace", "-F", RepoState.ArgPath(git, path));
         }
         finally
         {
-            SequenceGit.DeleteQuietly(path);
+            if (path is not null)
+                SequenceGit.DeleteQuietly(path);
         }
     }
 

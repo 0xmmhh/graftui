@@ -149,6 +149,24 @@ internal sealed class TempRepo : IDisposable
     public void Write(string file, string content) =>
         File.WriteAllText(Path.Combine(Dir, file), content, new UTF8Encoding(false));
 
+    /// <summary>graftui's temporary files of one kind (see GitDirTemp) left in the git dir.</summary>
+    public IReadOnlyList<string> TempFiles(string stem) =>
+        Directory.EnumerateFileSystemEntries(Path.Combine(Dir, ".git"))
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Where(name => name.StartsWith(stem + "-", StringComparison.Ordinal))
+            .ToList();
+
+    /// <summary>
+    /// Puts a file where the undo refs' folder goes, so saving an undo step fails at its last step (update-ref). Works with the files
+    /// ref backend, which git uses by default; under reftable the save would succeed and the tests that use this would fail.
+    /// </summary>
+    public void BlockUndoRefs()
+    {
+        Directory.CreateDirectory(Path.Combine(Dir, ".git", "refs"));
+        File.WriteAllText(Path.Combine(Dir, ".git", "refs", "graftui"), "");
+    }
+
     /// <summary>`git status --porcelain` lines, untrimmed so the leading space of " M" rows survives.</summary>
     public string Status() => Git.Run("status", "--porcelain").StdOut.TrimEnd('\n');
 
