@@ -75,6 +75,12 @@ public sealed class GitClient(string repoPath)
         // Read-only status queries must not take index.lock while a merge is starting.
         psi.Environment["GIT_OPTIONAL_LOCKS"] = "0";
 
+        // git's messages in English whatever the user's language, so the text graftui reads (CONFLICT, error:, fatal:) is the same
+        // on every machine. Commit messages and file names are not translated, so they are unchanged.
+        psi.Environment["LC_ALL"] = "C";
+        psi.Environment["LANG"] = "C";
+        psi.Environment["LANGUAGE"] = "C";
+
         if (env is not null)
             foreach (var (key, value) in env)
                 psi.Environment[key] = value;
