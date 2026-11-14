@@ -75,6 +75,10 @@ public sealed class GitClient(string repoPath)
         // Read-only status queries must not take index.lock while a merge is starting.
         psi.Environment["GIT_OPTIONAL_LOCKS"] = "0";
 
+        // git's messages in English whatever the user's language, so the text graftui reads (CONFLICT, error:, fatal:) is the same
+        // on every machine. Only the message language changes: hooks and signing helpers keep the user's character set (UTF-8).
+        UseEnglishMessages(psi.Environment);
+
         if (env is not null)
             foreach (var (key, value) in env)
                 psi.Environment[key] = value;
@@ -103,6 +107,28 @@ public sealed class GitClient(string repoPath)
         process.WaitForExit();
 
         return new GitResult(GitCommandLine.Render(args), process.ExitCode, stdOut.Result, stdErr.Result) { Args = args };
+    }
+
+    /// <summary>
+    /// Sets git's message language to English (LC_MESSAGES=C, LANGUAGE=C) and keeps every other part of the user's locale.
+    /// LC_ALL would override LC_MESSAGES, so copy its effective value to LANG and the other categories before removing it.
+    /// </summary>
+    internal static void UseEnglishMessages(IDictionary<string, string?> env)
+    {
+        if (env.TryGetValue("LC_ALL", out var all) && !string.IsNullOrEmpty(all))
+        {
+            env["LANG"] = all;
+            // Category variables outrank LANG once LC_ALL is removed, including GNU's extra categories.
+            foreach (var category in new[]
+            {
+                "LC_CTYPE", "LC_COLLATE", "LC_MONETARY", "LC_NUMERIC", "LC_TIME",
+                "LC_ADDRESS", "LC_IDENTIFICATION", "LC_MEASUREMENT", "LC_NAME", "LC_PAPER", "LC_TELEPHONE",
+            })
+                env[category] = all;
+        }
+        env.Remove("LC_ALL");
+        env["LC_MESSAGES"] = "C";
+        env["LANGUAGE"] = "C";
     }
 
     /// <summary>True if RepoPath is inside a git work tree.</summary>
