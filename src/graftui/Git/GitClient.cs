@@ -111,12 +111,21 @@ public sealed class GitClient(string repoPath)
 
     /// <summary>
     /// Sets git's message language to English (LC_MESSAGES=C, LANGUAGE=C) and keeps every other part of the user's locale.
-    /// LC_ALL would override LC_MESSAGES, so it is removed, and its value moves to LANG, which then sets the other parts as LC_ALL did.
+    /// LC_ALL would override LC_MESSAGES, so copy its effective value to LANG and the other categories before removing it.
     /// </summary>
     internal static void UseEnglishMessages(IDictionary<string, string?> env)
     {
         if (env.TryGetValue("LC_ALL", out var all) && !string.IsNullOrEmpty(all))
+        {
             env["LANG"] = all;
+            // Category variables outrank LANG once LC_ALL is removed, including GNU's extra categories.
+            foreach (var category in new[]
+            {
+                "LC_CTYPE", "LC_COLLATE", "LC_MONETARY", "LC_NUMERIC", "LC_TIME",
+                "LC_ADDRESS", "LC_IDENTIFICATION", "LC_MEASUREMENT", "LC_NAME", "LC_PAPER", "LC_TELEPHONE",
+            })
+                env[category] = all;
+        }
         env.Remove("LC_ALL");
         env["LC_MESSAGES"] = "C";
         env["LANGUAGE"] = "C";
