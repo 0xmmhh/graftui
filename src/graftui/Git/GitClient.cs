@@ -76,10 +76,8 @@ public sealed class GitClient(string repoPath)
         psi.Environment["GIT_OPTIONAL_LOCKS"] = "0";
 
         // git's messages in English whatever the user's language, so the text graftui reads (CONFLICT, error:, fatal:) is the same
-        // on every machine. Commit messages and file names are not translated, so they are unchanged.
-        psi.Environment["LC_ALL"] = "C";
-        psi.Environment["LANG"] = "C";
-        psi.Environment["LANGUAGE"] = "C";
+        // on every machine. Only the message language changes: hooks and signing helpers keep the user's character set (UTF-8).
+        UseEnglishMessages(psi.Environment);
 
         if (env is not null)
             foreach (var (key, value) in env)
@@ -109,6 +107,19 @@ public sealed class GitClient(string repoPath)
         process.WaitForExit();
 
         return new GitResult(GitCommandLine.Render(args), process.ExitCode, stdOut.Result, stdErr.Result) { Args = args };
+    }
+
+    /// <summary>
+    /// Sets git's message language to English (LC_MESSAGES=C, LANGUAGE=C) and keeps every other part of the user's locale.
+    /// LC_ALL would override LC_MESSAGES, so it is removed, and its value moves to LANG, which then sets the other parts as LC_ALL did.
+    /// </summary>
+    internal static void UseEnglishMessages(IDictionary<string, string?> env)
+    {
+        if (env.TryGetValue("LC_ALL", out var all) && !string.IsNullOrEmpty(all))
+            env["LANG"] = all;
+        env.Remove("LC_ALL");
+        env["LC_MESSAGES"] = "C";
+        env["LANGUAGE"] = "C";
     }
 
     /// <summary>True if RepoPath is inside a git work tree.</summary>
