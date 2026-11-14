@@ -24,14 +24,7 @@ public class CommitSafetyTests
     {
         if (!command.StartsWith(start + ".git/", StringComparison.Ordinal))
             return false;
-        return GitDirTemp.IsNameOf(command[(start.Length + 5)..], GitDirTemp.Message);
-    }
-
-    /// <summary>Puts a file where the undo refs' folder goes, so saving an undo step fails.</summary>
-    internal static void BlockUndoRefs(TempRepo repo)
-    {
-        Directory.CreateDirectory(Path.Combine(repo.Dir, ".git", "refs"));
-        File.WriteAllText(Path.Combine(repo.Dir, ".git", "refs", "graftui"), "");
+        return GitDirTemp.IsNameOf(command[(start.Length + ".git/".Length)..], GitDirTemp.Message);
     }
 
     private static void AssertNoMessageFile(TempRepo repo) =>
@@ -295,7 +288,7 @@ public class CommitSafetyTests
         repo.Write("b.txt", "b\n");
         StageAll(repo);
         // A file where the undo refs' folder goes makes the save fail after the commit has landed.
-        BlockUndoRefs(repo);
+        repo.BlockUndoRefs();
 
         var outcome = Run(new CommitOperation(repo.Git), Commit("Second"));
 

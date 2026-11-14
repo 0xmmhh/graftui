@@ -27,14 +27,14 @@ internal static class GitDirTemp
             var path = Path.Combine(gitDir, Name(stem));
             try
             {
-                using (new FileStream(path, FileMode.CreateNew, FileAccess.Write))
-                {
-                }
+                new FileStream(path, FileMode.CreateNew, FileAccess.Write).Dispose();
                 return path;
             }
-            catch (IOException ex) when (File.Exists(path) || Directory.Exists(path))
+            catch (IOException ex)
             {
-                // Taken by another file: try another name.
+                // Only a name taken by another file is tried again; any other error (a missing folder) is thrown.
+                if (!File.Exists(path) && !Directory.Exists(path))
+                    throw;
                 last = ex;
             }
         }

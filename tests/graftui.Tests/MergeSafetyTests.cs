@@ -157,7 +157,7 @@ public class MergeSafetyTests
     {
         using var repo = TempRepo.Diverged(conflict: false);
         // A file where the undo refs' folder goes makes the save fail after the merge has landed.
-        CommitSafetyTests.BlockUndoRefs(repo);
+        repo.BlockUndoRefs();
         var op = new MergeOperation(repo.Git);
 
         var outcome = op.Run(new MergeRequest("feature"), op.Check(new MergeRequest("feature")));

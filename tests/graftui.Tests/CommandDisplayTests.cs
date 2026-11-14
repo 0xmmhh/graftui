@@ -99,7 +99,7 @@ public class CommandDisplayTests
     [Fact]
     public void Commit_with_a_subject_shows_the_message_not_the_file()
     {
-        var r = L("commit --cleanup=whitespace -F .git/GRAFTUI_MSG");
+        var r = L("commit --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef");
         var hints = new CommandHints("Fix login redirect", null);
         Assert.Equal("git commit -m \"Fix login redirect\"", Shown(r, hints));
     }
@@ -107,7 +107,7 @@ public class CommandDisplayTests
     [Fact]
     public void Commit_with_a_one_line_body_adds_a_second_message()
     {
-        var r = L("commit --cleanup=whitespace -F .git/GRAFTUI_MSG");
+        var r = L("commit --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef");
         var hints = new CommandHints("Fix login redirect", "Users landed on /");
         Assert.Equal("git commit -m \"Fix login redirect\" -m \"Users landed on /\"", Shown(r, hints));
     }
@@ -115,7 +115,7 @@ public class CommandDisplayTests
     [Fact]
     public void Commit_with_a_multi_line_body_shows_the_first_line_and_an_ellipsis()
     {
-        var r = L("commit --cleanup=whitespace -F .git/GRAFTUI_MSG");
+        var r = L("commit --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef");
         var hints = new CommandHints("Fix login redirect", "Users landed on /\nsecond paragraph\nthird");
         Assert.Equal("git commit -m \"Fix login redirect\" -m \"Users landed on /…\"", Shown(r, hints));
     }
@@ -123,7 +123,7 @@ public class CommandDisplayTests
     [Fact]
     public void Commit_body_starts_at_the_first_non_blank_line()
     {
-        var r = L("commit --cleanup=whitespace -F .git/GRAFTUI_MSG");
+        var r = L("commit --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef");
         var hints = new CommandHints("Subject", "\n\n  First line  \n\nmore");
         Assert.Equal("git commit -m \"Subject\" -m \"First line…\"", Shown(r, hints));
     }
@@ -133,28 +133,28 @@ public class CommandDisplayTests
     [InlineData("   \n  ")]
     public void Commit_with_an_empty_body_has_no_second_message(string body)
     {
-        var r = L("commit --cleanup=whitespace -F .git/GRAFTUI_MSG");
+        var r = L("commit --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef");
         Assert.Equal("git commit -m \"Subject\"", Shown(r, new CommandHints("Subject", body)));
     }
 
     [Fact]
     public void Amend_keeps_its_flag()
     {
-        var r = L("commit --amend --cleanup=whitespace -F .git/GRAFTUI_MSG");
+        var r = L("commit --amend --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef");
         Assert.Equal("git commit --amend -m \"Subject\" -m \"Body\"", Shown(r, new CommandHints("Subject", "Body")));
     }
 
     [Fact]
     public void Commit_without_hints_shows_the_bare_command()
     {
-        Assert.Equal("git commit", Shown(L("commit --cleanup=whitespace -F .git/GRAFTUI_MSG")));
-        Assert.Equal("git commit --amend", Shown(L("commit --amend --cleanup=whitespace -F .git/GRAFTUI_MSG")));
+        Assert.Equal("git commit", Shown(L("commit --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef")));
+        Assert.Equal("git commit --amend", Shown(L("commit --amend --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef")));
     }
 
     [Fact]
     public void Commit_subject_is_always_quoted_and_escaped()
     {
-        var r = L("commit --cleanup=whitespace -F .git/GRAFTUI_MSG");
+        var r = L("commit --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef");
         Assert.Equal("git commit -m \"He said \\\"hi\\\" \\$x\"", Shown(r, new CommandHints("He said \"hi\" $x")));
     }
 
@@ -176,7 +176,7 @@ public class CommandDisplayTests
         AssertHidden(Indexed("write-tree"));
         AssertHidden(L("write-tree"));
         AssertHidden(L("log -1 --format=%H refs/graftui/undo/000001"));
-        AssertHidden(L($"commit-tree {H40} -p HEAD -F .git/GRAFTUI_UNDO_MSG"));
+        AssertHidden(L($"commit-tree {H40} -p HEAD -F .git/graftui-undo-msg-1234-deadbeef"));
     }
 
     [Fact]
@@ -293,7 +293,7 @@ public class CommandDisplayTests
         AssertHidden(L("rev-parse --git-dir"));
         AssertHidden(L("mktree"));
         AssertHidden(Indexed("update-index --add --cacheinfo 100644," + H40 + ",notes.md"));
-        AssertHidden(L($"commit-tree {H40} -F .git/GRAFTUI_UNDO_MSG"));
+        AssertHidden(L($"commit-tree {H40} -F .git/graftui-undo-msg-1234-deadbeef"));
         AssertHidden(L("for-each-ref refs/graftui/undo/"));
 
         var saved = R("update-ref", "refs/graftui/undo/000001", H40, "");
@@ -503,11 +503,11 @@ public class CommandDisplayTests
     [Fact]
     public void A_commit_simple_line_uses_the_hints_and_the_exact_line_keeps_the_message_file()
     {
-        var r = L("commit --cleanup=whitespace -F .git/GRAFTUI_MSG");
+        var r = L("commit --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef");
 
         var entry = CommandDisplay.Entry(r, new CommandHints("Fix login redirect", "Users landed on /"), showOutput: false);
 
-        Assert.Equal("git commit --cleanup=whitespace -F .git/GRAFTUI_MSG", entry.Exact[0].Text);
+        Assert.Equal("git commit --cleanup=whitespace -F .git/graftui-msg-1234-deadbeef", entry.Exact[0].Text);
         Assert.Equal("git commit -m \"Fix login redirect\" -m \"Users landed on /\"", entry.Simple[0].Text);
     }
 
