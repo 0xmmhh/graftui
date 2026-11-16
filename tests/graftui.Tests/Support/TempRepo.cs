@@ -54,6 +54,9 @@ internal sealed class TempRepo : IDisposable
 
     public GitClient Git { get; }
 
+    /// <summary>A client for this repo with the given timeouts, for the timeout tests.</summary>
+    public GitClient GitWith(GitTimeouts timeouts) => new GitClient(Dir, timeouts);
+
     public string Dir { get; }
 
     public string Head => Run("rev-parse", "HEAD");

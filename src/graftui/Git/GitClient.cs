@@ -9,7 +9,7 @@ namespace graftui.Git;
 /// Thin wrapper around the git CLI. Every call runs inside <see cref="RepoPath"/>,
 /// never in the process's current directory, so graftui only touches the repo you point it at.
 /// </summary>
-public sealed class GitClient(string repoPath)
+public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
 {
     // One commit per line: full hash, short hash, parents, committer date (Unix seconds), subject. Fields are separated by 0x1f
     // (unit separator). The subject is last, so a subject cannot shift the other fields.
@@ -17,11 +17,22 @@ public sealed class GitClient(string repoPath)
 
     public string RepoPath { get; } = Path.GetFullPath(repoPath);
 
-    /// <summary>Runs `git &lt;args&gt;` in RepoPath and captures everything.</summary>
-    public GitResult Run(params string[] args) => RunCore(null, args);
+    /// <summary>How long each git process may run. Defaults to <see cref="GitTimeouts.Default"/>.</summary>
+    public GitTimeouts Timeouts { get; } = timeouts ?? GitTimeouts.Default;
+
+    /// <summary>Runs `git &lt;args&gt;` in RepoPath and captures everything. Stopped after <see cref="GitTimeouts.Write"/>.</summary>
+    public GitResult Run(params string[] args) => RunCore(null, args, Timeouts.Write, CancellationToken.None, isWrite: true);
 
     /// <summary>Like <see cref="Run"/>, with extra environment variables (applied after graftui's own defaults).</summary>
-    public GitResult RunWithEnv(IReadOnlyDictionary<string, string> env, params string[] args) => RunCore(env, args);
+    public GitResult RunWithEnv(IReadOnlyDictionary<string, string> env, params string[] args) =>
+        RunCore(env, args, Timeouts.Write, CancellationToken.None, isWrite: true);
+
+    /// <summary>
+    /// A read-only call. It is stopped after <see cref="GitTimeouts.Read"/>, or as soon as <paramref name="ct"/> is cancelled: the process
+    /// tree is killed and the result has Cancelled = true. A token that is already cancelled starts no process.
+    /// </summary>
+    public GitResult RunRead(CancellationToken ct, params string[] args) =>
+        RunCore(null, args, Timeouts.Read, ct, isWrite: false);
 
     /// <summary>
     /// Like <see cref="Run"/>, but pathspecs are literal: a file named "*.txt" or ":x" matches only that file,
@@ -48,8 +59,14 @@ public sealed class GitClient(string repoPath)
     private static readonly IReadOnlyDictionary<string, string> LiteralPathspecs =
         new Dictionary<string, string> { ["GIT_LITERAL_PATHSPECS"] = "1" };
 
-    private GitResult RunCore(IReadOnlyDictionary<string, string>? env, string[] args)
+    private GitResult RunCore(IReadOnlyDictionary<string, string>? env, string[] args, TimeSpan timeout, CancellationToken ct, bool isWrite)
     {
+        var command = GitCommandLine.Render(args);
+
+        // A token that is already cancelled starts no process at all.
+        if (ct.IsCancellationRequested)
+            return Stopped(command, args, Stop.Cancelled, CancelledNote, "", "");
+
         var psi = new ProcessStartInfo("git")
         {
             WorkingDirectory = RepoPath,
@@ -104,9 +121,129 @@ public sealed class GitClient(string repoPath)
         // Read both streams concurrently so a full pipe can't deadlock.
         var stdOut = process.StandardOutput.ReadToEndAsync();
         var stdErr = process.StandardError.ReadToEndAsync();
-        process.WaitForExit();
+        var clock = Stopwatch.StartNew();
+        var stop = WaitOrStop(process, timeout, ct, clock);
+        if (stop == Stop.None)
+        {
+            // git has exited, but a child it started may still hold the pipes open. That counts as a timeout too.
+            var remaining = timeout - clock.Elapsed;
+            if (remaining < KillGrace)
+                remaining = KillGrace;
+            if (!Task.WaitAll(new Task[] { stdOut, stdErr }, remaining))
+                stop = Stop.TimedOut;
+        }
 
-        return new GitResult(GitCommandLine.Render(args), process.ExitCode, stdOut.Result, stdErr.Result) { Args = args };
+        if (stop == Stop.None)
+            return new GitResult(command, process.ExitCode, stdOut.Result, stdErr.Result) { Args = args };
+
+        // Stopped. The kill closes the pipes, so wait briefly for the text that arrived and keep it.
+        Task.WaitAll(new Task[] { stdOut, stdErr }, KillGrace);
+        var note = stop == Stop.TimedOut ? TimeoutNote(timeout, env, isWrite) : CancelledNote;
+        return Stopped(command, args, stop, note, TextOrEmpty(stdOut), TextOrEmpty(stdErr));
+    }
+
+    /// <summary>Why a call was stopped by graftui. None means git ran to its own end.</summary>
+    private enum Stop { None, TimedOut, Cancelled }
+
+    private const string CancelledNote = "graftui stopped git: its answer was no longer needed";
+
+    // How often the wait looks at the cancellation token and the clock. WaitForExit returns at once when git exits, so this only
+    // matters for calls that run long.
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
+
+    // After a kill: how long to wait for git to exit and for the pipes to close.
+    private static readonly TimeSpan KillGrace = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Waits for git to exit. Stops it (killing its tree) when ct is cancelled or the clock passes the timeout. Cancellation is looked at
+    /// first, so a read that is both cancelled and late says Cancelled.
+    /// </summary>
+    private static Stop WaitOrStop(Process process, TimeSpan timeout, CancellationToken ct, Stopwatch clock)
+    {
+        while (!process.WaitForExit(PollInterval))
+        {
+            if (ct.IsCancellationRequested)
+            {
+                KillTree(process);
+                return Stop.Cancelled;
+            }
+            if (clock.Elapsed >= timeout)
+            {
+                KillTree(process);
+                return Stop.TimedOut;
+            }
+        }
+        return Stop.None;
+    }
+
+    /// <summary>
+    /// Kills git and every process it started (sh, sleep, a hook's children), then waits up to <see cref="KillGrace"/> for git to exit.
+    /// Kill(true) stops the tree before killing it, so a child cannot start another one in the meantime.
+    /// </summary>
+    private static void KillTree(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException)
+        {
+            // git exited on its own just before the kill: nothing left to stop.
+        }
+        catch (AggregateException)
+        {
+            // Part of the tree could not be killed; the pipes may stay open, and the caller does not wait for them forever.
+        }
+        catch (Win32Exception)
+        {
+            // The process could not be signalled; the caller's bounded wait still returns.
+        }
+        process.WaitForExit(KillGrace);
+    }
+
+    /// <summary>The result for a call graftui stopped. The note goes first in StdErr, where every operation's failure message finds it.</summary>
+    private static GitResult Stopped(string command, string[] args, Stop stop, string note, string stdOut, string stdErr) =>
+        new(command, stop == Stop.TimedOut ? GitResult.TimedOutExitCode : GitResult.CancelledExitCode, stdOut, note + "\n" + stdErr)
+        {
+            Args = args,
+            TimedOut = stop == Stop.TimedOut,
+            Cancelled = stop == Stop.Cancelled,
+        };
+
+    private static string TextOrEmpty(Task<string> read) => read.IsCompletedSuccessfully ? read.Result : "";
+
+    /// <summary>
+    /// The note for a timed-out call. A write may have left index.lock behind (it is killed while holding it): that file is named with
+    /// the command to delete it, but graftui never deletes it. Reads never leave a lock (GIT_OPTIONAL_LOCKS=0), so they are not checked.
+    /// </summary>
+    private string TimeoutNote(TimeSpan timeout, IReadOnlyDictionary<string, string>? env, bool checkLock)
+    {
+        var note = $"git timed out after {GitTimeouts.Describe(timeout)} and graftui stopped it";
+        if (!checkLock)
+            return note;
+
+        var lockPath = IndexLockPath(env);
+        if (lockPath is null || !File.Exists(lockPath))
+            return note;
+
+        var remove = OperatingSystem.IsWindows() ? "del " : "rm ";
+        return note + $"; it left {lockPath} behind: if no other git is running, delete it with {remove}"
+            + GitCommandLine.Quote(lockPath, always: true);
+    }
+
+    /// <summary>
+    /// Where git keeps the index lock for a call: beside GIT_INDEX_FILE when the call uses its own index, otherwise in the git dir.
+    /// Null when the git dir cannot be read. The lookup is a read that is not part of any operation's log.
+    /// </summary>
+    internal string? IndexLockPath(IReadOnlyDictionary<string, string>? env)
+    {
+        if (env is not null && env.TryGetValue("GIT_INDEX_FILE", out var indexFile))
+            return Path.GetFullPath(Path.Combine(RepoPath, indexFile)) + ".lock";
+
+        var gitDir = RunCore(null, ["rev-parse", "--absolute-git-dir"], Timeouts.Read, CancellationToken.None, isWrite: false);
+        if (!gitDir.Success)
+            return null;
+        return Path.Combine(gitDir.StdOut.Trim(), "index.lock");
     }
 
     /// <summary>
