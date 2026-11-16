@@ -52,7 +52,7 @@ public sealed class RepoReader(GitClient git)
         };
     }
 
-    private GitClient RootClient() => _root ??= new GitClient(git.GetTopLevel() ?? git.RepoPath);
+    private GitClient RootClient() => _root ??= new GitClient(git.GetTopLevel() ?? git.RepoPath, git.Timeouts);
 
     public GraphLayout LoadLayout(RepoSnapshot snap, Branch sel, CancellationToken ct)
     {

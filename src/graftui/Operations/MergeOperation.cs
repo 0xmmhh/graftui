@@ -138,10 +138,11 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList();
 
-            // Signals arrive as 128+N (130 = SIGINT); exactly 128 is git's own die(), not a signal.
-            var (leftover, mergeStarted) = Rollback(Run, oldHead, merge.ExitCode > 128);
+            // Signals arrive as 128+N (130 = SIGINT); exactly 128 is git's own die(). A merge that timed out was killed, so it is
+            // rolled back like an interrupted one.
+            var (leftover, mergeStarted) = Rollback(Run, oldHead, merge.ExitCode > 128 || merge.TimedOut);
             if (leftover is not null)
-                return Done(MergeKind.Failed, null, files, leftover);
+                return Done(MergeKind.Failed, null, files, merge.TimedOut ? KilledMergeLeftover(merge, leftover) : leftover);
 
             // The repo is clean and not mid-merge. If the merge had started and HEAD still moved, it did complete
             // even though git exited non-zero (e.g. interrupted just after the commit). If it never started, a
@@ -149,6 +150,10 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
             var now = Run(GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
             if (mergeStarted && now.Success && now.StdOut.Trim() != oldHead)
                 return Verify($" (git exited {merge.ExitCode} after completing the merge)");
+
+            // A killed merge that rolled back cleanly: the timeout note says why, and nothing was merged.
+            if (merge.TimedOut)
+                return Done(MergeKind.Failed, null, NoFiles, BranchGit.FirstLine(merge) + "; nothing was merged");
 
             if (files.Count > 0)
                 return Done(MergeKind.Conflict, null, files, "merge aborted");
@@ -211,6 +216,22 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
         if (dirty)
             return ("working tree left dirty by an interrupted merge; inspect with git status", true);
         return (null, true);
+    }
+
+    /// <summary>
+    /// What a killed merge leaves for the user when it could not be rolled back: git's leftover text, and when a stale index.lock is
+    /// there, the steps to finish. graftui never deletes the lock. git reset --merge clears MERGE_HEAD when it is present, so one command
+    /// covers a merge killed before and after it wrote MERGE_HEAD. A killed merge driver can leave untracked .merge_file_* files, so the
+    /// last step is git status.
+    /// </summary>
+    private string KilledMergeLeftover(GitResult merge, string leftover)
+    {
+        var first = BranchGit.FirstLine(merge);
+        var lockPath = git.IndexLockPath(null);
+        if (lockPath is null || !File.Exists(lockPath))
+            return first + "; " + leftover;
+        return first + "; " + leftover + "; to finish: rm " + GitCommandLine.Quote(lockPath, always: true)
+            + ", then git reset --merge, then check git status for leftover files";
     }
 
     /// <summary>The short form of a hash for messages; "unknown" when there is no hash.</summary>
