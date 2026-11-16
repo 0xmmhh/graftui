@@ -160,9 +160,8 @@ public class GitTimeoutTests
         Assert.False(result.Cancelled);
         Assert.Equal(GitResult.TimedOutExitCode, result.ExitCode);
         Assert.StartsWith("git timed out after 1 s", result.StdErr, StringComparison.Ordinal);
-        // A script the timeout stopped before it wrote its pid had no sleep to leak.
-        if (sleepPid.HasValue)
-            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out read");
+        Assert.True(sleepPid.HasValue, "the script did not record its sleep pid before graftui stopped it");
+        Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out read");
     }
 
     [Fact]
@@ -183,8 +182,8 @@ public class GitTimeoutTests
         Assert.Equal(GitResult.TimedOutExitCode, result.ExitCode);
         Assert.StartsWith("git timed out after 1 s", result.StdErr, StringComparison.Ordinal);
         Assert.DoesNotContain("index.lock", result.StdErr, StringComparison.Ordinal);
-        if (sleepPid.HasValue)
-            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out write");
+        Assert.True(sleepPid.HasValue, "the script did not record its sleep pid before graftui stopped it");
+        Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out write");
     }
 
     [Fact]
@@ -214,8 +213,8 @@ public class GitTimeoutTests
         Assert.Contains("rm \"", firstLine, StringComparison.Ordinal);
         Assert.Equal(oldHead, repo.Head);
         Assert.True(File.Exists(lockPath), "graftui deleted index.lock");
-        if (sleepPid.HasValue)
-            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out commit");
+        Assert.True(sleepPid.HasValue, "the script did not record its sleep pid before graftui stopped it");
+        Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out commit");
     }
 
     [Fact]
@@ -290,8 +289,8 @@ public class GitTimeoutTests
         Assert.Equal(cached, repo.Run("diff", "--cached", "--name-only"));
         Assert.Equal(worktree, File.ReadAllBytes(Path.Combine(repo.Dir, "app.txt")));
         Assert.Empty(repo.TempFiles(GitDirTemp.Message));
-        if (sleepPid.HasValue)
-            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out commit");
+        Assert.True(sleepPid.HasValue, "the script did not record its sleep pid before graftui stopped it");
+        Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out commit");
     }
 
     [Fact]
@@ -321,8 +320,8 @@ public class GitTimeoutTests
         Assert.True(repo.IsClean);
         Assert.False(repo.Merging);
         Assert.False(File.Exists(Path.Combine(repo.Dir, "b.txt")));
-        if (sleepPid.HasValue)
-            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out merge");
+        Assert.True(sleepPid.HasValue, "the script did not record its sleep pid before graftui stopped it");
+        Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out merge");
     }
 
     [Fact]
@@ -356,8 +355,8 @@ public class GitTimeoutTests
         Assert.Contains("check git status for leftover files", outcome.Message, StringComparison.Ordinal);
         Assert.True(File.Exists(lockPath), "graftui deleted index.lock");
         Assert.Equal(oldHead, repo.Head);
-        if (sleepPid.HasValue)
-            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out merge");
+        Assert.True(sleepPid.HasValue, "the script did not record its sleep pid before graftui stopped it");
+        Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out merge");
     }
 
     [Theory]
@@ -417,7 +416,7 @@ public class GitTimeoutTests
 
         /// <summary>
         /// Waits for the sleep's pid while a call the test started runs. Null when the call ended, or the time ran out, before the script
-        /// wrote the pid: a script stopped that early had no sleep to leak.
+        /// wrote the pid. The script starts its sleep before it writes the pid, so tests treat null as a failure: they cannot then prove the sleep was killed.
         /// </summary>
         public int? TryWaitForChildPid(Task call, TimeSpan within)
         {
