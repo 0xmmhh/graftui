@@ -144,33 +144,38 @@ public class GitTimeoutTests
     }
 
     [Fact]
-    public void A_read_times_out()
+    public async Task A_read_times_out()
     {
         using var repo = TempRepo.Create();
         using var hang = new HangingScript(repo, "hang");
         var git = repo.GitWith(Budgets(1, 10));
         var clock = Stopwatch.StartNew();
+        var call = Task.Run(() => git.RunRead(CancellationToken.None, hang.Args));
 
-        var result = git.RunRead(CancellationToken.None, hang.Args);
+        var sleepPid = hang.TryWaitForChildPid(call, TimeSpan.FromSeconds(5));
+        var result = await call;
 
         AssertReturnedQuickly(clock);
         Assert.True(result.TimedOut);
         Assert.False(result.Cancelled);
         Assert.Equal(GitResult.TimedOutExitCode, result.ExitCode);
         Assert.StartsWith("git timed out after 1 s", result.StdErr, StringComparison.Ordinal);
-        var sleepPid = hang.WaitForChildPid(TimeSpan.FromSeconds(5));
-        Assert.True(ProcessGone(sleepPid, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out read");
+        // A script the timeout stopped before it wrote its pid had no sleep to leak.
+        if (sleepPid.HasValue)
+            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out read");
     }
 
     [Fact]
-    public void A_write_times_out_and_its_tree_is_killed()
+    public async Task A_write_times_out_and_its_tree_is_killed()
     {
         using var repo = TempRepo.Create();
         using var hang = new HangingScript(repo, "hang");
         var git = repo.GitWith(Budgets(10, 1));
         var clock = Stopwatch.StartNew();
+        var call = Task.Run(() => git.Run(hang.Args));
 
-        var result = git.Run(hang.Args);
+        var sleepPid = hang.TryWaitForChildPid(call, TimeSpan.FromSeconds(5));
+        var result = await call;
 
         AssertReturnedQuickly(clock);
         Assert.True(result.TimedOut);
@@ -178,12 +183,12 @@ public class GitTimeoutTests
         Assert.Equal(GitResult.TimedOutExitCode, result.ExitCode);
         Assert.StartsWith("git timed out after 1 s", result.StdErr, StringComparison.Ordinal);
         Assert.DoesNotContain("index.lock", result.StdErr, StringComparison.Ordinal);
-        var sleepPid = hang.WaitForChildPid(TimeSpan.FromSeconds(5));
-        Assert.True(ProcessGone(sleepPid, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out write");
+        if (sleepPid.HasValue)
+            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out write");
     }
 
     [Fact]
-    public void A_stale_index_lock_is_named_and_kept()
+    public async Task A_stale_index_lock_is_named_and_kept()
     {
         using var repo = TempRepo.Create();
         repo.Commit("a.txt", "a\n", "Add a");
@@ -196,7 +201,9 @@ public class GitTimeoutTests
         var clock = Stopwatch.StartNew();
 
         // commit -a updates the index, and holds index.lock, before its pre-commit hook runs.
-        var result = git.Run("commit", "-a", "-m", "x");
+        var call = Task.Run(() => git.Run("commit", "-a", "-m", "x"));
+        var sleepPid = hang.TryWaitForChildPid(call, TimeSpan.FromSeconds(5));
+        var result = await call;
 
         AssertReturnedQuickly(clock);
         Assert.True(result.TimedOut);
@@ -207,8 +214,8 @@ public class GitTimeoutTests
         Assert.Contains("rm \"", firstLine, StringComparison.Ordinal);
         Assert.Equal(oldHead, repo.Head);
         Assert.True(File.Exists(lockPath), "graftui deleted index.lock");
-        var sleepPid = hang.WaitForChildPid(TimeSpan.FromSeconds(5));
-        Assert.True(ProcessGone(sleepPid, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out commit");
+        if (sleepPid.HasValue)
+            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out commit");
     }
 
     [Fact]
@@ -234,7 +241,27 @@ public class GitTimeoutTests
     }
 
     [Fact]
-    public void A_timed_out_commit_fails_and_changes_nothing()
+    public void A_child_that_keeps_the_output_open_is_a_timeout_after_a_short_grace()
+    {
+        using var repo = TempRepo.Create();
+
+        // The alias exits 0 at once, but the sleep it started inherits the output pipe and keeps it open.
+        using var orphan = new HangingScript(repo, "orphan", waitForSleep: false);
+        var git = repo.GitWith(Budgets(60, 30));
+        var clock = Stopwatch.StartNew();
+
+        var result = git.Run(orphan.Args);
+
+        // The budget is 30 s. Returning in well under that shows the wait after git's exit is the short grace.
+        AssertReturnedQuickly(clock);
+        Assert.True(result.TimedOut);
+        Assert.False(result.Cancelled);
+        Assert.Equal(GitResult.TimedOutExitCode, result.ExitCode);
+        Assert.StartsWith("git exited 0 but a process it started kept its output open", result.StdErr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_timed_out_commit_fails_and_changes_nothing()
     {
         using var repo = TempRepo.Create();
         repo.Commit("app.txt", "line 1\n", "Add app");
@@ -251,7 +278,9 @@ public class GitTimeoutTests
 
         var check = op.Check(request);
         Assert.True(check.CanRun, check.Refusal);
-        var outcome = op.Run(request, check);
+        var call = Task.Run(() => op.Run(request, check));
+        var sleepPid = hang.TryWaitForChildPid(call, TimeSpan.FromSeconds(5));
+        var outcome = await call;
 
         AssertReturnedQuickly(clock);
         Assert.Equal(CommitKind.Failed, outcome.Kind);
@@ -261,12 +290,12 @@ public class GitTimeoutTests
         Assert.Equal(cached, repo.Run("diff", "--cached", "--name-only"));
         Assert.Equal(worktree, File.ReadAllBytes(Path.Combine(repo.Dir, "app.txt")));
         Assert.Empty(repo.TempFiles(GitDirTemp.Message));
-        var sleepPid = hang.WaitForChildPid(TimeSpan.FromSeconds(5));
-        Assert.True(ProcessGone(sleepPid, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out commit");
+        if (sleepPid.HasValue)
+            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out commit");
     }
 
     [Fact]
-    public void A_timed_out_merge_is_rolled_back()
+    public async Task A_timed_out_merge_is_rolled_back()
     {
         using var repo = TempRepo.Diverged(conflict: false);
         var oldHead = repo.Head;
@@ -278,7 +307,9 @@ public class GitTimeoutTests
 
         var check = op.Check(request);
         Assert.True(check.CanMerge, check.Refusal);
-        var outcome = op.Run(request, check);
+        var call = Task.Run(() => op.Run(request, check));
+        var sleepPid = hang.TryWaitForChildPid(call, TimeSpan.FromSeconds(5));
+        var outcome = await call;
 
         AssertReturnedQuickly(clock);
         Assert.Equal(MergeKind.Failed, outcome.Kind);
@@ -290,12 +321,12 @@ public class GitTimeoutTests
         Assert.True(repo.IsClean);
         Assert.False(repo.Merging);
         Assert.False(File.Exists(Path.Combine(repo.Dir, "b.txt")));
-        var sleepPid = hang.WaitForChildPid(TimeSpan.FromSeconds(5));
-        Assert.True(ProcessGone(sleepPid, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out merge");
+        if (sleepPid.HasValue)
+            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out merge");
     }
 
     [Fact]
-    public void A_merge_killed_while_holding_the_lock_names_the_lock_and_the_steps()
+    public async Task A_merge_killed_while_holding_the_lock_names_the_lock_and_the_steps()
     {
         using var repo = TempRepo.Diverged(conflict: true);
         var oldHead = repo.Head;
@@ -311,18 +342,22 @@ public class GitTimeoutTests
 
         var check = op.Check(request);
         Assert.True(check.CanMerge, check.Refusal);
-        var outcome = op.Run(request, check);
+        var call = Task.Run(() => op.Run(request, check));
+        var sleepPid = hang.TryWaitForChildPid(call, TimeSpan.FromSeconds(5));
+        var outcome = await call;
 
         AssertReturnedQuickly(clock);
         Assert.Equal(MergeKind.Failed, outcome.Kind);
         Assert.StartsWith("git timed out after 3 s", outcome.Message, StringComparison.Ordinal);
         Assert.Contains("index.lock", outcome.Message, StringComparison.Ordinal);
         Assert.Contains("rm \"", outcome.Message, StringComparison.Ordinal);
-        Assert.Contains("after deleting the lock, run git merge --abort", outcome.Message, StringComparison.Ordinal);
+        Assert.Contains("working tree left dirty by an interrupted merge", outcome.Message, StringComparison.Ordinal);
+        Assert.Contains("then git reset --merge", outcome.Message, StringComparison.Ordinal);
+        Assert.Contains("check git status for leftover files", outcome.Message, StringComparison.Ordinal);
         Assert.True(File.Exists(lockPath), "graftui deleted index.lock");
         Assert.Equal(oldHead, repo.Head);
-        var sleepPid = hang.WaitForChildPid(TimeSpan.FromSeconds(5));
-        Assert.True(ProcessGone(sleepPid, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out merge");
+        if (sleepPid.HasValue)
+            Assert.True(ProcessGone(sleepPid.Value, TimeSpan.FromSeconds(5)), "the sleep outlived the timed-out merge");
     }
 
     [Theory]
@@ -337,18 +372,20 @@ public class GitTimeoutTests
     }
 
     /// <summary>
-    /// A script that starts a 30 s sleep in the background and waits for it, the way a hook or alias that hangs does. Its pid is written to
-    /// a file in the git dir. Dispose kills the sleep if the test failed before it could, so nothing outlives the test run.
+    /// A script that starts a 30 s sleep in the background, as a hook or alias that hangs does. Its pid is written to a file in the git dir.
+    /// With <paramref name="waitForSleep"/> the script waits for the sleep, so it hangs; without it the script exits at once and leaves the sleep
+    /// behind. Dispose kills the sleep if the test has not, so nothing outlives the test run.
     /// </summary>
     private sealed class HangingScript : IDisposable
     {
         private readonly string _pidFile;
 
-        public HangingScript(TempRepo repo, string name)
+        public HangingScript(TempRepo repo, string name, bool waitForSleep = true)
         {
             _pidFile = Path.Combine(repo.Dir, ".git", name + ".pid");
             ScriptPath = Path.Combine(repo.Dir, ".git", name + ".sh");
-            Body = "#!/bin/sh\nsleep 30 &\necho $! > '" + _pidFile + "'\nwait\n";
+            var ending = waitForSleep ? "wait\n" : "exit 0\n";
+            Body = "#!/bin/sh\nsleep 30 &\necho $! > '" + _pidFile + "'\n" + ending;
             File.WriteAllText(ScriptPath, Body, new UTF8Encoding(false));
 
             // Git runs an alias that starts with ! in a shell, as it runs a hook.
@@ -364,7 +401,7 @@ public class GitTimeoutTests
         /// <summary>The arguments that run the script through an alias named hang.</summary>
         public string[] Args { get; }
 
-        /// <summary>Waits until the script has started its sleep, and returns the sleep's pid.</summary>
+        /// <summary>Waits until the script has started its sleep, and returns the sleep's pid. Throws when that does not happen in time.</summary>
         public int WaitForChildPid(TimeSpan within)
         {
             var clock = Stopwatch.StartNew();
@@ -376,6 +413,25 @@ public class GitTimeoutTests
                 Thread.Sleep(20);
             }
             throw new TimeoutException("the script did not start its sleep in time");
+        }
+
+        /// <summary>
+        /// Waits for the sleep's pid while a call the test started runs. Null when the call ended, or the time ran out, before the script
+        /// wrote the pid: a script stopped that early had no sleep to leak.
+        /// </summary>
+        public int? TryWaitForChildPid(Task call, TimeSpan within)
+        {
+            var clock = Stopwatch.StartNew();
+            while (clock.Elapsed < within)
+            {
+                var pid = ReadPid();
+                if (pid.HasValue)
+                    return pid;
+                if (call.IsCompleted)
+                    return ReadPid();
+                Thread.Sleep(20);
+            }
+            return null;
         }
 
         public void Dispose()

@@ -219,9 +219,10 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
     }
 
     /// <summary>
-    /// What a killed merge leaves for the user when it could not be rolled back. If it held index.lock, graftui cannot undo it (it never
-    /// deletes the lock), so the message gives the steps: delete the lock (the timeout note names it), then let git finish the job.
-    /// git merge --abort needs MERGE_HEAD, which a merge killed in its tree update does not have yet, so reset --merge is the fallback.
+    /// What a killed merge leaves for the user when it could not be rolled back: git's leftover text, and when a stale index.lock is
+    /// there, the steps to finish. graftui never deletes the lock. git reset --merge clears MERGE_HEAD when it is present, so one command
+    /// covers a merge killed before and after it wrote MERGE_HEAD. A killed merge driver can leave untracked .merge_file_* files, so the
+    /// last step is git status.
     /// </summary>
     private string KilledMergeLeftover(GitResult merge, string leftover)
     {
@@ -229,7 +230,8 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
         var lockPath = git.IndexLockPath(null);
         if (lockPath is null || !File.Exists(lockPath))
             return first + "; " + leftover;
-        return first + "; after deleting the lock, run git merge --abort, or git reset --merge if git says no merge is in progress";
+        return first + "; " + leftover + "; to finish: rm " + GitCommandLine.Quote(lockPath, always: true)
+            + ", then git reset --merge, then check git status for leftover files";
     }
 
     /// <summary>The short form of a hash for messages; "unknown" when there is no hash.</summary>

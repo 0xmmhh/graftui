@@ -125,25 +125,24 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
         var stop = WaitOrStop(process, timeout, ct, clock);
         if (stop == Stop.None)
         {
-            // git has exited, but a child it started may still hold the pipes open. That counts as a timeout too.
-            var remaining = timeout - clock.Elapsed;
-            if (remaining < KillGrace)
-                remaining = KillGrace;
-            if (!Task.WaitAll(new Task[] { stdOut, stdErr }, remaining))
-                stop = Stop.TimedOut;
+            // git has exited on its own, so its output should end at once. If a child it started still holds the pipes open,
+            // the call is reported as a timeout after only the short grace, not after the rest of the budget.
+            if (!WaitForPipes(stdOut, stdErr, KillGrace))
+                return Stopped(command, args, Stop.PipeHeld, PipeHeldNote(process.ExitCode), TextOrEmpty(stdOut), TextOrEmpty(stdErr));
+            return new GitResult(command, process.ExitCode, TextOrEmpty(stdOut), TextOrEmpty(stdErr)) { Args = args };
         }
 
-        if (stop == Stop.None)
-            return new GitResult(command, process.ExitCode, stdOut.Result, stdErr.Result) { Args = args };
-
-        // Stopped. The kill closes the pipes, so wait briefly for the text that arrived and keep it.
-        Task.WaitAll(new Task[] { stdOut, stdErr }, KillGrace);
+        // Stopped by graftui. The kill closes the pipes, so wait briefly for the text that arrived and keep it.
+        WaitForPipes(stdOut, stdErr, KillGrace);
         var note = stop == Stop.TimedOut ? TimeoutNote(timeout, env, isWrite) : CancelledNote;
         return Stopped(command, args, stop, note, TextOrEmpty(stdOut), TextOrEmpty(stdErr));
     }
 
-    /// <summary>Why a call was stopped by graftui. None means git ran to its own end.</summary>
-    private enum Stop { None, TimedOut, Cancelled }
+    /// <summary>
+    /// Why a call ended early. None means git ran to its own end. PipeHeld means git exited, but a process it started kept the
+    /// output pipes open; it is reported as a timeout.
+    /// </summary>
+    private enum Stop { None, TimedOut, Cancelled, PipeHeld }
 
     private const string CancelledNote = "graftui stopped git: its answer was no longer needed";
 
@@ -151,7 +150,7 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     // matters for calls that run long.
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
 
-    // After a kill: how long to wait for git to exit and for the pipes to close.
+    // How long to wait for the pipes to close: after a kill, and after git exits on its own.
     private static readonly TimeSpan KillGrace = TimeSpan.FromSeconds(2);
 
     /// <summary>
@@ -201,14 +200,41 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
         process.WaitForExit(KillGrace);
     }
 
-    /// <summary>The result for a call graftui stopped. The note goes first in StdErr, where every operation's failure message finds it.</summary>
-    private static GitResult Stopped(string command, string[] args, Stop stop, string note, string stdOut, string stdErr) =>
-        new(command, stop == Stop.TimedOut ? GitResult.TimedOutExitCode : GitResult.CancelledExitCode, stdOut, note + "\n" + stdErr)
+    /// <summary>
+    /// The result for a call graftui stopped. A cancelled read has exit code 130; every other stop is a timeout (124, TimedOut).
+    /// The note goes first in StdErr, where every operation's failure message finds it.
+    /// </summary>
+    private static GitResult Stopped(string command, string[] args, Stop stop, string note, string stdOut, string stdErr)
+    {
+        var cancelled = stop == Stop.Cancelled;
+        var exitCode = cancelled ? GitResult.CancelledExitCode : GitResult.TimedOutExitCode;
+        return new GitResult(command, exitCode, stdOut, note + "\n" + stdErr)
         {
             Args = args,
-            TimedOut = stop == Stop.TimedOut,
-            Cancelled = stop == Stop.Cancelled,
+            TimedOut = !cancelled,
+            Cancelled = cancelled,
         };
+    }
+
+    private static string PipeHeldNote(int exitCode) =>
+        $"git exited {exitCode} but a process it started kept its output open; graftui stopped waiting for it";
+
+    /// <summary>
+    /// Waits up to <paramref name="within"/> for both output readers. False when one is still reading, because a process still holds
+    /// the pipe. A reader that failed has stopped too, so it counts as done (WaitAll would throw for it).
+    /// </summary>
+    private static bool WaitForPipes(Task stdOut, Task stdErr, TimeSpan within)
+    {
+        try
+        {
+            return Task.WaitAll(new Task[] { stdOut, stdErr }, within);
+        }
+        catch (AggregateException)
+        {
+            // A reader failed after both had stopped; TextOrEmpty then leaves its text empty.
+            return true;
+        }
+    }
 
     private static string TextOrEmpty(Task<string> read) => read.IsCompletedSuccessfully ? read.Result : "";
 
