@@ -408,4 +408,464 @@ public class SafetyAuditTests
         Assert.Equal(MergeKind.Conflict, outcome.Kind);
         Assert.Equal(new[] { "café.txt" }, outcome.ConflictFiles);
     }
+
+    // ======== second pass (same audit, later on 2026-11-16): flags on index entries, ignored files, a branch's merge options,
+    // a file and a folder that swap places, interactive-rebase stops, a branch's config ========
+
+    /// <summary>
+    /// config.json is tracked, and the user keeps a local version that git is told not to look at (the "local config" trick):
+    /// `git update-index --assume-unchanged` or `--skip-worktree`. `git status` then shows nothing for it.
+    /// </summary>
+    private static void KeepLocalConfig(TempRepo repo, string flag)
+    {
+        repo.Run("update-index", flag, "config.json");
+        repo.Write("config.json", "MY LOCAL CONFIG\n");
+    }
+
+    /// <summary>A repo with config.json and app.txt committed.</summary>
+    private static TempRepo ConfigAndApp()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("config.json", "committed\n", "Add config");
+        repo.Commit("app.txt", "a\n", "Add app");
+        return repo;
+    }
+
+    /// <summary>
+    /// main tracks secret.env. feature stops tracking it and ignores it. HEAD is on main, and secret.env is not in the work tree
+    /// of feature. Merging feature into main removes the file; the user then keeps a local, ignored one.
+    /// </summary>
+    private static TempRepo FeatureStopsTrackingSecret()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("app.txt", "a\n", "Add app");
+        repo.Commit("secret.env", "TEMPLATE\n", "Add secret template");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Run("rm", "-q", "secret.env");
+        repo.Write(".gitignore", "secret.env\n");
+        repo.Run("add", ".gitignore");
+        repo.Run("commit", "-q", "-m", "Stop tracking secret.env");
+        repo.Run("switch", "-q", "main");
+        return repo;
+    }
+
+    /// <summary>feature adds local.cfg. On main the user has an ignored local.cfg of their own (ignored through .git/info/exclude).</summary>
+    private static TempRepo IgnoredFileInTheWay()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("app.txt", "a\n", "Add app");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("local.cfg", "FROM FEATURE\n", "Add local.cfg");
+        repo.Run("switch", "-q", "main");
+        File.AppendAllText(Path.Combine(repo.Dir, ".git", "info", "exclude"), "local.cfg\n");
+        repo.Write("local.cfg", "MY LOCAL\n");
+        return repo;
+    }
+
+    /// <summary>
+    /// feature has three commits: the first changes line 1 of app.txt (main changes it too, so it conflicts), then two that add files.
+    /// HEAD is on feature.
+    /// </summary>
+    private static TempRepo FirstCommitConflicts()
+    {
+        var repo = TempRepo.Create();
+        repo.Commit("app.txt", "line 1\n", "Add app");
+        repo.Run("switch", "-q", "-c", "feature");
+        repo.Commit("app.txt", "feature line 1\n", "Change line 1 on feature");
+        repo.Commit("extra.txt", "extra\n", "Add extra");
+        repo.Commit("last.txt", "last\n", "Add last");
+        repo.Run("switch", "-q", "main");
+        repo.Commit("app.txt", "main line 1\n", "Change line 1 on main");
+        repo.Run("switch", "-q", "feature");
+        return repo;
+    }
+
+    /// <summary>feature is merged into main (HEAD), but its upstream origin/feature is one commit behind it.</summary>
+    private static TempRepo MergedButAheadOfUpstream()
+    {
+        var repo = TempRepo.FastForwardable();
+        repo.Run("merge", "-q", "feature");
+        repo.Run("update-ref", "refs/remotes/origin/feature", "HEAD~1");
+        repo.Run("config", "remote.origin.url", "/nonexistent");
+        repo.Run("config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*");
+        repo.Run("config", "branch.feature.remote", "origin");
+        repo.Run("config", "branch.feature.merge", "refs/heads/feature");
+        return repo;
+    }
+
+    // ---- 8. a file and a folder that swap places ----
+
+    [Fact(Skip = "safety-audit: discarding a deleted file destroys an untracked file that now sits where the file's folder was")]
+    public void Discard_of_a_deleted_file_keeps_an_untracked_file_that_took_its_folders_place()
+    {
+        using var repo = TempRepo.Create();
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "docs"));
+        repo.Commit("docs/a.txt", "tracked a\n", "Add docs/a");
+        Directory.Delete(Path.Combine(repo.Dir, "docs"), recursive: true);
+        repo.Write("docs", "MY NEW FILE NAMED docs\n");
+        var row = UnstagedRow(repo.Git, "docs/a.txt");
+        var op = new DiscardOperation(repo.Git);
+
+        var check = op.Check(new DiscardRequest(row));
+        if (check.CanRun)
+            op.Run(new DiscardRequest(row), check);
+
+        // `git restore --worktree -- docs/a.txt` removes the file "docs" to make the folder. The backup holds only docs/a.txt.
+        Assert.Equal("MY NEW FILE NAMED docs\n", Text(repo.Dir, "docs"));
+    }
+
+    [Fact(Skip = "safety-audit: discarding a deleted file also removes the untracked files in the folder that now has its name")]
+    public void Discard_of_a_deleted_file_leaves_the_untracked_files_in_a_folder_at_its_path()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("notes", "tracked notes\n", "Add notes");
+        File.Delete(Path.Combine(repo.Dir, "notes"));
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "notes"));
+        repo.Write("notes/draft.txt", "MY DRAFT\n");
+        var row = UnstagedRow(repo.Git, "notes");
+        var op = new DiscardOperation(repo.Git);
+
+        var check = op.Check(new DiscardRequest(row));
+        if (check.CanRun)
+            op.Run(new DiscardRequest(row), check);
+
+        // notes/draft.txt is another row of the list. The discard of "notes" removes it too (it is in the stash, and u brings it back).
+        Assert.Equal("MY DRAFT\n", Text(repo.Dir, "notes/draft.txt"));
+    }
+
+    [Fact(Skip = "safety-audit: undo of a pop fails when a tracked folder was replaced by an untracked file; the tree is left at HEAD")]
+    public void Undo_of_a_pop_works_when_an_untracked_file_took_a_tracked_folders_place()
+    {
+        using var repo = TempRepo.Create();
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "docs"));
+        repo.Commit("docs/a.txt", "tracked a\n", "Add docs/a");
+        repo.Commit("app.txt", "a\n", "Add app");
+        repo.Write("app.txt", "stashed\n");
+        repo.Run("stash", "push", "-q");
+        Directory.Delete(Path.Combine(repo.Dir, "docs"), recursive: true);
+        repo.Write("docs", "MY NEW FILE NAMED docs\n");
+        var before = repo.Status();
+        Assert.Equal(PopKind.Popped, Pop(repo.Git).Kind);
+
+        var outcome = Undo(repo.Git);
+
+        // WorkState.RestoreTo passes both "docs" and "docs/a.txt" to `git restore`, which fails on the second.
+        Assert.Equal(UndoOutcomeKind.Undone, outcome.Kind);
+        Assert.Equal(before, repo.Status());
+        Assert.Equal("MY NEW FILE NAMED docs\n", Text(repo.Dir, "docs"));
+        Assert.Equal("", repo.Run("for-each-ref", "refs/graftui/rescue/"));
+    }
+
+    // ---- 9. assume-unchanged and skip-worktree files (a local edit that git status does not show) ----
+
+    [Fact(Skip = "safety-audit: stash (z) destroys a local edit to an assume-unchanged file: git stash resets it and does not save it")]
+    public void Stash_keeps_a_local_edit_to_an_assume_unchanged_file()
+    {
+        using var repo = ConfigAndApp();
+        KeepLocalConfig(repo, "--assume-unchanged");
+        repo.Write("app.txt", "edited\n");
+        var op = new StashOperation(repo.Git);
+
+        var check = op.Check(new StashRequest(null));
+        if (check.CanRun)
+            op.Run(new StashRequest(null), check);
+
+        Assert.Equal("MY LOCAL CONFIG\n", Text(repo.Dir, "config.json"));
+    }
+
+    [Fact(Skip = "safety-audit: stash-merge-pop destroys a local edit to an assume-unchanged file (its git stash push resets it)")]
+    public void Stash_merge_keeps_a_local_edit_to_an_assume_unchanged_file()
+    {
+        using var repo = TempRepo.FastForwardable();
+        repo.Run("update-index", "--assume-unchanged", "a.txt");
+        repo.Write("a.txt", "MY LOCAL A\n");
+        repo.Write("untracked.txt", "u\n");
+        var op = new StashMergeOperation(repo.Git);
+
+        var check = op.Check(new StashMergeRequest("feature"));
+        if (check.CanRun)
+            op.Run(new StashMergeRequest("feature"), check);
+
+        Assert.Equal("MY LOCAL A\n", Text(repo.Dir, "a.txt"));
+    }
+
+    [Fact(Skip = "safety-audit: a pop that conflicts and is rolled back destroys a local edit to an assume-unchanged file")]
+    public void A_rolled_back_pop_keeps_a_local_edit_to_an_assume_unchanged_file()
+    {
+        using var repo = ConfigAndApp();
+        repo.Write("app.txt", "stashed edit\n");
+        repo.Run("stash", "push", "-q");
+        repo.Commit("app.txt", "other\n", "Change app");
+        KeepLocalConfig(repo, "--assume-unchanged");
+        var op = new PopOperation(repo.Git);
+
+        var check = op.Check(new PopRequest(null));
+        if (check.CanRun)
+            op.Run(new PopRequest(null), check);
+
+        // WorkState.RestoreTo's `reset --hard HEAD` writes HEAD's version over the file, and the snapshot never held the local one.
+        Assert.Equal("MY LOCAL CONFIG\n", Text(repo.Dir, "config.json"));
+    }
+
+    [Fact(Skip = "safety-audit: undo of a pop destroys a local edit to an assume-unchanged file")]
+    public void Undo_of_a_pop_keeps_a_local_edit_to_an_assume_unchanged_file()
+    {
+        using var repo = ConfigAndApp();
+        repo.Write("app.txt", "edited\n");
+        repo.Run("stash", "push", "-q");
+        KeepLocalConfig(repo, "--assume-unchanged");
+        var pop = new PopOperation(repo.Git);
+        var popCheck = pop.Check(new PopRequest(null));
+        if (popCheck.CanRun)
+            pop.Run(new PopRequest(null), popCheck);
+
+        var check = UndoCheckOnly(repo.Git);
+        if (check.CanRun)
+            new UndoOperation(repo.Git).Run(new UndoRequest(check.StepRef), check);
+
+        Assert.Equal("MY LOCAL CONFIG\n", Text(repo.Dir, "config.json"));
+    }
+
+    [Fact(Skip = "safety-audit: undo of a pop fails with a skip-worktree file: read-tree drops the flag, so the state never matches")]
+    public void Undo_of_a_pop_works_with_a_skip_worktree_file_and_keeps_its_flag()
+    {
+        using var repo = ConfigAndApp();
+        repo.Write("app.txt", "edited\n");
+        repo.Run("stash", "push", "-q");
+        KeepLocalConfig(repo, "--skip-worktree");
+        Assert.Equal(PopKind.Popped, Pop(repo.Git).Kind);
+
+        var outcome = Undo(repo.Git);
+
+        Assert.Equal(UndoOutcomeKind.Undone, outcome.Kind);
+        Assert.Equal("MY LOCAL CONFIG\n", Text(repo.Dir, "config.json"));
+        // `git ls-files -v` marks a skip-worktree entry with S.
+        Assert.StartsWith("S ", repo.Run("ls-files", "-v", "--", "config.json"));
+        Assert.Equal("", repo.Run("for-each-ref", "refs/graftui/rescue/"));
+    }
+
+    // ---- 10. an ignored local file in the way ----
+
+    [Fact(Skip = "safety-audit: undo of a merge overwrites an ignored local file at a path the older commit tracks (reset --keep)")]
+    public void Undo_of_a_merge_keeps_an_ignored_local_file_at_a_path_the_older_commit_tracks()
+    {
+        using var repo = FeatureStopsTrackingSecret();
+        var op = new MergeOperation(repo.Git);
+        Assert.Equal(MergeKind.FastForward, op.Run(new MergeRequest("feature"), op.Check(new MergeRequest("feature"))).Kind);
+        repo.Write("secret.env", "MY LOCAL SECRET\n");
+        Assert.True(repo.IsClean);
+
+        var check = UndoCheckOnly(repo.Git);
+        if (check.CanRun)
+            new UndoOperation(repo.Git).Run(new UndoRequest(check.StepRef), check);
+
+        Assert.Equal("MY LOCAL SECRET\n", Text(repo.Dir, "secret.env"));
+    }
+
+    [Fact(Skip = "safety-audit: undo of a rebase overwrites an ignored local file at a path the old tip tracks (reset --keep)")]
+    public void Undo_of_a_rebase_keeps_an_ignored_local_file_at_a_path_the_old_tip_tracks()
+    {
+        using var repo = FeatureStopsTrackingSecret();
+        repo.Run("switch", "-q", "-c", "topic", "main");
+        repo.Commit("t.txt", "t\n", "Add t");
+        var op = new RebaseOperation(repo.Git);
+        var done = op.Run(new RebaseRequest("feature"), op.Check(new RebaseRequest("feature")));
+        Assert.Equal(SequenceOutcomeKind.Done, done.Kind);
+        repo.Write("secret.env", "MY LOCAL SECRET\n");
+        Assert.True(repo.IsClean);
+
+        var check = UndoCheckOnly(repo.Git);
+        if (check.CanRun)
+            new UndoOperation(repo.Git).Run(new UndoRequest(check.StepRef), check);
+
+        Assert.Equal("MY LOCAL SECRET\n", Text(repo.Dir, "secret.env"));
+    }
+
+    [Fact(Skip = "safety-audit: a merge overwrites an ignored local file that the merged branch tracks (git's default; --no-overwrite-ignore refuses)")]
+    public void Merge_keeps_an_ignored_local_file_that_the_merged_branch_tracks()
+    {
+        using var repo = IgnoredFileInTheWay();
+        var op = new MergeOperation(repo.Git);
+
+        var check = op.Check(new MergeRequest("feature"));
+        if (check.CanMerge)
+            op.Run(new MergeRequest("feature"), check);
+
+        Assert.Equal("MY LOCAL\n", Text(repo.Dir, "local.cfg"));
+        Assert.False(repo.Merging);
+    }
+
+    [Fact(Skip = "safety-audit: a switch overwrites an ignored local file that the target branch tracks (git's default; --no-overwrite-ignore refuses)")]
+    public void Switch_keeps_an_ignored_local_file_that_the_target_branch_tracks()
+    {
+        using var repo = IgnoredFileInTheWay();
+        var op = new SwitchOperation(repo.Git);
+
+        var check = op.Check(new SwitchRequest("feature"));
+        if (check.CanRun)
+            op.Run(new SwitchRequest("feature"), check);
+
+        Assert.Equal("MY LOCAL\n", Text(repo.Dir, "local.cfg"));
+    }
+
+    // ---- 11. branch.<name>.mergeoptions ----
+
+    [Fact(Skip = "safety-audit: with --no-commit in branch.main.mergeoptions the merge is reported as 'already up to date' and the repo is left mid-merge")]
+    public void Merge_with_no_commit_in_the_branchs_mergeoptions_is_not_left_mid_merge()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        repo.Run("config", "branch.main.mergeoptions", "--no-commit");
+        var op = new MergeOperation(repo.Git);
+
+        var outcome = op.Run(new MergeRequest("feature"), op.Check(new MergeRequest("feature")));
+
+        // git exits 0 with MERGE_HEAD set and HEAD unmoved; Verify reads only HEAD.
+        Assert.False(repo.Merging, "MERGE_HEAD is left behind");
+        Assert.True(repo.IsClean, repo.Status());
+        Assert.NotEqual(MergeKind.UpToDate, outcome.Kind);
+    }
+
+    [Fact(Skip = "safety-audit: with --squash in branch.main.mergeoptions the merge is reported as 'already up to date' and its changes are left staged")]
+    public void Merge_with_squash_in_the_branchs_mergeoptions_leaves_nothing_staged()
+    {
+        using var repo = TempRepo.FastForwardable();
+        repo.Run("config", "branch.main.mergeoptions", "--squash");
+        var op = new MergeOperation(repo.Git);
+
+        var outcome = op.Run(new MergeRequest("feature"), op.Check(new MergeRequest("feature")));
+
+        Assert.True(repo.IsClean, repo.Status());
+        Assert.NotEqual(MergeKind.UpToDate, outcome.Kind);
+    }
+
+    [Fact(Skip = "safety-audit: with --no-commit in branch.main.mergeoptions a stash-merge-pop fails and leaves the repo mid-merge")]
+    public void Stash_merge_with_no_commit_in_the_branchs_mergeoptions_is_not_left_mid_merge()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        repo.Run("config", "branch.main.mergeoptions", "--no-commit");
+        repo.Write("app.txt", "my edit\n");
+        var op = new StashMergeOperation(repo.Git);
+        var check = op.Check(new StashMergeRequest("feature"));
+        Assert.True(check.CanRun, check.Refusal);
+
+        op.Run(new StashMergeRequest("feature"), check);
+
+        Assert.False(repo.Merging, "MERGE_HEAD is left behind");
+    }
+
+    // ---- 12. interactive-rebase and cherry-pick stops ----
+
+    [Fact(Skip = "safety-audit: skipping a conflicted commit whose next row is a fixup folds the fixup into the base branch's commit")]
+    public void Skipping_a_commit_does_not_fold_its_fixup_into_the_base_branchs_commit()
+    {
+        using var repo = FirstCommitConflicts();
+        var mainTip = repo.Run("rev-parse", "main");
+        var op = new RebaseOperation(repo.Git);
+        var rows = op.Check(new RebaseRequest("main")).Rows;
+        var plan = new List<RebaseRow> { rows[0], rows[1] with { Action = RebaseAction.Fixup }, rows[2] };
+        var check = op.Check(new RebaseRequest("main", plan));
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(new RebaseRequest("main", plan), check).Kind);
+        var resume = new ResumeSequenceOperation(repo.Git);
+
+        var skipCheck = resume.Check(new ResumeRequest(ResumeAction.Skip));
+        if (skipCheck.CanRun)
+            resume.Run(new ResumeRequest(ResumeAction.Skip), skipCheck);
+
+        // After the skip git folds "Add extra" into HEAD, which is main's own tip: feature then holds a rewritten copy of it.
+        var stillRebasing = Directory.Exists(Path.Combine(repo.Dir, ".git", "rebase-merge"));
+        var onMain = repo.Git.Run("merge-base", "--is-ancestor", mainTip, "HEAD").Success;
+        Assert.True(stillRebasing || onMain, "feature is no longer on top of main: main's tip commit was rewritten into it");
+    }
+
+    [Fact(Skip = "safety-audit: Continue while another tracked file has unstaged edits is refused by git, and the pause comes back with no reason")]
+    public void A_continue_that_git_refuses_says_why()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var op = new RebaseOperation(repo.Git);
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(new RebaseRequest("main"), op.Check(new RebaseRequest("main"))).Kind);
+        repo.Write("app.txt", "resolved\n");
+        repo.Write("f1.txt", "another edit while resolving\n");
+        var resume = new ResumeSequenceOperation(repo.Git);
+
+        var check = resume.Check(new ResumeRequest(ResumeAction.Continue));
+        var said = check.Refusal;
+        if (check.CanRun)
+            said = resume.Run(new ResumeRequest(ResumeAction.Continue), check).Message;
+
+        // git says "cannot rebase: You have unstaged changes"; graftui shows "rebase paused at <hash>" with an empty file list.
+        Assert.Contains("unstaged", said);
+    }
+
+    [Fact(Skip = "safety-audit: a cherry-pick whose commit cannot be signed is shown as a pause with no files and no reason")]
+    public void A_cherry_pick_whose_commit_cannot_be_signed_says_why()
+    {
+        using var repo = SequenceRepos.Picks();
+        repo.Run("config", "commit.gpgsign", "true");
+        repo.Run("config", "gpg.program", "false");
+        var picks = repo.Run("rev-list", "--reverse", "main..feature").Split('\n');
+        var op = new CherryPickOperation(repo.Git);
+        var check = op.Check(new CherryPickRequest(picks));
+        Assert.True(check.CanRun, check.Refusal);
+
+        var outcome = op.Run(new CherryPickRequest(picks), check);
+
+        // Either the pick is aborted and reported as failed, or the pause says that signing failed.
+        Assert.Contains("gpg", outcome.Message);
+    }
+
+    // ---- 13. a branch's config ----
+
+    [Fact(Skip = "safety-audit: undo of a branch deletion does not bring back the branch's upstream (branch.<name>.remote and .merge)")]
+    public void Undo_of_a_branch_deletion_brings_back_its_upstream()
+    {
+        using var repo = TempRepo.FastForwardable();
+        repo.Run("merge", "-q", "feature");
+        repo.Run("config", "branch.feature.remote", "origin");
+        repo.Run("config", "branch.feature.merge", "refs/heads/feature");
+        var op = new DeleteBranchOperation(repo.Git);
+        var check = op.Check(new DeleteBranchRequest("feature"));
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Equal(BranchChangeKind.Done, op.Run(new DeleteBranchRequest("feature", check.Tip), check).Kind);
+
+        Assert.Equal(UndoOutcomeKind.Undone, Undo(repo.Git).Kind);
+
+        Assert.Equal("origin", repo.Git.Run("config", "branch.feature.remote").StdOut.Trim());
+        Assert.Equal("refs/heads/feature", repo.Git.Run("config", "branch.feature.merge").StdOut.Trim());
+    }
+
+    [Fact(Skip = "safety-audit: a branch merged into HEAD but ahead of its upstream cannot be deleted, even with Force (git branch -d checks the upstream)")]
+    public void A_merged_branch_that_is_ahead_of_its_upstream_can_be_deleted_with_force()
+    {
+        using var repo = MergedButAheadOfUpstream();
+        var op = new DeleteBranchOperation(repo.Git);
+        var check = op.Check(new DeleteBranchRequest("feature", null, true));
+        Assert.True(check.CanRun, check.Refusal);
+
+        var outcome = op.Run(new DeleteBranchRequest("feature", check.Tip, true), check);
+
+        Assert.Equal(BranchChangeKind.Done, outcome.Kind);
+    }
+
+    // ---- 14. a path that is staged as deleted and also untracked ----
+
+    [Fact(Skip = "safety-audit: a file that is staged as deleted and kept as an untracked file is stashed, and then cannot be popped or un-stashed")]
+    public void A_stash_of_a_file_that_is_staged_as_deleted_and_untracked_can_be_popped()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("conf.txt", "committed\n", "Add conf");
+        repo.Run("rm", "-q", "--cached", "conf.txt");
+        repo.Write("conf.txt", "MY LOCAL EDIT\n");
+        var op = new StashOperation(repo.Git);
+        var check = op.Check(new StashRequest(null));
+        if (!check.CanRun)
+            return;
+        Assert.Equal(StashKind.Stashed, op.Run(new StashRequest(null), check).Kind);
+
+        var popped = Pop(repo.Git);
+
+        // git stash restores HEAD's conf.txt, so its own pop finds the file in the way ("already exists, no checkout").
+        Assert.Equal(PopKind.Popped, popped.Kind);
+        Assert.Equal("MY LOCAL EDIT\n", Text(repo.Dir, "conf.txt"));
+    }
 }
