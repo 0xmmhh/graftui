@@ -518,7 +518,7 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
 
     /// <summary>
     /// True when at least one undo step is saved (a ref under refs/graftui/undo/). A read for the key bar: it is not logged,
-    /// and any failure answers false.
+    /// and any failure answers false (a cancelled token throws OperationCanceledException).
     /// </summary>
     public bool HasUndoSteps(CancellationToken ct = default)
     {

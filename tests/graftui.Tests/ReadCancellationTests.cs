@@ -86,7 +86,7 @@ public class ReadCancellationTests
         Assert.True(clock.Elapsed < Quick, "the cancelled forecast took too long");
         Assert.Equal(ForecastKind.Unavailable, first.Kind);
 
-        // A fresh token: the forecast reads git again, and the version it needs is read now.
+        // A fresh token: the forecast reads git again and answers (the cancelled call stopped at its first read, before the version read).
         using var fresh = new CancellationTokenSource();
         var second = forecaster.Forecast(layout, fresh.Token);
 

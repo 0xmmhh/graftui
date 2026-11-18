@@ -38,8 +38,9 @@ public sealed class RepoReader(GitClient git)
                 if (b.IsCurrent)
                     continue;
                 ct.ThrowIfCancellationRequested();
-                if (git.GetAheadBehind(head, b.Hash, ct) is { } ab)
-                    counts[b.Name] = ab;
+                var ab = git.GetAheadBehind(head, b.Hash, ct);
+                if (ab is not null)
+                    counts[b.Name] = ab.Value;
             }
         }
 
