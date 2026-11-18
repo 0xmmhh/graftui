@@ -375,7 +375,7 @@ public class GitTimeoutTests
     /// With <paramref name="waitForSleep"/> the script waits for the sleep, so it hangs; without it the script exits at once and leaves the sleep
     /// behind. Dispose kills the sleep if the test has not, so nothing outlives the test run.
     /// </summary>
-    private sealed class HangingScript : IDisposable
+    internal sealed class HangingScript : IDisposable
     {
         private readonly string _pidFile;
 
@@ -483,7 +483,7 @@ public class GitTimeoutTests
     }
 
     /// <summary>Polls until the sleep with this pid has stopped, or the time runs out.</summary>
-    private static bool ProcessGone(int pid, TimeSpan within)
+    internal static bool ProcessGone(int pid, TimeSpan within)
     {
         var clock = Stopwatch.StartNew();
         while (clock.Elapsed < within)
