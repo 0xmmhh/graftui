@@ -13,9 +13,11 @@ public sealed record SequenceRead(SequenceStop? Stop, string? OldTip, string? Un
 
 /// <summary>
 /// Read-only views of a rebase or a cherry-pick in progress, for the screen. Nothing here is added to a command log or changes
-/// the repo, and nothing throws: a read that fails gives null, or an empty result.
+/// the repo, and nothing throws: a read that fails gives null, or an empty result. The one exception is cancellation: once <paramref name="ct"/>
+/// is cancelled, <see cref="ReadSequence"/> throws OperationCanceledException. The git calls inside it are not stopped mid-call; the token is
+/// looked at between them.
 /// </summary>
-public sealed class SequenceReader(GitClient git)
+public sealed class SequenceReader(GitClient git, CancellationToken ct = default)
 {
     private static readonly SequenceRead Nothing = new(null, null, null);
 
@@ -30,11 +32,13 @@ public sealed class SequenceReader(GitClient git)
     {
         try
         {
+            ct.ThrowIfCancellationRequested();
             var log = new List<GitResult>();
             var gitDir = RepoState.GitDir(git, log);
             if (gitDir is null)
                 return Nothing;
 
+            ct.ThrowIfCancellationRequested();
             var kind = RepoState.InProgress(args => BranchGit.Call(git, log, args), gitDir);
             if (kind is null)
                 return Nothing;
@@ -43,10 +47,16 @@ public sealed class SequenceReader(GitClient git)
             if (state is null)
                 return new SequenceRead(NotOurs(kind == "rebase" ? SequenceKind.Rebase : SequenceKind.CherryPick), null, null);
 
+            ct.ThrowIfCancellationRequested();
             var stop = state.Kind == SequenceKind.CherryPick
                 ? SequenceGit.ReadPickStop(git, state, log)
                 : SequenceGit.ReadRebaseStop(git, gitDir, state, log);
             return stop is null ? new SequenceRead(null, null, kind) : new SequenceRead(stop, state.OldTip, null);
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled read is not a failed one: the caller drops it.
+            throw;
         }
         catch (Exception)
         {

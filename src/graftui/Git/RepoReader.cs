@@ -22,13 +22,13 @@ public sealed class RepoReader(GitClient git)
     public RepoSnapshot LoadSnapshot(bool withCounts, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var current = git.GetCurrentBranch();
+        var current = git.GetCurrentBranch(ct);
         ct.ThrowIfCancellationRequested();
-        var head = git.GetHeadHash();
+        var head = git.GetHeadHash(ct);
         ct.ThrowIfCancellationRequested();
-        var clean = git.IsWorkingTreeClean();
+        var clean = git.IsWorkingTreeClean(ct);
         ct.ThrowIfCancellationRequested();
-        var branches = git.GetBranches();
+        var branches = git.GetBranches(ct);
 
         var counts = new Dictionary<string, (int Ahead, int Behind)>();
         if (withCounts && head is not null)
@@ -38,21 +38,21 @@ public sealed class RepoReader(GitClient git)
                 if (b.IsCurrent)
                     continue;
                 ct.ThrowIfCancellationRequested();
-                if (git.GetAheadBehind(head, b.Hash) is { } ab)
+                if (git.GetAheadBehind(head, b.Hash, ct) is { } ab)
                     counts[b.Name] = ab;
             }
         }
 
         ct.ThrowIfCancellationRequested();
-        var read = new SequenceReader(RootClient()).ReadSequence();
-        return new RepoSnapshot(current, head, clean, branches, counts, git.HasUndoSteps())
+        var read = new SequenceReader(RootClient(ct), ct).ReadSequence();
+        return new RepoSnapshot(current, head, clean, branches, counts, git.HasUndoSteps(ct))
         {
             Paused = read.Stop,
             PausedOldTip = read.Stop is { Ours: true } ? read.OldTip : null,
         };
     }
 
-    private GitClient RootClient() => _root ??= new GitClient(git.GetTopLevel() ?? git.RepoPath, git.Timeouts);
+    private GitClient RootClient(CancellationToken ct) => _root ??= new GitClient(git.GetTopLevel(ct) ?? git.RepoPath, git.Timeouts);
 
     public GraphLayout LoadLayout(RepoSnapshot snap, Branch sel, CancellationToken ct)
     {
@@ -76,32 +76,32 @@ public sealed class RepoReader(GitClient git)
     private GraphLayout ReadPair(string curName, bool detached, string curTip, Branch sel, IReadOnlyList<Branch> branches, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var baseHash = git.GetMergeBase(curTip, sel.Hash);
+        var baseHash = git.GetMergeBase(curTip, sel.Hash, ct);
 
         ct.ThrowIfCancellationRequested();
-        var (curOwn, curOwnMore) = Window(git.GetFirstParentChain(curTip, baseHash, ListFetch));
+        var (curOwn, curOwnMore) = Window(git.GetFirstParentChain(curTip, baseHash, ListFetch, ct));
         ct.ThrowIfCancellationRequested();
-        var (selOwn, selOwnMore) = Window(git.GetFirstParentChain(sel.Hash, baseHash, ListFetch));
+        var (selOwn, selOwnMore) = Window(git.GetFirstParentChain(sel.Hash, baseHash, ListFetch, ct));
 
         var (shared, sharedMore) = baseHash is null
             ? (new List<CommitInfo>(), false)
-            : Window(git.GetFirstParentChain(baseHash, null, ListFetch));
+            : Window(git.GetFirstParentChain(baseHash, null, ListFetch, ct));
 
         ct.ThrowIfCancellationRequested();
-        var curTipCommit = git.GetCommit(curTip) ?? throw new InvalidOperationException($"could not read commit {curTip}");
+        var curTipCommit = git.GetCommit(curTip, ct) ?? throw new InvalidOperationException($"could not read commit {curTip}");
         ct.ThrowIfCancellationRequested();
-        var selTipCommit = git.GetCommit(sel.Hash) ?? throw new InvalidOperationException($"could not read commit {sel.Hash}");
+        var selTipCommit = git.GetCommit(sel.Hash, ct) ?? throw new InvalidOperationException($"could not read commit {sel.Hash}");
 
         ct.ThrowIfCancellationRequested();
-        var (ahead, behind) = git.GetAheadBehind(curTip, sel.Hash)
+        var (ahead, behind) = git.GetAheadBehind(curTip, sel.Hash, ct)
             ?? throw new InvalidOperationException("could not count commits between the two branches");
 
         var kind = KindOf(curTip, sel.Hash, baseHash);
 
         ct.ThrowIfCancellationRequested();
-        var selNew = git.GetCommitsNotIn(sel.Hash, curTip, NewListMax);
+        var selNew = git.GetCommitsNotIn(sel.Hash, curTip, NewListMax, ct);
         ct.ThrowIfCancellationRequested();
-        var curNew = git.GetCommitsNotIn(curTip, sel.Hash, NewListMax);
+        var curNew = git.GetCommitsNotIn(curTip, sel.Hash, NewListMax, ct);
 
         return new GraphLayout(
             curName, detached, sel.Name,
@@ -121,32 +121,35 @@ public sealed class RepoReader(GitClient git)
     public ChangesSnapshot LoadChanges(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var status = git.Run("status", "--porcelain=v2", "-z", "--untracked-files=all");
+        var status = git.RunRead(ct, "status", "--porcelain=v2", "-z", "--untracked-files=all");
+        // A read cancelled by the UI must not turn into a failed status: this throws first.
+        ct.ThrowIfCancellationRequested();
         if (!status.Success)
             throw new InvalidOperationException(GitClient.Describe(status));
         var working = StatusParser.Parse(status.StdOut);
 
         ct.ThrowIfCancellationRequested();
-        var branch = git.GetCurrentBranch();
+        var branch = git.GetCurrentBranch(ct);
         ct.ThrowIfCancellationRequested();
-        var head = git.GetHeadHash();
+        var head = git.GetHeadHash(ct);
 
         IReadOnlyList<CommitInfo> newestFirst = [];
         if (head is not null)
         {
             ct.ThrowIfCancellationRequested();
-            newestFirst = git.GetFirstParentChain(head, null, HeadFetch);
+            newestFirst = git.GetFirstParentChain(head, null, HeadFetch, ct);
         }
         var recent = newestFirst.Take(HeadCount).Reverse().ToList();
         var line = new HeadLine(branch, head, recent, newestFirst.Count > HeadCount);
 
         ct.ThrowIfCancellationRequested();
-        var stashes = git.Run(GitArgs.Stash, "list", "--format=%H%x1f%gs");
+        var stashes = git.RunRead(ct, GitArgs.Stash, "list", "--format=%H%x1f%gs");
+        ct.ThrowIfCancellationRequested();
         if (!stashes.Success)
             throw new InvalidOperationException(GitClient.Describe(stashes));
 
         ct.ThrowIfCancellationRequested();
-        return new ChangesSnapshot(working, line, status.StdOut, StashSummaryOf(stashes.StdOut), git.HasUndoSteps());
+        return new ChangesSnapshot(working, line, status.StdOut, StashSummaryOf(stashes.StdOut), git.HasUndoSteps(ct));
     }
 
     /// <summary>The stash list's lines: their number, and the newest entry's commit and reflog subject (line 1).</summary>
@@ -172,16 +175,20 @@ public sealed class RepoReader(GitClient git)
             var args = new List<string> { "diff", "--cached", "--no-color", "--no-ext-diff", "-M", "--", f.Path };
             if (f.OrigPath is not null)
                 args.Add(f.OrigPath);
-            return new FileDiff(f, DiffOf(git.RunLiteral([.. args])));
+            var staged = git.RunReadLiteral(ct, [.. args]);
+            ct.ThrowIfCancellationRequested();
+            return new FileDiff(f, DiffOf(staged));
         }
 
         if (f.Kind == ChangeKind.Untracked)
-            return new FileDiff(f, UntrackedDiff(f));
+            return new FileDiff(f, UntrackedDiff(f, ct));
 
-        return new FileDiff(f, DiffOf(git.RunLiteral("diff", "--no-color", "--no-ext-diff", "--", f.Path)));
+        var unstaged = git.RunReadLiteral(ct, "diff", "--no-color", "--no-ext-diff", "--", f.Path);
+        ct.ThrowIfCancellationRequested();
+        return new FileDiff(f, DiffOf(unstaged));
     }
 
-    private IReadOnlyList<DiffLine> UntrackedDiff(FileChange f)
+    private IReadOnlyList<DiffLine> UntrackedDiff(FileChange f, CancellationToken ct)
     {
         if (f.IsNestedRepo)
             return [new DiffLine(DiffLineKind.Note, "a separate git repository; not previewed")];
@@ -194,7 +201,8 @@ public sealed class RepoReader(GitClient git)
 
         // git diff --no-index exits 1 when the files differ, which is the normal case here. A binary file gives git's
         // "Binary files ... differ" note, which DiffParser keeps.
-        var r = git.RunLiteral("diff", "--no-color", "--no-ext-diff", "--no-index", "--", "/dev/null", f.Path);
+        var r = git.RunReadLiteral(ct, "diff", "--no-color", "--no-ext-diff", "--no-index", "--", "/dev/null", f.Path);
+        ct.ThrowIfCancellationRequested();
         if (r.ExitCode is not (0 or 1))
             return [new DiffLine(DiffLineKind.Note, FailedNote(r))];
         return DiffParser.Parse(r.StdOut);
