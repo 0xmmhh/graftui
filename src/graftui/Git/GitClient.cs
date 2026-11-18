@@ -34,11 +34,27 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     public GitResult RunRead(CancellationToken ct, params string[] args) =>
         RunCore(null, args, Timeouts.Read, ct, isWrite: false);
 
+    /// <summary>Like <see cref="RunRead"/>, with literal pathspecs (see <see cref="RunLiteral"/>).</summary>
+    public GitResult RunReadLiteral(CancellationToken ct, params string[] args) =>
+        RunCore(LiteralPathspecs, args, Timeouts.Read, ct, isWrite: false);
+
     /// <summary>
     /// Like <see cref="Run"/>, but pathspecs are literal: a file named "*.txt" or ":x" matches only that file,
     /// never a glob or magic pathspec.
     /// </summary>
     public GitResult RunLiteral(params string[] args) => RunWithEnv(LiteralPathspecs, args);
+
+    /// <summary>
+    /// A read for the query helpers. A read stopped by cancellation throws OperationCanceledException. A read that timed out is returned
+    /// as a failed result, so each helper keeps its own meaning for a failure.
+    /// </summary>
+    private GitResult Query(CancellationToken ct, params string[] args)
+    {
+        var result = RunRead(ct, args);
+        if (result.Cancelled)
+            throw new OperationCanceledException(ct);
+        return result;
+    }
 
     /// <summary>
     /// Runs git against a separate index file (GIT_INDEX_FILE) with literal pathspecs. The logged command is prefixed
@@ -295,33 +311,33 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     }
 
     /// <summary>True if RepoPath is inside a git work tree.</summary>
-    public bool IsRepository()
+    public bool IsRepository(CancellationToken ct = default)
     {
-        var result = Run(GitArgs.RevParse, "--is-inside-work-tree");
+        var result = Query(ct, GitArgs.RevParse, "--is-inside-work-tree");
         return result.Success && result.StdOut.Trim() == "true";
     }
 
     /// <summary>Name of the checked-out branch (empty when HEAD is detached).</summary>
-    public string GetCurrentBranch()
+    public string GetCurrentBranch(CancellationToken ct = default)
     {
         // Full ref, not --short: a same-named tag would make --short print "heads/<name>".
-        var result = Run("symbolic-ref", "-q", "HEAD");
+        var result = Query(ct, "symbolic-ref", "-q", "HEAD");
         return result.Success ? StripHeads(result.StdOut.Trim()) : "";
     }
 
     /// <summary>Full hash of HEAD, or null when there are no commits yet.</summary>
-    public string? GetHeadHash()
+    public string? GetHeadHash(CancellationToken ct = default)
     {
-        var result = Run(GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
+        var result = Query(ct, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         var hash = result.StdOut.Trim();
         return result.Success && hash.Length > 0 ? hash : null;
     }
 
     /// <summary>All local branches with their full and short commit hash.</summary>
-    public IReadOnlyList<Branch> GetBranches()
+    public IReadOnlyList<Branch> GetBranches(CancellationToken ct = default)
     {
-        var current = GetCurrentBranch();
-        var result = Run("for-each-ref", "--format=%(refname)%00%(objectname)%00%(objectname:short)", "refs/heads");
+        var current = GetCurrentBranch(ct);
+        var result = Query(ct, "for-each-ref", "--format=%(refname)%00%(objectname)%00%(objectname:short)", "refs/heads");
         if (!result.Success)
             throw new InvalidOperationException(Describe(result));
 
@@ -342,9 +358,9 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     /// Best common ancestor of two commits. Null when they share no history (git exits 1).
     /// Any other failure throws.
     /// </summary>
-    public string? GetMergeBase(string a, string b)
+    public string? GetMergeBase(string a, string b, CancellationToken ct = default)
     {
-        var result = Run("merge-base", a, b);
+        var result = Query(ct, "merge-base", a, b);
         if (result.Success)
             return result.StdOut.Trim();
         if (result.ExitCode == 1)
@@ -356,9 +372,9 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     /// Commits on <paramref name="tipHash"/> that are not on <paramref name="headHash"/> (Ahead) and the reverse (Behind).
     /// Null when git fails, so the caller can show the count as unknown.
     /// </summary>
-    public (int Ahead, int Behind)? GetAheadBehind(string headHash, string tipHash)
+    public (int Ahead, int Behind)? GetAheadBehind(string headHash, string tipHash, CancellationToken ct = default)
     {
-        var result = Run("rev-list", "--left-right", "--count", headHash + "..." + tipHash);
+        var result = Query(ct, "rev-list", "--left-right", "--count", headHash + "..." + tipHash);
         if (!result.Success)
             return null;
 
@@ -372,14 +388,14 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     /// Up to <paramref name="max"/> first-parent commits from <paramref name="tip"/>, newest first.
     /// With <paramref name="stopAt"/>, history reachable from it is excluded.
     /// </summary>
-    public IReadOnlyList<CommitInfo> GetFirstParentChain(string tip, string? stopAt, int max)
+    public IReadOnlyList<CommitInfo> GetFirstParentChain(string tip, string? stopAt, int max, CancellationToken ct = default)
     {
         var args = new List<string> { "log", "--no-show-signature", "--first-parent", "-n", max.ToString(), CommitFormat, tip };
         if (stopAt is not null)
             args.AddRange(["--not", stopAt]);
         args.Add("--");
 
-        var result = Run([.. args]);
+        var result = Query(ct, [.. args]);
         if (!result.Success)
             throw new InvalidOperationException(Describe(result));
 
@@ -390,9 +406,9 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     /// Up to <paramref name="max"/> commits reachable from <paramref name="tip"/> but not from <paramref name="notTip"/>, newest first:
     /// the commits that rev-list counts. Unlike <see cref="GetFirstParentChain"/>, commits of merged side branches are included.
     /// </summary>
-    public IReadOnlyList<CommitInfo> GetCommitsNotIn(string tip, string notTip, int max)
+    public IReadOnlyList<CommitInfo> GetCommitsNotIn(string tip, string notTip, int max, CancellationToken ct = default)
     {
-        var result = Run("log", "--no-show-signature", "-n", max.ToString(CultureInfo.InvariantCulture), CommitFormat, tip, "--not", notTip, "--");
+        var result = Query(ct, "log", "--no-show-signature", "-n", max.ToString(CultureInfo.InvariantCulture), CommitFormat, tip, "--not", notTip, "--");
         if (!result.Success)
             throw new InvalidOperationException(Describe(result));
 
@@ -400,9 +416,9 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     }
 
     /// <summary>One commit by hash, or null if git cannot read it.</summary>
-    public CommitInfo? GetCommit(string hash)
+    public CommitInfo? GetCommit(string hash, CancellationToken ct = default)
     {
-        var result = Run("log", "--no-show-signature", "-n", "1", CommitFormat, hash, "--");
+        var result = Query(ct, "log", "--no-show-signature", "-n", "1", CommitFormat, hash, "--");
         return result.Success ? ParseCommit(result.StdOut.Trim()) : null;
     }
 
@@ -442,24 +458,24 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     }
 
     /// <summary>Absolute path of the top-level folder of the work tree, or null when there is none.</summary>
-    public string? GetTopLevel()
+    public string? GetTopLevel(CancellationToken ct = default)
     {
-        var result = Run(GitArgs.RevParse, "--show-toplevel");
+        var result = Query(ct, GitArgs.RevParse, "--show-toplevel");
         var top = result.StdOut.Trim();
         return result.Success && top.Length > 0 ? top : null;
     }
 
     /// <summary>True when there are no staged, unstaged or untracked changes.</summary>
-    public bool IsWorkingTreeClean()
+    public bool IsWorkingTreeClean(CancellationToken ct = default)
     {
-        var result = Run("status", "--porcelain");
+        var result = Query(ct, "status", "--porcelain");
         return result.Success && string.IsNullOrWhiteSpace(result.StdOut);
     }
 
     /// <summary>git's version as major.minor, or null when `git version` fails or its output is not understood.</summary>
-    public Version? GetVersion()
+    public Version? GetVersion(CancellationToken ct = default)
     {
-        var result = Run("version");
+        var result = Query(ct, "version");
         return result.Success ? ParseVersion(result.StdOut) : null;
     }
 
@@ -502,11 +518,11 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
 
     /// <summary>
     /// True when at least one undo step is saved (a ref under refs/graftui/undo/). A read for the key bar: it is not logged,
-    /// and any failure answers false.
+    /// and any failure answers false (a cancelled token throws OperationCanceledException).
     /// </summary>
-    public bool HasUndoSteps()
+    public bool HasUndoSteps(CancellationToken ct = default)
     {
-        var result = Run("for-each-ref", "--count=1", "--format=%(refname)", "refs/graftui/undo/");
+        var result = Query(ct, "for-each-ref", "--count=1", "--format=%(refname)", "refs/graftui/undo/");
         return result.Success && result.StdOut.Trim().Length > 0;
     }
 }

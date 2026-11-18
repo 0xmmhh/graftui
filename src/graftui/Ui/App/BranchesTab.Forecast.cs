@@ -23,6 +23,9 @@ internal sealed partial class BranchesTab
     // The latest layout asked for while a forecast ran. Each request replaces it, so the newest selection is the one computed next.
     private GraphLayout? _forecastNext;
 
+    // Stops the running forecast's git reads when ClearCache drops its snapshot. Made per forecast; only one runs at a time.
+    private CancellationTokenSource? _forecastCts;
+
     // The layout whose plain preview the art shows now. Null while the art shows something else (loading, a flash, a question, the pause).
     private GraphLayout? _shown;
 
@@ -61,9 +64,14 @@ internal sealed partial class BranchesTab
         _forecastRunning = true;
         var forecaster = _app.Forecaster;
         var generation = _forecastGeneration;
+
+        // No forecast is running now, so the previous source is finished: it is disposed before the new one replaces it.
+        Cancellation.CancelAndDispose(ref _forecastCts);
+        _forecastCts = new CancellationTokenSource();
+        var ct = _forecastCts.Token;
         Task.Run(() =>
         {
-            var f = forecaster.Forecast(L);
+            var f = forecaster.Forecast(L, ct);
             _app.Ui(() => ForecastDone(L, f, generation));
         }, CancellationToken.None);
     }
