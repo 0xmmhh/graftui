@@ -35,38 +35,48 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     /// True when git is 2.38 or newer. `git version` is read once, on first use (a version given to the constructor is used as it is).
     /// Called from the worker thread only.
     /// </summary>
-    public bool IsSupported => GitVersion is not null && GitVersion >= Minimum;
+    public bool IsSupported => Supported(CancellationToken.None);
 
-    /// <summary>The git version, read once (see <see cref="IsSupported"/>). Null when `git version` fails or is not understood.</summary>
-    private Version? GitVersion
+    private bool Supported(CancellationToken ct)
     {
-        get
-        {
-            if (!_versionRead)
-            {
-                _version = git.GetVersion();
-                _versionRead = true;
-            }
-            return _version;
-        }
+        var version = GitVersion(ct);
+        return version is not null && version >= Minimum;
     }
 
-    /// <summary>The forecast of merging the selected branch into the current one. Never throws: every failure answers Unavailable.</summary>
-    public MergeForecast Forecast(GraphLayout layout)
+    /// <summary>
+    /// The git version, read once (see <see cref="IsSupported"/>). Null when `git version` fails or is not understood. A read that is
+    /// cancelled throws before _versionRead is set, so a later forecast reads the version again.
+    /// </summary>
+    private Version? GitVersion(CancellationToken ct)
+    {
+        if (!_versionRead)
+        {
+            _version = git.GetVersion(ct);
+            _versionRead = true;
+        }
+        return _version;
+    }
+
+    /// <summary>
+    /// The forecast of merging the selected branch into the current one. Never throws: every failure answers Unavailable. A forecast whose
+    /// token is cancelled answers Unavailable too (its reads stop at once, and nothing is cached for it).
+    /// </summary>
+    public MergeForecast Forecast(GraphLayout layout, CancellationToken ct = default)
     {
         var log = new List<GitResult>();
         try
         {
-            return Decide(layout, log);
+            return Decide(layout, log, ct);
         }
         catch (Exception)
         {
+            // This includes OperationCanceledException, from a version read that was cancelled.
             return MergeForecast.Unavailable(log);
         }
     }
 
     // The decision, in order. A layout that git cannot be sure about gets Unavailable: the preview then says nothing.
-    private MergeForecast Decide(GraphLayout layout, List<GitResult> log)
+    private MergeForecast Decide(GraphLayout layout, List<GitResult> log, CancellationToken ct)
     {
         // A detached HEAD refuses the merge, and the preview already says so. A Same layout has its own caption. Unrelated histories are
         // refused by git before any merge. A rebase in progress also leaves HEAD detached. None of these asks git anything.
@@ -74,21 +84,21 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
             return MergeForecast.Unavailable(log);
 
         // A merge that is already in progress: MergeOperation.Check refuses to start another, so m says nothing here either.
-        // Exit 1 means there is no MERGE_HEAD; any other failure leaves the state unknown.
-        var merging = git.Run(GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead);
+        // Exit 1 means there is no MERGE_HEAD; any other failure (a cancelled read included) leaves the state unknown.
+        var merging = git.RunRead(ct, GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead);
         log.Add(merging);
         if (merging.Success || merging.ExitCode != 1)
             return MergeForecast.Unavailable(log);
 
-        if (!IsSupported)
+        if (!Supported(ct))
             return MergeForecast.Unavailable(log);
 
         // m runs `git merge --no-edit <name>`, and git resolves that name itself: a tag of the same name can win over the branch. The forecast
         // is of the selected tip, so a name that resolves to another commit (or to nothing) is Unavailable.
-        if (!NameResolvesToSelectedTip(layout, log))
+        if (!NameResolvesToSelectedTip(layout, log, ct))
             return MergeForecast.Unavailable(log);
 
-        var config = ReadConfig(layout.Current, log);
+        var config = ReadConfig(layout.Current, log, ct);
         if (config is null)
             return MergeForecast.Unavailable(log);
 
@@ -102,17 +112,17 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
         if (config.Ff == FfMode.Only)
             return new MergeForecast(ForecastKind.Refused, [], MergeForecast.FfOnlyNote, log);
 
-        return MergeTreeForecast(layout, log);
+        return MergeTreeForecast(layout, log, ct);
     }
 
     // The selected branch's name, resolved the way `git merge` resolves it, must give the selected tip. A name that starts with '-' is never
     // a branch name, and --end-of-options keeps git from reading it as an option anyway. Any failure, or another commit, answers false.
-    private bool NameResolvesToSelectedTip(GraphLayout layout, List<GitResult> log)
+    private bool NameResolvesToSelectedTip(GraphLayout layout, List<GitResult> log, CancellationToken ct)
     {
         if (layout.Selected.StartsWith('-'))
             return false;
 
-        var resolved = git.Run("rev-parse", "--verify", "-q", "--end-of-options", layout.Selected + "^{commit}");
+        var resolved = git.RunRead(ct, "rev-parse", "--verify", "-q", "--end-of-options", layout.Selected + "^{commit}");
         log.Add(resolved);
         return resolved.Success && resolved.StdOut.Trim() == layout.SelectedTip;
     }
@@ -127,14 +137,14 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
 
     // The diverged case: merge-tree merges the two tips in memory. Exit 0 is a clean merge. Exit 1 with a parsable list is a conflict.
     // Any other answer (unknown ref, other exit code, unreadable output) is Unavailable.
-    private MergeForecast MergeTreeForecast(GraphLayout layout, List<GitResult> log)
+    private MergeForecast MergeTreeForecast(GraphLayout layout, List<GitResult> log, CancellationToken ct)
     {
         // The forecast never runs user commands: merge-tree must not be asked while one could run.
-        if (!MergeTreeRunsNoCommands(log))
+        if (!MergeTreeRunsNoCommands(log, ct))
             return MergeForecast.Unavailable(log);
 
         // The tips are passed as full hashes, so no branch name can be read as a tag or as an option.
-        var result = git.Run("merge-tree", "--write-tree", "-z", layout.CurrentTip, layout.SelectedTip);
+        var result = git.RunRead(ct, "merge-tree", "--write-tree", "-z", layout.CurrentTip, layout.SelectedTip);
         log.Add(result);
 
         if (result.ExitCode == 0 && MergeTreeParser.HasTree(result.StdOut))
@@ -155,32 +165,32 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     /// run otherwise, and merge.renormalize runs the clean filter. So a filter key answers false only when renormalize is true. A
     /// config read that fails, or a renormalize value git does not know, answers false too.
     /// </summary>
-    private bool MergeTreeRunsNoCommands(List<GitResult> log)
+    private bool MergeTreeRunsNoCommands(List<GitResult> log, CancellationToken ct)
     {
-        if (!NothingConfigured(MergeDriverKeys, log))
+        if (!NothingConfigured(MergeDriverKeys, log, ct))
             return false;
 
-        var renormalize = RenormalizeSetting(log);
+        var renormalize = RenormalizeSetting(log, ct);
         if (renormalize is null)
             return false;
         if (!renormalize.Value)
             return true;
 
-        return NothingConfigured(FilterKeys, log);
+        return NothingConfigured(FilterKeys, log, ct);
     }
 
     // `git config --get-regexp` exits 1 when no key matches the pattern.
-    private bool NothingConfigured(string pattern, List<GitResult> log)
+    private bool NothingConfigured(string pattern, List<GitResult> log, CancellationToken ct)
     {
-        var result = git.Run("config", "--get-regexp", pattern);
+        var result = git.RunRead(ct, "config", "--get-regexp", pattern);
         log.Add(result);
         return result.ExitCode == 1;
     }
 
     // merge.renormalize: exit 1 means "not set" (false). Another failure, or a value that is not a boolean git knows, is unknown (null).
-    private bool? RenormalizeSetting(List<GitResult> log)
+    private bool? RenormalizeSetting(List<GitResult> log, CancellationToken ct)
     {
-        var result = git.Run("config", "--get", "merge.renormalize");
+        var result = git.RunRead(ct, "config", "--get", "merge.renormalize");
         log.Add(result);
         if (result.ExitCode == 1)
             return false;
@@ -193,10 +203,10 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
     /// The two config values that change what `git merge --no-edit` does: merge.ff, and branch.&lt;current&gt;.mergeOptions (extra merge
     /// flags, which the forecast cannot know). Null when either cannot be read, has a value the forecast does not know, or sets options.
     /// </summary>
-    private MergeConfig? ReadConfig(string currentBranch, List<GitResult> log)
+    private MergeConfig? ReadConfig(string currentBranch, List<GitResult> log, CancellationToken ct)
     {
         // Exit 1 means "not set", which is git's default. Any other failure, or a value not known here, makes the forecast unknown.
-        var ff = git.Run("config", "--get", "merge.ff");
+        var ff = git.RunRead(ct, "config", "--get", "merge.ff");
         log.Add(ff);
         if (!ff.Success && ff.ExitCode != 1)
             return null;
@@ -212,15 +222,15 @@ public sealed class MergeForecaster(GitClient git, Version? knownVersion = null)
 
         // pull.twohead is the strategy `git merge` picks for a diverged merge when none is given. merge-tree always uses ort, so any other
         // strategy makes the forecast unknown. It is read here, before any fast-forward is classified or merge-tree runs.
-        var twohead = git.Run("config", "--get", "pull.twohead");
+        var twohead = git.RunRead(ct, "config", "--get", "pull.twohead");
         log.Add(twohead);
         if (!twohead.Success && twohead.ExitCode != 1)
             return null;
-        if (twohead.Success && !IsOrtStrategy(twohead.StdOut.Trim(), GitVersion))
+        if (twohead.Success && !IsOrtStrategy(twohead.StdOut.Trim(), GitVersion(ct)))
             return null;
 
         // Exit 1 means "not set". A set, non-empty value means git merges with extra flags, so the forecast says nothing.
-        var options = git.Run("config", "--get", "branch." + currentBranch + ".mergeOptions");
+        var options = git.RunRead(ct, "config", "--get", "branch." + currentBranch + ".mergeOptions");
         log.Add(options);
         if (options.ExitCode == 1)
             return new MergeConfig(mode);

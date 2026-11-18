@@ -51,6 +51,9 @@ internal sealed partial class BranchesTab
         _cache.Clear();
         _forecasts.Clear();
         _forecastNext = null;
+
+        // The running forecast answers for the old snapshot: its reads stop now, and its result is dropped by the generation check.
+        Cancellation.CancelAndDispose(ref _forecastCts);
         _forecastGeneration++;
     }
 
