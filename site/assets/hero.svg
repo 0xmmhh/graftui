@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="140 150 980 980" width="980" height="980">
+  <style>
+    .leaf { transform-box: fill-box; transform-origin: 50% 100%; animation: sway 4.2s ease-in-out infinite; }
+    @keyframes sway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+    @media (prefers-reduced-motion: reduce) { .leaf { animation: none; } }
+  </style>
+  <defs>
+    <path id="leaf" d="M0,-50 C32,-28 36,18 0,50 C-30,22 -34,-26 0,-50Z" fill="#6FB353"/>
+  </defs>
+
+  <!-- canopy -->
+  <g fill="#D6F0C6">
+    <ellipse cx="440" cy="640" rx="280" ry="275"/>
+    <circle cx="615" cy="440" r="265"/>
+    <ellipse cx="860" cy="670" rx="230" ry="278"/>
+    <ellipse cx="640" cy="700" rx="300" ry="245"/>
+  </g>
+
+  <!-- red branch -->
+  <path d="M598 830 C588 760 540 735 490 728 C420 718 385 690 345 648 C322 626 302 610 289 598"
+        fill="none" stroke="#F96F63" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- yellow branch -->
+  <path d="M625 840 C660 808 700 780 760 755 C820 735 870 700 905 650 C925 620 940 590 945 552"
+        fill="none" stroke="#FBBF24" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- teal branch -->
+  <path d="M596 890 L600 385 C603 345 600 330 625 308 C640 296 652 298 653 303 C653 312 640 322 638 345 L638 380 L648 890 Z" fill="#935A3A"/>
+
+  <!-- trunk -->
+  <path d="M595 880 L650 850 C645 900 645 960 658 1040 Q661 1075 635 1075 L605 1075 Q580 1075 583 1050 C592 980 596 930 595 880 Z" fill="#935A3A"/>
+
+  <!-- nodes -->
+  <g>
+    <circle cx="618" cy="422" r="46" fill="#935A3A"/><circle cx="618" cy="422" r="31" fill="#FFFFFF"/>
+    <circle cx="618" cy="596" r="46" fill="#935A3A"/><circle cx="618" cy="596" r="31" fill="#FFFFFF"/>
+    <circle cx="335" cy="648" r="42" fill="#F96F63"/><circle cx="335" cy="648" r="28" fill="#FFFFFF"/>
+    <circle cx="468" cy="722" r="40" fill="#F96F63"/><circle cx="468" cy="722" r="28" fill="#FFFFFF"/>
+    <circle cx="908" cy="645" r="42" fill="#FBBF24"/><circle cx="908" cy="645" r="28" fill="#FFFFFF"/>
+    <circle cx="777" cy="752" r="40" fill="#FBBF24"/><circle cx="777" cy="752" r="28" fill="#FFFFFF"/>
+  </g>
+
+  <!-- leaves -->
+  <g transform="translate(605 255) rotate(-15) scale(0.9 1.0)"><use class="leaf" href="#leaf" style="animation-delay:-0.7s"/></g>
+  <g transform="translate(705 290) rotate(60) scale(0.8 0.95)"><use class="leaf" href="#leaf" style="animation-delay:-1.4s"/></g>
+  <g transform="translate(555 330) rotate(80) scale(0.7 0.85)"><use class="leaf" href="#leaf" style="animation-delay:-2.1s"/></g>
+  <g transform="translate(312 442) rotate(-30) scale(0.8 0.75)"><use class="leaf" href="#leaf" style="animation-delay:-2.8s"/></g>
+  <g transform="translate(313 548) rotate(20) scale(0.75 0.9)"><use class="leaf" href="#leaf" style="animation-delay:-3.5s"/></g>
+  <g transform="translate(243 585) rotate(-20) scale(0.65 0.8)"><use class="leaf" href="#leaf" style="animation-delay:-4.2s"/></g>
+  <g transform="translate(897 525) rotate(-15) scale(0.8 0.9)"><use class="leaf" href="#leaf" style="animation-delay:-0.7s"/></g>
+  <g transform="translate(995 550) rotate(-60) scale(0.7 0.8)"><use class="leaf" href="#leaf" style="animation-delay:-1.4s"/></g>
+  <g transform="translate(985 820) rotate(25) scale(0.75 0.8)"><use class="leaf" href="#leaf" style="animation-delay:-2.1s"/></g>
+</svg>
