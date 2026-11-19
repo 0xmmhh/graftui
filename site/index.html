@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>document.documentElement.classList.add('js');</script>
 <title>graftui · Watch your branches grow together</title>
 <meta name="description" content="graftui is an animated git TUI: merge, stage, commit, stash, switch and undo, and see the real git commands as they run.">
 <link rel="icon" href="favicon.ico" sizes="any">
@@ -162,7 +163,7 @@
   .band h2 { color: #fff; }
   .band .sub { color: #bbf7d0; }
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 40px; position: relative; z-index: 1; }
-  .step { background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: 20px; }
+  .step { min-width: 0; background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: 20px; }
   .step .n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--lemon); color: #422006; font-weight: 800; font-size: 14px; margin-bottom: 12px; }
   .step p { margin: 0 0 12px; color: #dcfce7; font-size: 15.5px; }
   .step pre { margin: 0; font-size: 13.5px; background: rgba(0,0,0,.35); padding: 12px 14px; border-radius: 10px; color: #f0fdf4; overflow-x: auto; line-height: 1.7; }
@@ -174,11 +175,12 @@
   footer nav { display: flex; gap: 20px; }
   footer a { text-decoration: none; } footer a:hover { color: var(--green); }
 
-  .reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s ease, transform .7s ease; }
-  .reveal.in { opacity: 1; transform: none; }
+  /* hidden only once the script below has run, so the page still shows without JavaScript */
+  .js .reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s ease, transform .7s ease; }
+  .js .reveal.in { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
-    .reveal { opacity: 1; transform: none; }
+    .js .reveal { opacity: 1; transform: none; }
   }
 
   @media (max-width: 900px) {
