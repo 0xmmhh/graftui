@@ -344,6 +344,42 @@ public sealed class LaneGraphBuilderTests
         Assert.Same(LaneGraph.Empty, graph);
     }
 
+    [Fact]
+    public void A_hidden_merge_parent_stays_left_of_the_first_kept_commit()
+    {
+        // l1 is hidden (nine commits, eight kept) and merges in a3, the base tip. The first kept commit must come after a3.
+        var others = new List<GraphCommit> { Commit("l1", "Merge main into feature", "a1", "a3") };
+        for (var i = 2; i <= 9; i++)
+            others.Add(C("l" + i, "l" + (i - 1)));
+
+        var graph = Build(Chain("a3", "a2", "a1"), others, Br("feature", "l9"));
+
+        var feature = LaneNamed(graph, "feature");
+        Assert.Equal(1, feature.Hidden);
+        Assert.Equal(3, feature.Gap);
+        Assert.Equal("l2", feature.Commits[0].ShortHash);
+        Assert.Equal(4, feature.Commits[0].Column);
+    }
+
+    [Fact]
+    public void A_loop_through_hidden_commits_is_placed_without_the_loop()
+    {
+        // Lane a: l1..l10, where l2 merges m9. Lane b forks from l1 (hidden in a) and runs m1..m9, with m1 hidden. The extra edges
+        // would close a loop (a's gap before b, b's m9 before a's gap). The columns are then placed without those edges.
+        var others = new List<GraphCommit> { C("l1", "a1"), C("l2", "l1", "m9") };
+        for (var i = 3; i <= 10; i++)
+            others.Add(C("l" + i, "l" + (i - 1)));
+        others.Add(C("m1", "l1"));
+        for (var i = 2; i <= 9; i++)
+            others.Add(C("m" + i, "m" + (i - 1)));
+
+        var graph = Build(Chain("a3", "a2", "a1"), others, Br("a", "l10"), Br("b", "m9"));
+
+        Assert.Equal(new[] { "main", "a", "b" }, Names(graph));
+        Assert.All(graph.Lanes.Skip(1).SelectMany(l => l.Commits), c => Assert.True(c.Column >= 1));
+        AssertColumnsRise(graph);
+    }
+
     [Theory]
     [InlineData("Merge branch 'x' into y", "x")]
     [InlineData("Merge branch 'x'", "x")]
@@ -351,6 +387,7 @@ public sealed class LaneGraphBuilderTests
     [InlineData("Merge remote-tracking branch 'origin/x'", "origin/x")]
     [InlineData("Add file", "")]
     [InlineData("Merge branch '", "")]
+    [InlineData("Merge branches 'a' and 'b'", "")]
     public void SideName_reads_the_branch_from_a_merge_subject(string subject, string expected) =>
         Assert.Equal(expected, LaneGraphBuilder.SideName(subject));
 

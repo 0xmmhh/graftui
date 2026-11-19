@@ -40,7 +40,8 @@ public static class LaneGraphBuilder
 
     /// <summary>
     /// The branch name of a merge commit's subject: "Merge branch 'x' into y" gives "x", "Merge pull request #12 from o/x" gives
-    /// "o/x", "Merge remote-tracking branch 'origin/x'" gives "origin/x". "" when the subject names no branch.
+    /// "o/x", "Merge remote-tracking branch 'origin/x'" gives "origin/x". "" when the subject names no branch. Octopus subjects
+    /// ("Merge branches 'a' and 'b'") give "" too: they name two branches, so no single name fits.
     /// </summary>
     internal static string SideName(string subject)
     {
@@ -123,13 +124,27 @@ public static class LaneGraphBuilder
             ClaimSideLanes();
             ResolveForks();
             ChooseWindow();
-            AddNodes();
-            AddEdges();
-            ComputeColumns();
+            PlaceNodes();
             var links = LinksWithColumns();
             var pointers = PointersWithLanes();
             var rows = RowsThatFit(BuildGroups());
             return Assemble(rows, links, pointers);
+        }
+
+        // Step 7: the columns, with the extra edges from hidden commits. If those edges close a loop (two lanes whose hidden commits
+        // merge each other's), the loop cannot be placed, so the columns are placed again without them.
+        private void PlaceNodes()
+        {
+            AddNodes();
+            AddEdges();
+            AddHiddenParentEdges();
+            if (ComputeColumns())
+                return;
+
+            ResetNodes();
+            AddNodes();
+            AddEdges();
+            ComputeColumns();
         }
 
         // Step 2: the base lane. Its commits are all known now; the window later keeps only the newest of them.
@@ -421,9 +436,40 @@ public static class LaneGraphBuilder
                 AddEdge(from, node);
         }
 
+        // A hidden commit is not drawn, but its parents still come before the gap it stands in. Without this edge a lane's first
+        // kept commit could be placed left of a parent that a hidden merge brought in.
+        private void AddHiddenParentEdges()
+        {
+            for (var id = 0; id < _drafts.Count; id++)
+            {
+                if (!_gapOf.TryGetValue(id, out var gap))
+                    continue;
+
+                foreach (var hash in HiddenOf(_drafts[id]))
+                {
+                    foreach (var parent in _commits[hash].Parents)
+                    {
+                        // A parent that is the gap itself (a hidden commit of the same lane) adds nothing.
+                        var node = NodeOf(parent);
+                        if (node >= 0 && node != gap)
+                            AddEdge(node, gap);
+                    }
+                }
+            }
+        }
+
+        private void ResetNodes()
+        {
+            _nodeOf.Clear();
+            _gapOf.Clear();
+            _preds.Clear();
+            _succs.Clear();
+        }
+
         // Step 7: the column of every node is one more than the highest column of its predecessors (0 when it has none). Each node
-        // is placed once all its predecessors are, so the walk goes in topological order (Kahn's method, no recursion).
-        private void ComputeColumns()
+        // is placed once all its predecessors are, so the walk goes in topological order (Kahn's method, no recursion). Returns false
+        // when some node never became ready, which means the edges form a loop.
+        private bool ComputeColumns()
         {
             var count = _preds.Count;
             _col = new int[count];
@@ -436,9 +482,11 @@ public static class LaneGraphBuilder
                     ready.Enqueue(n);
             }
 
+            var placed = 0;
             while (ready.Count > 0)
             {
                 var current = ready.Dequeue();
+                placed++;
                 foreach (var next in _succs[current])
                 {
                     _col[next] = Math.Max(_col[next], _col[current] + 1);
@@ -447,6 +495,8 @@ public static class LaneGraphBuilder
                         ready.Enqueue(next);
                 }
             }
+
+            return placed == count;
         }
 
         // The node that draws a commit. A hidden commit has no node of its own: it is drawn in its lane's gap. -1 when the commit is
@@ -663,6 +713,8 @@ public static class LaneGraphBuilder
         private int ColorOf(string name) => _colors.TryGetValue(name, out var lane) ? lane : BranchLanes.Trunk;
 
         private static List<string> KeptOf(Draft draft) => draft.Hashes.Skip(draft.Hidden).ToList();
+
+        private static List<string> HiddenOf(Draft draft) => draft.Hashes.Take(draft.Hidden).ToList();
 
         private static string FirstKept(Draft draft) => draft.Hashes[draft.Hidden];
 

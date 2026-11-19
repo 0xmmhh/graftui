@@ -417,8 +417,9 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
 
     /// <summary>
     /// The commits for the lane graph, newest first, in topological order (a parent never comes before its child). With
-    /// <paramref name="firstParent"/> only the first-parent chain of the first tip is read (<paramref name="notTip"/> is null). Without it,
-    /// the history reachable from the tips but not from <paramref name="notTip"/>: the branches' own commits.
+    /// <paramref name="firstParent"/> only the first-parent chain is read, from the one tip given (the base's tip, with
+    /// <paramref name="notTip"/> null). Without it, the history reachable from all the tips but not from
+    /// <paramref name="notTip"/>: the branches' own commits.
     /// Throws InvalidOperationException when git fails.
     /// </summary>
     public IReadOnlyList<GraphCommit> GetGraphCommits(IReadOnlyList<string> tips, string? notTip, int max, bool firstParent,
@@ -482,7 +483,7 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
         return commits;
     }
 
-    private static GraphCommit? ParseGraphCommit(string line)
+    internal static GraphCommit? ParseGraphCommit(string line)
     {
         var fields = line.Split('\x1f', 5);
         if (fields.Length != 5)

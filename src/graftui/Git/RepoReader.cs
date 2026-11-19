@@ -17,6 +17,7 @@ public sealed class RepoReader(GitClient git)
     private const int NewListMax = 50; // the commit list shows up to this many of the commits the counts count
     private const int HeadCount = 4;
     private const int HeadFetch = HeadCount + 1; // one extra commit tells whether history was cut short
+    private const int MaxTips = 500; // branch tips on one git command line: each is a 40-character hash
     private const long MaxPreviewBytes = 1_000_000;
 
     public RepoSnapshot LoadSnapshot(bool withCounts, CancellationToken ct)
@@ -83,28 +84,47 @@ public sealed class RepoReader(GitClient git)
         var baseChainMore = baseRead.Count > LaneGraphBuilder.BaseMax;
         var baseChain = baseRead.Take(LaneGraphBuilder.BaseMax).ToList();
 
-        // Every other branch's tip, once each. A branch that points at the base tip adds nothing, so it is left out.
-        var tips = new List<string>();
-        var seen = new HashSet<string>();
-        foreach (var branch in branches)
-        {
-            if (branch.Name == baseName || branch.Hash == baseTip || !seen.Add(branch.Hash))
-                continue;
-            tips.Add(branch.Hash);
-        }
-
+        var tips = TipsOf(branches, baseName, baseTip, MaxTips, out var tipsCut);
         IReadOnlyList<GraphCommit> others = [];
-        var othersCut = false;
+        var othersCut = tipsCut;
         if (tips.Count > 0)
         {
             ct.ThrowIfCancellationRequested();
             var othersRead = git.GetGraphCommits(tips, baseTip, LaneGraphBuilder.OthersMax + 1, firstParent: false, ct);
-            othersCut = othersRead.Count > LaneGraphBuilder.OthersMax;
+            // Past OthersMax the newest commits are kept. A branch whose commits are all cut shows as a pointer at column -1, and
+            // OthersCut tells the screen that history was left out.
+            othersCut = othersCut || othersRead.Count > LaneGraphBuilder.OthersMax;
             others = othersRead.Take(LaneGraphBuilder.OthersMax).ToList();
         }
 
         ct.ThrowIfCancellationRequested();
         return LaneGraphBuilder.Build(new LaneGraphInput(baseName, baseChain, baseChainMore, branches, others, othersCut));
+    }
+
+    /// <summary>
+    /// The tips of the other branches for the lane graph read: one per distinct commit, in the branch list's order, and none for
+    /// the base or for a branch on the base tip. At most <paramref name="max"/> are kept; <paramref name="cut"/> says whether any
+    /// were left out. The cap keeps the command line well under Windows' limit (one hash per tip).
+    /// </summary>
+    internal static IReadOnlyList<string> TipsOf(IReadOnlyList<Branch> branches, string baseName, string baseTip, int max, out bool cut)
+    {
+        var tips = new List<string>();
+        var seen = new HashSet<string>();
+        cut = false;
+        foreach (var branch in branches)
+        {
+            if (branch.Name == baseName || branch.Hash == baseTip || !seen.Add(branch.Hash))
+                continue;
+            if (tips.Count == max)
+            {
+                cut = true;
+                break;
+            }
+
+            tips.Add(branch.Hash);
+        }
+
+        return tips;
     }
 
     /// <summary>
