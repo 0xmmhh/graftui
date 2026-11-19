@@ -62,6 +62,52 @@ public sealed class RepoReader(GitClient git)
     }
 
     /// <summary>
+    /// The lane graph of every local branch against the current branch (the trunk when HEAD is detached). Never logged.
+    /// LaneGraph.Empty when there are no commits or no branches. Throws OperationCanceledException when ct is cancelled.
+    /// </summary>
+    public LaneGraph LoadLaneGraph(RepoSnapshot snap, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var head = snap.HeadHash;
+        if (head is null || snap.Branches.Count == 0)
+            return LaneGraph.Empty;
+
+        var branches = snap.Branches;
+        var onBranch = snap.CurrentBranch.Length > 0;
+        var baseName = onBranch ? snap.CurrentBranch : (BranchLanes.TrunkName(branches) ?? branches[0].Name);
+        // The tip comes from the snapshot, not from a new read, so the graph matches the branch list the screen shows.
+        var baseTip = onBranch ? head : branches.First(b => b.Name == baseName).Hash;
+
+        ct.ThrowIfCancellationRequested();
+        var baseRead = git.GetGraphCommits([baseTip], null, LaneGraphBuilder.BaseMax + 1, firstParent: true, ct);
+        var baseChainMore = baseRead.Count > LaneGraphBuilder.BaseMax;
+        var baseChain = baseRead.Take(LaneGraphBuilder.BaseMax).ToList();
+
+        // Every other branch's tip, once each. A branch that points at the base tip adds nothing, so it is left out.
+        var tips = new List<string>();
+        var seen = new HashSet<string>();
+        foreach (var branch in branches)
+        {
+            if (branch.Name == baseName || branch.Hash == baseTip || !seen.Add(branch.Hash))
+                continue;
+            tips.Add(branch.Hash);
+        }
+
+        IReadOnlyList<GraphCommit> others = [];
+        var othersCut = false;
+        if (tips.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            var othersRead = git.GetGraphCommits(tips, baseTip, LaneGraphBuilder.OthersMax + 1, firstParent: false, ct);
+            othersCut = othersRead.Count > LaneGraphBuilder.OthersMax;
+            others = othersRead.Take(LaneGraphBuilder.OthersMax).ToList();
+        }
+
+        ct.ThrowIfCancellationRequested();
+        return LaneGraphBuilder.Build(new LaneGraphInput(baseName, baseChain, baseChainMore, branches, others, othersCut));
+    }
+
+    /// <summary>
     /// The layout of a paused rebase's branch against the onto it is rebased onto, read from the branch's old tip. HEAD is detached while the
     /// rebase runs, so the snapshot cannot give the branch's own commits; the old tip gives the same layout the rebase started from.
     /// Throws when the onto is not listed or a read fails.
