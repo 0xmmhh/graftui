@@ -131,19 +131,12 @@ public static class LaneGraphBuilder
             return Assemble(rows, links, pointers);
         }
 
-        // Step 7: the columns, with the extra edges from hidden commits. If those edges close a loop (two lanes whose hidden commits
-        // merge each other's), the loop cannot be placed, so the columns are placed again without them.
+        // Step 7: the columns. The hidden commits' parent edges are added one at a time, each only if it closes no loop.
         private void PlaceNodes()
         {
             AddNodes();
             AddEdges();
             AddHiddenParentEdges();
-            if (ComputeColumns())
-                return;
-
-            ResetNodes();
-            AddNodes();
-            AddEdges();
             ComputeColumns();
         }
 
@@ -437,7 +430,8 @@ public static class LaneGraphBuilder
         }
 
         // A hidden commit is not drawn, but its parents still come before the gap it stands in. Without this edge a lane's first
-        // kept commit could be placed left of a parent that a hidden merge brought in.
+        // kept commit could be placed left of a parent that a hidden merge brought in. The edges are added one at a time: an edge
+        // that would close a loop (two lanes whose hidden commits merge each other's) is left out, and every other one stays.
         private void AddHiddenParentEdges()
         {
             for (var id = 0; id < _drafts.Count; id++)
@@ -449,27 +443,44 @@ public static class LaneGraphBuilder
                 {
                     foreach (var parent in _commits[hash].Parents)
                     {
-                        // A parent that is the gap itself (a hidden commit of the same lane) adds nothing.
+                        // A parent that is the gap itself (a hidden commit of the same lane) adds nothing, and an edge already there is
+                        // not added twice. An edge from node to gap closes a loop exactly when the gap already reaches node.
                         var node = NodeOf(parent);
-                        if (node >= 0 && node != gap)
+                        if (node >= 0 && node != gap && !_preds[gap].Contains(node) && !Reaches(gap, node))
                             AddEdge(node, gap);
                     }
                 }
             }
         }
 
-        private void ResetNodes()
+        // Whether node "to" can be reached from node "from" along the edges already added.
+        private bool Reaches(int from, int to)
         {
-            _nodeOf.Clear();
-            _gapOf.Clear();
-            _preds.Clear();
-            _succs.Clear();
+            var seen = new bool[_succs.Count];
+            var stack = new Stack<int>();
+            stack.Push(from);
+            seen[from] = true;
+            while (stack.Count > 0)
+            {
+                var current = stack.Pop();
+                if (current == to)
+                    return true;
+                foreach (var next in _succs[current])
+                {
+                    if (!seen[next])
+                    {
+                        seen[next] = true;
+                        stack.Push(next);
+                    }
+                }
+            }
+
+            return false;
         }
 
         // Step 7: the column of every node is one more than the highest column of its predecessors (0 when it has none). Each node
-        // is placed once all its predecessors are, so the walk goes in topological order (Kahn's method, no recursion). Returns false
-        // when some node never became ready, which means the edges form a loop.
-        private bool ComputeColumns()
+        // is placed once all its predecessors are, so the walk goes in topological order (Kahn's method, no recursion).
+        private void ComputeColumns()
         {
             var count = _preds.Count;
             _col = new int[count];
@@ -482,11 +493,9 @@ public static class LaneGraphBuilder
                     ready.Enqueue(n);
             }
 
-            var placed = 0;
             while (ready.Count > 0)
             {
                 var current = ready.Dequeue();
-                placed++;
                 foreach (var next in _succs[current])
                 {
                     _col[next] = Math.Max(_col[next], _col[current] + 1);
@@ -495,8 +504,6 @@ public static class LaneGraphBuilder
                         ready.Enqueue(next);
                 }
             }
-
-            return placed == count;
         }
 
         // The node that draws a commit. A hidden commit has no node of its own: it is drawn in its lane's gap. -1 when the commit is

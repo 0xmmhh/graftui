@@ -89,8 +89,11 @@ public sealed record LaneGraph(string BaseName, IReadOnlyList<Lane> Lanes, IRead
     }
 
     /// <summary>
-    /// The rows that would come in if the branch were merged into the base: its own lane, the Side lanes merged in under it (and
-    /// under those), and the lanes it was forked from up to, not including, the base. Sorted ascending. Empty for an unknown branch.
+    /// The rows that would come in if the branch were merged into the base: the rows of its history that the base does not have.
+    /// That is its own row; each row it was forked from, as far as the fork point (a fork from the base is not counted, since the
+    /// base has it already); and each Side lane merged into one of those at or before the column the history reaches on that row.
+    /// A side lane merged after the fork point is not in the history, so it is left out. Side lanes merged into a side lane that is
+    /// in the history come in too. Sorted ascending. Empty for an unknown branch.
     /// </summary>
     public IReadOnlyList<int> IncomingLanes(string branch)
     {
@@ -99,44 +102,61 @@ public sealed record LaneGraph(string BaseName, IReadOnlyList<Lane> Lanes, IRead
         if (lane < 0)
             return result;
 
-        var inSet = new bool[Lanes.Count];
-        inSet[lane] = true;
-        // Only the side lanes under this lane are its own. The lanes it was forked from bring their own side lanes, which are
-        // not in this branch's history, so they are added after this step, without looking under them.
-        AddSideLanesUnder(inSet);
-
-        var up = Lanes[lane].Parent;
-        while (up > 0)
-        {
-            inSet[up] = true;
-            up = Lanes[up].Parent;
-        }
-
+        var reach = HistoryReach(lane);
         for (var i = 0; i < Lanes.Count; i++)
         {
-            if (inSet[i])
+            if (InHistory(reach, i))
                 result.Add(i);
         }
 
         return result;
     }
 
-    // Marks every Side lane whose parent is marked, repeating until nothing new is marked (a side lane can hang under a side lane).
-    private void AddSideLanesUnder(bool[] inSet)
+    // For each row, the column up to which the branch's history reaches on that row (-1: none of it). The branch's own row reaches
+    // all of it. The rows are walked until nothing reaches further.
+    private int[] HistoryReach(int lane)
     {
-        var added = true;
-        while (added)
+        var reach = new int[Lanes.Count];
+        for (var i = 0; i < reach.Length; i++)
+            reach[i] = -1;
+        reach[lane] = int.MaxValue;
+
+        var changed = true;
+        while (changed)
         {
-            added = false;
-            for (var i = 0; i < Lanes.Count; i++)
+            changed = false;
+            foreach (var link in Links)
             {
-                var candidate = Lanes[i];
-                if (!inSet[i] && candidate.Kind == LaneKind.Side && candidate.Parent >= 0 && inSet[candidate.Parent])
+                var through = ReachThrough(reach, link);
+                if (through > reach[link.FromLane])
                 {
-                    inSet[i] = true;
-                    added = true;
+                    reach[link.FromLane] = through;
+                    changed = true;
                 }
             }
         }
+
+        return reach;
     }
+
+    // How far back along the link's source row the history reaches through this link, or -1 when the link brings nothing in.
+    private int ReachThrough(int[] reach, LaneLink link)
+    {
+        if (link.Kind == LinkKind.Fork)
+        {
+            // A fork from the base (row 0) is already on the base, and an OffLeft fork has no column to reach back to.
+            if (link.FromLane == 0 || link.FromColumn < 0 || !InHistory(reach, link.ToLane))
+                return -1;
+            return link.FromColumn;
+        }
+
+        // A merge brings in its source only when the merge commit it lands on is in the history. Only side lanes count here: a
+        // branch merged in keeps its own row and is not pulled in by this rule.
+        if (Lanes[link.FromLane].Kind != LaneKind.Side || reach[link.ToLane] < link.ToColumn)
+            return -1;
+        return link.FromColumn;
+    }
+
+    // Whether any commit of the row is in the history: the history reaches its first commit's column.
+    private bool InHistory(int[] reach, int row) => reach[row] >= Lanes[row].Commits[0].Column;
 }

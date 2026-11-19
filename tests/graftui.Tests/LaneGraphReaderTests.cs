@@ -99,6 +99,24 @@ public sealed class LaneGraphReaderTests : IDisposable
     }
 
     [Fact]
+    public void A_base_that_moved_after_HEAD_was_read_uses_the_branch_list_tip()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("a.txt", "a\n", "Add a");
+        var older = repo.Head;
+        repo.Commit("b.txt", "b\n", "Add b");
+        var newer = repo.Head;
+        var reader = new RepoReader(repo.Git);
+        var snap = reader.LoadSnapshot(withCounts: false, CancellationToken.None);
+        // HEAD as it was read before main moved on, with the branch list read after the move.
+        var stale = new RepoSnapshot(snap.CurrentBranch, older, snap.Clean, snap.Branches, snap.Counts);
+
+        var graph = reader.LoadLaneGraph(stale, CancellationToken.None);
+
+        Assert.Equal(newer, graph.Lanes[0].Commits[^1].Hash);
+    }
+
+    [Fact]
     public void No_commits_gives_empty()
     {
         using var repo = TempRepo.Create();

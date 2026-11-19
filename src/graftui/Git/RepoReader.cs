@@ -76,8 +76,17 @@ public sealed class RepoReader(GitClient git)
         var branches = snap.Branches;
         var onBranch = snap.CurrentBranch.Length > 0;
         var baseName = onBranch ? snap.CurrentBranch : (BranchLanes.TrunkName(branches) ?? branches[0].Name);
-        // The tip comes from the snapshot, not from a new read, so the graph matches the branch list the screen shows.
-        var baseTip = onBranch ? head : branches.First(b => b.Name == baseName).Hash;
+        // The base tip comes from the base's own entry in this branch list. HEAD and the list are read at different moments, so a
+        // commit made in between would move the base in the list but not in HeadHash, and TipsOf leaves the base out by name. A
+        // detached HEAD is not the base (the trunk is), so HeadHash is used only when the current branch is missing from the list.
+        var entry = branches.FirstOrDefault(b => b.Name == baseName);
+        string baseTip;
+        if (entry is not null)
+            baseTip = entry.Hash;
+        else if (onBranch)
+            baseTip = head;
+        else
+            throw new InvalidOperationException($"{baseName} is not listed");
 
         ct.ThrowIfCancellationRequested();
         var baseRead = git.GetGraphCommits([baseTip], null, LaneGraphBuilder.BaseMax + 1, firstParent: true, ct);

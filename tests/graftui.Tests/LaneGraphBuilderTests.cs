@@ -264,6 +264,35 @@ public sealed class LaneGraphBuilderTests
         Assert.Contains(new LaneLink(LinkKind.Merge, 1, 3, 2, 4), graph.Links);
     }
 
+    // anc: p1 on a3, m1 merges sA into it (column 4), p2, then m2 merges sB into it (column 7). feat forks from anc at m1 (column 4), so
+    // sA (merged at 4, on the fork point) is in feat's history and sB (merged later) is not.
+    private static LaneGraph AncestorSideGraph() =>
+        Build(Chain("a3", "a2", "a1"),
+            [C("p1", "a3"), C("sA", "a3"), Commit("m1", "Merge branch 'sA' into anc", "p1", "sA"), C("p2", "m1"),
+             C("sB", "p2"), Commit("m2", "Merge branch 'sB' into anc", "p2", "sB"), C("f1", "m1"), C("f2", "f1")],
+            Br("anc", "m2"),
+            Br("feat", "f2"));
+
+    private static string[] IncomingNames(LaneGraph graph, string branch) =>
+        graph.IncomingLanes(branch).Select(i => graph.Lanes[i].Name).ToArray();
+
+    [Fact]
+    public void A_side_lane_merged_into_an_ancestor_at_the_fork_point_is_incoming()
+    {
+        var graph = AncestorSideGraph();
+
+        // Rows in order: the ancestor anc, feat, then sA. sB is not there.
+        Assert.Equal(new[] { "anc", "feat", "sA" }, IncomingNames(graph, "feat"));
+    }
+
+    [Fact]
+    public void A_side_lane_merged_into_an_ancestor_after_the_fork_point_is_not_incoming()
+    {
+        var names = IncomingNames(AncestorSideGraph(), "feat");
+
+        Assert.DoesNotContain("sB", names);
+    }
+
     [Fact]
     public void An_unrelated_branch_has_no_fork_and_goes_last()
     {
@@ -364,20 +393,44 @@ public sealed class LaneGraphBuilderTests
     [Fact]
     public void A_loop_through_hidden_commits_is_placed_without_the_loop()
     {
-        // Lane a: l1..l10, where l2 merges m9. Lane b forks from l1 (hidden in a) and runs m1..m9, with m1 hidden. The extra edges
-        // would close a loop (a's gap before b, b's m9 before a's gap). The columns are then placed without those edges.
+        var graph = Build(Chain("a3", "a2", "a1"), LoopOthers(), Br("a", "l10"), Br("b", "m9"));
+
+        Assert.Equal(new[] { "main", "a", "b" }, Names(graph));
+        Assert.All(graph.Lanes.Skip(1).SelectMany(l => l.Commits), c => Assert.True(c.Column >= 1));
+        AssertColumnsRise(graph);
+    }
+
+    [Fact]
+    public void An_independent_hidden_merge_keeps_its_order_next_to_a_loop()
+    {
+        // The loop, plus lane c: c1 is hidden and merges a3, the base tip. Only the loop's edge is left out; c2 must still come
+        // after a3 (column 2), so c2 is at column 4 and not 2.
+        var others = LoopOthers();
+        others.Add(Commit("c1", "Merge main into c", "a1", "a3"));
+        for (var i = 2; i <= 9; i++)
+            others.Add(C("c" + i, "c" + (i - 1)));
+
+        var graph = Build(Chain("a3", "a2", "a1"), others, Br("a", "l10"), Br("b", "m9"), Br("c", "c9"));
+
+        var c = LaneNamed(graph, "c");
+        Assert.Equal(1, c.Hidden);
+        Assert.Equal(3, c.Gap);
+        Assert.Equal(4, c.Commits[0].Column);
+        Assert.All(graph.Lanes.Skip(1).SelectMany(l => l.Commits), x => Assert.True(x.Column >= 1));
+        AssertColumnsRise(graph);
+    }
+
+    // Lane a: l1..l10, where l2 merges m9. Lane b forks from l1 (hidden in a) and runs m1..m9, with m1 hidden. The edge from m9 to a's
+    // gap would close a loop (a's gap before b, b's m9 before a's gap), so that edge is left out.
+    private static List<GraphCommit> LoopOthers()
+    {
         var others = new List<GraphCommit> { C("l1", "a1"), C("l2", "l1", "m9") };
         for (var i = 3; i <= 10; i++)
             others.Add(C("l" + i, "l" + (i - 1)));
         others.Add(C("m1", "l1"));
         for (var i = 2; i <= 9; i++)
             others.Add(C("m" + i, "m" + (i - 1)));
-
-        var graph = Build(Chain("a3", "a2", "a1"), others, Br("a", "l10"), Br("b", "m9"));
-
-        Assert.Equal(new[] { "main", "a", "b" }, Names(graph));
-        Assert.All(graph.Lanes.Skip(1).SelectMany(l => l.Commits), c => Assert.True(c.Column >= 1));
-        AssertColumnsRise(graph);
+        return others;
     }
 
     [Theory]
