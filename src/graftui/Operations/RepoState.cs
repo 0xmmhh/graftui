@@ -14,6 +14,10 @@ internal static class RepoState
     /// </summary>
     public static string? InProgress(Func<string[], GitResult> call, string gitDir)
     {
+        // A rebase that stops on a failed commit (a signing error) leaves CHERRY_PICK_HEAD inside its own state, so the
+        // rebase is checked first: reporting it as a cherry-pick would refuse continue, skip and abort.
+        if (SequenceGit.RebaseInProgress(gitDir))
+            return "rebase";
         foreach (var (name, kind) in new[] { (GitArgs.MergeHead, "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"), ("REVERT_HEAD", "revert") })
         {
             if (call([GitArgs.RevParse, "-q", GitArgs.Verify, name]).Success)
@@ -21,8 +25,6 @@ internal static class RepoState
         }
         if (SequenceGit.PickInProgress(gitDir))
             return "cherry-pick";
-        if (SequenceGit.RebaseInProgress(gitDir))
-            return "rebase";
         return null;
     }
 

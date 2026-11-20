@@ -74,4 +74,8 @@ public static class SequenceRefusals
     public static string StageFirst(string file) => $"{file} has unstaged changes: stage it first, then Amend & continue";
 
     public const string SkipOnlyConflict = "only a conflicted commit can be skipped";
+
+    /// <summary>Skipping a stopped commit whose next plan row folds into it would fold that next commit into another one.</summary>
+    public static string SkipWouldFold(string shortCommit) =>
+        $"the next commit is folded into {shortCommit}: skipping it would fold that commit into another one. Resolve it and continue, or abort";
 }

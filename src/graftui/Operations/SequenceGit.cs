@@ -563,8 +563,9 @@ internal static class SequenceGit
     {
         for (var pass = 0; PickInProgress(gitDir); pass++)
         {
-            if (pass == s.Picks.Count || UnmergedFiles(git, log).Count > 0 || !NothingStaged(git, log))
-                return PausedPick(git, gitDir, s, log);
+            var conflicts = UnmergedFiles(git, log);
+            if (pass == s.Picks.Count || conflicts.Count > 0 || !NothingStaged(git, log))
+                return PausedPick(git, gitDir, s, log, NoteWhenNoConflict(last, conflicts));
 
             var empty = BranchGit.RefOrEmpty(git, log, "CHERRY_PICK_HEAD");
             last = BranchGit.Call(git, log, "cherry-pick", "--skip");
@@ -613,6 +614,11 @@ internal static class SequenceGit
             message += $"; could not save the cherry-pick state: {saved}";
         return Outcome(SequenceOutcomeKind.Paused, SequenceKind.CherryPick, s.Branch, s.Onto, s.OldTip, message, log, stop: stop, s: s);
     }
+
+    /// <summary>What git said when a stop has no conflict files, or null when git said nothing useful. Such a stop is git refusing to
+    /// go on (unstaged changes, a signing failure), not a conflict, so the pause message names git's own reason.</summary>
+    private static string? NoteWhenNoConflict(GitResult last, IReadOnlyList<string> conflicts) =>
+        !last.Success && conflicts.Count == 0 ? BranchGit.FirstLine(last) : null;
 
     /// <summary>
     /// True while git holds a cherry-pick: CHERRY_PICK_HEAD exists, or the sequencer folder does (more picks wait). It reads the files
@@ -663,6 +669,9 @@ internal static class SequenceGit
         }
 
         var message = $"rebase paused at {stop.ShortCommit}";
+        // A stop with no conflicted files is git refusing to go on (unstaged changes, a signing failure): say what git said.
+        if (!last.Success && stop.Files.Count == 0)
+            message += $"; {BranchGit.FirstLine(last)}";
         var saved = SequenceStateFile.Save(gitDir, s);
         if (saved is not null)
             message += $"; could not save the rebase state: {saved}";

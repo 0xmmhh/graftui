@@ -235,7 +235,7 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
                 return unstaged.Count > 0 ? SequenceRefusals.StageFirst(unstaged[0]) : null;
             }
             case ResumeAction.Skip when stop.Pause == PauseKind.Conflict:
-                return null;
+                return SkipFoldRefusal(stop);
             case ResumeAction.Skip:
                 return SequenceRefusals.SkipOnlyConflict;
             case ResumeAction.Message when stop.Pause is PauseKind.Reword or PauseKind.Squash:
@@ -247,6 +247,36 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
                 // Continue or amend at a reword or squash pause, or a message at any other pause: the screen never sends these.
                 return SequenceRefusals.PauseChanged;
         }
+    }
+
+    /// <summary>
+    /// A skip of a stopped row whose next plan row folds into it, or null when the skip is safe. Skipping such a row would
+    /// fold the next commit into the one before the stopped one, rewriting a commit graftui never named. A stopped row that
+    /// is itself a squash or a fixup may be skipped as before.
+    /// </summary>
+    private string? SkipFoldRefusal(SequenceStop stop)
+    {
+        if (stop.Rows is null)
+            return null;
+        for (var i = 0; i < stop.Rows.Count - 1; i++)
+        {
+            if (stop.Rows[i].Hash != stop.Commit)
+                continue;
+            var action = stop.Rows[i].Action;
+            if (action != RebaseAction.Pick && action != RebaseAction.Reword && action != RebaseAction.Edit)
+                return null;
+            // A dropped row makes no commit, so look past dropped rows for the next row that does something.
+            var j = i + 1;
+            while (j < stop.Rows.Count && stop.Rows[j].Action == RebaseAction.Drop)
+                j++;
+            if (j == stop.Rows.Count)
+                return null;
+            var next = stop.Rows[j].Action;
+            if (next == RebaseAction.Squash || next == RebaseAction.Fixup)
+                return SequenceRefusals.SkipWouldFold(stop.ShortCommit);
+            return null;
+        }
+        return null;
     }
 
     /// <summary>
