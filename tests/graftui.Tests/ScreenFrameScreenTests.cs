@@ -123,6 +123,7 @@ public sealed class ScreenFrameScreenTests : IDisposable
         Assert.True(app.Log.SquareCorners);
         Assert.Null(app.BranchList.TitleSegs);
         Assert.Null(app.ChangesList.TitleSegs);
+        Assert.True(app.Keys.NewLook);
     }
 
     [Fact]
@@ -142,6 +143,7 @@ public sealed class ScreenFrameScreenTests : IDisposable
         Assert.False(app.Art.SquareCorners);
         Assert.False(app.Log.SquareCorners);
         Assert.NotNull(app.BranchList.TitleSegs);
+        Assert.False(app.Keys.NewLook);
     }
 
     [Fact]

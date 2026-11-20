@@ -319,6 +319,7 @@ public sealed class AppController
         Log.SquareCorners = true;
         BranchList.TitleSegs = null;
         ChangesList.TitleSegs = null;
+        Keys.NewLook = true;
     }
 
     /// <summary>The subject line's row: the name box's row while the branch name is being typed, else the subject row of the art.</summary>

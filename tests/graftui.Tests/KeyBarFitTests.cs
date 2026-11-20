@@ -368,4 +368,51 @@ public class KeyBarFitTests
         Assert.Contains("?", Names(KeyBarView.PauseItems(PauseKind.Conflict)));
         Assert.Contains("?", Names(KeyBarView.ConfirmItems()));
     }
+
+    // ----- the new look's r rebase -----
+
+    [Fact]
+    public void The_new_look_lists_r_rebase_after_s_switch()
+    {
+        var state = new BranchesKeyState(BranchCount: 2, CanMerge: true, HasUndo: false, CanSwitch: true, CanRebase: true);
+
+        Assert.Equal("Tab changes  m merge  s switch  r rebase  ? help  Esc quit", Bar(KeyBarView.BranchesItems(state, withRebase: true)));
+    }
+
+    [Fact]
+    public void Without_the_new_look_there_is_no_r_rebase_on_the_bar()
+    {
+        var state = new BranchesKeyState(BranchCount: 2, CanMerge: true, HasUndo: false, CanSwitch: true, CanRebase: true);
+
+        Assert.Equal("Tab changes  m merge  s switch  ? help  Esc quit", Bar(KeyBarView.BranchesItems(state)));
+    }
+
+    [Fact]
+    public void r_rebase_is_not_listed_when_the_current_branch_cannot_be_rebased_onto_the_selected_one()
+    {
+        var state = new BranchesKeyState(BranchCount: 2, CanMerge: true, HasUndo: false, CanSwitch: true, CanRebase: false);
+
+        Assert.DoesNotContain("r", Names(KeyBarView.BranchesItems(state, withRebase: true)));
+    }
+
+    [Fact]
+    public void At_64_columns_r_rebase_is_the_first_item_dropped()
+    {
+        var state = new BranchesKeyState(BranchCount: 2, CanMerge: true, HasUndo: false, CanSwitch: true, CanRebase: true);
+
+        var kept = Keys(KeyBarView.FitItems(KeyBarView.BranchesItems(state, withRebase: true), 64, out _));
+
+        Assert.DoesNotContain("r", kept);
+        Assert.Contains("m", kept);
+        Assert.Contains("s", kept);
+        Assert.Contains("Esc", kept);
+    }
+
+    [Fact]
+    public void A_paused_rebase_keeps_its_own_keys_with_the_new_look()
+    {
+        var state = new BranchesKeyState(BranchCount: 2, CanMerge: true, HasUndo: false, CanRebase: true, Pause: PauseKind.Conflict);
+
+        Assert.Equal(Bar(KeyBarView.PauseItems(PauseKind.Conflict)), Bar(KeyBarView.BranchesItems(state, withRebase: true)));
+    }
 }
