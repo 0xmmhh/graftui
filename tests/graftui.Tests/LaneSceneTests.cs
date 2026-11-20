@@ -302,6 +302,28 @@ public sealed class LaneSceneTests
 
         Assert.Equal(3, feature.Hidden);
         Assert.Equal('┈', g[p.XOf(feature.Gap), p.YOf(1)].Ch);
+        Assert.Equal('─', g[p.XOf(feature.Gap) + 1, p.YOf(1)].Ch);
+    }
+
+    [Fact]
+    public void A_hidden_lane_whose_fork_is_not_drawn_runs_from_its_gap_mark_to_the_dot()
+    {
+        // child is stacked on parent, and has nine commits, so one is hidden. At 86 × 2 parent's row is dropped and child is kept.
+        var graph = Graph(Chain("a3", "a2", "a1"), [C("p1", "a3"), .. Line("c", 9, "p1")], Br("parent", "p1"), Br("child", "c9"));
+        var p = LaneFit.Fit(graph, "child", GhostKind.None, 86, 2);
+        var g = LaneScene.Render(p, Glyphs.Unicode);
+        var child = graph.Lanes.Single(l => l.Name == "child");
+        var y = p.YOf(child.Index);
+        var gapX = p.XOf(child.Gap);
+        var dotX = p.XOf(child.Commits[0].Column);
+
+        Assert.True(child.Hidden > 0);
+        Assert.False(p.IsKept(graph.Lanes.Single(l => l.Name == "parent").Index));
+        Assert.Equal('┈', g[gapX, y].Ch);
+        Assert.Equal(1, Enumerable.Range(0, g.Width).Count(x => g[x, y].Ch == '┈'));
+        for (var x = gapX + 1; x < dotX; x++)
+            Assert.NotEqual(' ', g[x, y].Ch);
+        Assert.Equal('●', g[dotX, y].Ch);
     }
 
     [Fact]
@@ -342,6 +364,41 @@ public sealed class LaneSceneTests
         var y = graph.Lanes.Single(l => l.Name == "y");
 
         Assert.Equal('╮', g[p.XOf(y.Commits[y.Commits.Count - 1].Column), p.YOf(1)].Ch);
+    }
+
+    // The base has six commits, so its tip a6 sits at column 5: a branch that merges a6 in runs on to column 5 with no commit
+    // in between. The columns are then: x1 at 3, ym at 4 (its parents are y1 and x1), and x2 at 6.
+    [Fact]
+    public void A_merge_into_a_line_that_runs_on_past_it_is_a_tee_down()
+    {
+        var graph = Graph(Chain("a6", "a5", "a4", "a3", "a2", "a1"),
+            [C("x1", "a3"), C("x2", "x1", "a6"), C("y1", "a3"), Commit("ym", "Merge x into y", "y1", "x1")],
+            Br("x", "x2"), Br("y", "ym"));
+        var p = LaneFit.Fit(graph, "y", GhostKind.None, 60, 10);
+        var g = LaneScene.Render(p, Glyphs.Unicode);
+        var x = graph.Lanes.Single(l => l.Name == "x");
+        var y = graph.Lanes.Single(l => l.Name == "y");
+        var merge = graph.Links.Single(l => l.Kind == LinkKind.Merge && l.ToLane == y.Index);
+
+        Assert.True(x.Commits[x.Commits.Count - 1].Column > merge.ToColumn);
+        Assert.Equal('┬', g[p.XOf(merge.ToColumn), p.YOf(x.Index)].Ch);
+    }
+
+    // The mirror image: the merged branch is the lower row, and its line runs on past the merge commit xm.
+    [Fact]
+    public void A_merge_from_a_line_that_runs_on_past_it_is_a_tee_up()
+    {
+        var graph = Graph(Chain("a6", "a5", "a4", "a3", "a2", "a1"),
+            [C("x1", "a3"), C("y1", "a3"), Commit("xm", "Merge y into x", "x1", "y1"), C("y2", "y1", "a6")],
+            Br("x", "xm"), Br("y", "y2"));
+        var p = LaneFit.Fit(graph, "x", GhostKind.None, 60, 10);
+        var g = LaneScene.Render(p, Glyphs.Unicode);
+        var x = graph.Lanes.Single(l => l.Name == "x");
+        var y = graph.Lanes.Single(l => l.Name == "y");
+        var merge = graph.Links.Single(l => l.Kind == LinkKind.Merge && l.ToLane == x.Index);
+
+        Assert.True(y.Commits[y.Commits.Count - 1].Column > merge.ToColumn);
+        Assert.Equal('┴', g[p.XOf(merge.ToColumn), p.YOf(y.Index)].Ch);
     }
 
     [Fact]

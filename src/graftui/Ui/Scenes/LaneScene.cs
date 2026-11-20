@@ -10,13 +10,16 @@ namespace graftui.Ui.Scenes;
 /// </summary>
 public static class LaneScene
 {
+    // A point where a line comes in from the left (or from a gap), with the style of the lane it belongs to.
+    private readonly record struct LeadIn(int X, int Y, Style Style);
+
     /// <summary>Draws the placement into a new grid of p.Width × p.Height. An empty placement gives a grid with no rows.</summary>
     public static ArtGrid Render(LanePlacement p, Glyphs glyphs)
     {
         var grid = new ArtGrid(p.Width, p.Height);
 
         // The lead-in points found while drawing the lines. They get their dash mark after the lines are drawn.
-        var leadIns = new List<(int X, int Y, Style S)>();
+        var leadIns = new List<LeadIn>();
 
         DrawLabels(grid, p);
         DrawHashes(grid, p);
@@ -84,7 +87,7 @@ public static class LaneScene
     }
 
     // Pass 3: the lines. The lanes in colour go first, so their connectors win where two lines cross; the other lanes follow.
-    private static void DrawLines(ArtGrid grid, LanePlacement p, Glyphs glyphs, List<(int X, int Y, Style S)> leadIns)
+    private static void DrawLines(ArtGrid grid, LanePlacement p, Glyphs glyphs, List<LeadIn> leadIns)
     {
         for (var lane = 0; lane < p.Graph.Lanes.Count; lane++)
         {
@@ -100,13 +103,18 @@ public static class LaneScene
     }
 
     // One lane's line: from where it starts (its fork, a lead-in from the left, or its first commit) to its newest commit.
-    private static void DrawLane(ArtGrid grid, LanePlacement p, Glyphs glyphs, int lane, List<(int X, int Y, Style S)> leadIns)
+    private static void DrawLane(ArtGrid grid, LanePlacement p, Glyphs glyphs, int lane, List<LeadIn> leadIns)
     {
         var info = p.Graph.Lanes[lane];
         var y = p.YOf(lane);
         var style = LaneStyle(p, lane);
         var fork = ForkInto(p.Graph, lane);
         var start = p.XOf(info.Commits[0].Column);
+
+        // The lane's own gap (its hidden commits) is in the window, and its fork is not drawn: then the line starts at the gap mark.
+        var forkHidden = fork != null && info.Hidden > 0 && info.Gap >= p.FirstColumn;
+        var baseHasOlder = lane == 0 && p.Graph.BaseMore;
+        var firstCut = info.Commits[0].Column < p.FirstColumn;
 
         if (fork != null && IsDrawnFork(p, fork))
         {
@@ -117,13 +125,17 @@ public static class LaneScene
         {
             // The fork comes from older history than the window: the line comes in from the left, at the gap.
             start = info.Gap >= p.FirstColumn ? p.XOf(info.Gap) : p.GraphX - 1;
-            leadIns.Add((start, y, style));
+            leadIns.Add(new LeadIn(start, y, style));
         }
-        else if (fork != null || (lane == 0 && p.Graph.BaseMore) || info.Commits[0].Column < p.FirstColumn)
+        else if (fork != null || baseHasOlder || firstCut)
         {
             // The fork is not drawn (its row is dropped, or it is cut off), or the base has older history: a lead-in from the left.
-            start = Math.Max(p.GraphX - 1, p.XOf(info.Commits[0].Column) - 1);
-            leadIns.Add((start, y, style));
+            // A lane with hidden commits starts at its gap mark instead, so the line runs unbroken from the gap to the first dot.
+            if (forkHidden)
+                start = p.XOf(info.Gap);
+            else
+                start = Math.Max(p.GraphX - 1, p.XOf(info.Commits[0].Column) - 1);
+            leadIns.Add(new LeadIn(start, y, style));
         }
 
         var lastX = LastX(p, info);
@@ -239,10 +251,10 @@ public static class LaneScene
     }
 
     // Pass 5: the dashed marks where history is left out: every lead-in point, and the gap of each lane with hidden commits.
-    private static void DrawGapMarks(ArtGrid grid, LanePlacement p, Glyphs glyphs, List<(int X, int Y, Style S)> leadIns)
+    private static void DrawGapMarks(ArtGrid grid, LanePlacement p, Glyphs glyphs, List<LeadIn> leadIns)
     {
         foreach (var mark in leadIns)
-            grid.Put(mark.X, mark.Y, glyphs.Gap, mark.S);
+            grid.Put(mark.X, mark.Y, glyphs.Gap, mark.Style);
 
         for (var lane = 0; lane < p.Graph.Lanes.Count; lane++)
         {
