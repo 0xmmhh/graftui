@@ -169,6 +169,32 @@ public sealed class PreviewSheetScreenTests : IDisposable
         Assert.NotNull(app.Art.Scene);
     }
 
+    // The current branch is selected, its graph is on screen, and another branch moves: the snapshot changes, the graph is invalidated, and
+    // its re-read fails. The old graph's sheet must not stay on screen.
+    [Fact]
+    public void A_failed_re_read_after_a_branch_moves_drops_the_old_sheet()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        app.BranchesTab.SelectName("main");
+        LoadGraph(app, repo, snapshot);
+        app.BranchesTab.DrawPreview(LayoutOf(repo, snapshot, "main"));
+        Assert.NotNull(app.Art.Sheet);
+
+        repo.Run("switch", "-q", "feature");
+        repo.Commit("e.txt", "e\n", "Add e on feature");
+        repo.Run("switch", "-q", "main");
+        var moved = ReadSnapshot(repo);
+        app.ApplySnapshot(moved);
+        Assert.Null(app.Art.Sheet);
+
+        app.BranchesTab.LaneGraphLoaded(app.BranchesTab.LaneGraphSeq, BranchesTab.LaneGraphKey(moved), null);
+
+        Assert.Null(app.Art.Sheet);
+        Assert.NotNull(app.Art.Scene);
+    }
+
     // With the new look off (the default, as on main), no lane graph is read and the old preview is drawn.
     [Fact]
     public void With_the_new_look_off_no_lane_graph_is_read_and_the_old_preview_is_drawn()

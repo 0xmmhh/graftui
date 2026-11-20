@@ -58,6 +58,9 @@ internal sealed partial class BranchesTab
         _laneGraph = null;
         var seq = ++_laneSeq;
 
+        // The sheet on screen still holds the old graph: draw the preview again now, so that graph is not left up while the new one is read.
+        RedrawShownPreview();
+
         Task.Run(() =>
         {
             try
@@ -78,8 +81,8 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>
-    /// A lane-graph read finished (a null graph means it failed). A read that is no longer the newest is dropped. When the graph is in and
-    /// the browse preview owns the art for this snapshot, the preview is drawn again as the sheet. UI thread only.
+    /// A lane-graph read finished (a null graph means it failed). A read that is no longer the newest is dropped. Otherwise the shown
+    /// preview is drawn again: as the sheet when the graph is in, else as the old preview. UI thread only.
     /// </summary>
     internal void LaneGraphLoaded(int seq, string key, LaneGraph? graph)
     {
@@ -87,7 +90,17 @@ internal sealed partial class BranchesTab
             return;
 
         _laneGraph = graph;
-        if (graph is null || !MayDrawPreview || _shown is null)
+        RedrawShownPreview();
+    }
+
+    /// <summary>
+    /// Draws the shown browse preview again, so that it matches the lane graph now held: the sheet when the graph is in, else the old
+    /// preview. Only when the browse preview owns the art and the shown layout still matches the snapshot on screen; a result, a question
+    /// or a form is never drawn over. UI thread only.
+    /// </summary>
+    private void RedrawShownPreview()
+    {
+        if (_shown is null || !MayDrawPreview)
             return;
 
         var shown = _shown;
