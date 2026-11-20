@@ -5,10 +5,11 @@ using Terminal.Gui.Drawing;
 namespace graftui.Ui.Views;
 
 /// <summary>
-/// The Commands pane, in two looks. Closed (the default), it is a strip: one row under the top panes, showing the step's failure
-/// or refusal, else the newest line that is not git's output (see <see cref="StripLine"/>). Open (<see cref="Open"/>, toggled with l), it is a framed list over the
-/// bottom rows of the top panes: the newest lines, unless an anchor is set. Then the anchor entry is at the top as far as the
-/// end of the log allows (v1's rule, computed at draw time so it survives a resize).
+/// The Commands pane. Closed (the default), it is a strip: one row under the top panes, showing the step's failure
+/// or refusal, else the newest line that is not git's output (see <see cref="StripLine"/>). Given 3 rows or more (the new look's dock,
+/// see <see cref="IsDock"/>), closed, it is a framed list of the newest lines, as the open list is. Open (<see cref="Open"/>, toggled
+/// with l), it is a framed list over the bottom rows of the top panes: the newest lines, unless an anchor is set. Then the anchor entry
+/// is at the top as far as the end of the log allows (v1's rule, computed at draw time so it survives a resize).
 /// Each git invocation is one <see cref="LogEntry"/>. The list shows either the simplified lines or the exact lines
 /// (<see cref="ShowExact"/>, toggled with v); the entries and the anchor are the same in both.
 /// Message lines wrap to the pane width, so a long refusal or failure is read in full; command and output lines are cut,
@@ -23,6 +24,9 @@ public sealed class LogView : PaneView
 
     /// <summary>The narrowest the strip's text may get before its right-hand hint is dropped.</summary>
     private const int MinStripText = 20;
+
+    /// <summary>The shortest pane that is the framed dock rather than the strip: a border, one line and a border.</summary>
+    internal const int DockMinHeight = 3;
 
     private static readonly Style Dim = new(Ink.Dim), Fg = new(Ink.Fg), FgB = new(Ink.Fg, true);
     private static readonly Style Ok = new(Ink.Ok), Bad = new(Ink.Bad);
@@ -51,7 +55,6 @@ public sealed class LogView : PaneView
     public void Toggle()
     {
         Open = !Open;
-        UpdateFooter();
         SetNeedsDraw();
     }
 
@@ -59,9 +62,11 @@ public sealed class LogView : PaneView
     public void Close()
     {
         Open = false;
-        UpdateFooter();
         SetNeedsDraw();
     }
+
+    /// <summary>True when a pane of this height is the framed dock rather than the one-row strip.</summary>
+    internal static bool IsDock(int height) => height >= DockMinHeight;
 
     /// <summary>
     /// Marks the start of a new step: the entries added from now on are the current step, which is what the strip shows
@@ -90,7 +95,6 @@ public sealed class LogView : PaneView
             _dropped++;
         }
         ClearAnchor();
-        UpdateFooter();
         SetNeedsDraw();
     }
 
@@ -101,7 +105,6 @@ public sealed class LogView : PaneView
     public void ToggleExact()
     {
         ShowExact = !ShowExact;
-        UpdateFooter();
         SetNeedsDraw();
     }
 
@@ -115,24 +118,32 @@ public sealed class LogView : PaneView
     public void ClearAnchor() => _anchor = -1;
 
     /// <summary>
-    /// The key hint on the open list's bottom border: "l close · v all commands" on the simplified list, "v simplified" on the exact one.
-    /// The strip has no border, so it has no footer; its hint is drawn on the row itself.
+    /// The key hint on the bottom border of the open list and of the dock: "l close · v all commands" open, "l full list · v all commands"
+    /// as the dock, and "v simplified" in place of "v all commands" on the exact list. Null for the strip, which has no border; its hint
+    /// is drawn on the row itself.
     /// </summary>
-    private void UpdateFooter()
+    internal static IReadOnlyList<Seg>? Footer(bool open, bool dock, bool exact)
     {
-        if (!Open)
+        if (open)
         {
-            FooterSegs = null;
-            return;
+            var hint = exact ? " simplified" : " all commands";
+            return [new Seg(" ", Fg), new Seg("l", FgB), new Seg(" close · ", Dim), new Seg("v", FgB), new Seg(hint, Dim), new Seg(" ", Fg)];
         }
-        var hint = ShowExact ? " simplified" : " all commands";
-        FooterSegs = [new Seg(" ", Fg), new Seg("l", FgB), new Seg(" close · ", Dim), new Seg("v", FgB), new Seg(hint, Dim), new Seg(" ", Fg)];
+        if (dock)
+        {
+            var hint = exact ? " simplified" : " all commands";
+            return [new Seg(" ", Fg), new Seg("l", FgB), new Seg(" full list · ", Dim), new Seg("v", FgB), new Seg(hint, Dim), new Seg(" ", Fg)];
+        }
+        return null;
     }
 
     protected override bool OnDrawingContent(DrawContext? context)
     {
         ClearAll();
-        if (Open)
+        // The closed dock is drawn as the open list is, at its own height. The footer is set here, so it always matches the look drawn.
+        var dock = !Open && IsDock(Viewport.Height);
+        FooterSegs = Footer(Open, dock, ShowExact);
+        if (Open || dock)
             DrawOpenList();
         else
             DrawStrip();

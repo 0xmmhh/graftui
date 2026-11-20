@@ -372,4 +372,47 @@ public class LogViewTests
 
         Assert.Equal(conflict, LogView.StripLine([Merge(failed: true), Abort(), conflict], 0));
     }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(3, true)]
+    public void A_pane_of_three_rows_or_more_is_the_dock(int height, bool dock)
+    {
+        Assert.Equal(dock, LogView.IsDock(height));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_strip_has_no_footer(bool exact)
+    {
+        Assert.Null(LogView.Footer(false, false, exact));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_open_list_footer_names_the_keys_to_close_and_switch(bool exact)
+    {
+        var text = string.Concat(LogView.Footer(true, false, exact)!.Select(s => s.Text));
+
+        Assert.Equal(exact ? " l close · v simplified " : " l close · v all commands ", text);
+    }
+
+    [Fact]
+    public void The_dock_footer_on_the_simplified_list_says_all_commands()
+    {
+        var text = string.Concat(LogView.Footer(false, true, false)!.Select(s => s.Text));
+
+        Assert.Equal(" l full list · v all commands ", text);
+    }
+
+    [Fact]
+    public void The_dock_footer_on_the_exact_list_says_simplified()
+    {
+        var text = string.Concat(LogView.Footer(false, true, true)!.Select(s => s.Text));
+
+        Assert.Equal(" l full list · v simplified ", text);
+    }
 }
