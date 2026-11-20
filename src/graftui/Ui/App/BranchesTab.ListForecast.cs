@@ -93,6 +93,30 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>
+    /// The snapshot on screen is about to be replaced: a write has finished and its snapshot is being read. Every row shows "·" until the
+    /// new snapshot is applied. The marks of the key left are kept, so a snapshot with that key gets them back at once. A forecast still
+    /// running is cancelled and its result is dropped (the generation moves on), so no mark of the old key can land in the blank table.
+    /// The new look only. UI thread only.
+    /// </summary>
+    internal void MarksStale()
+    {
+        if (!_newUi)
+            return;
+
+        if (_marksKey is not null)
+            RememberMarks(_marksKey, new Dictionary<string, BranchMark>(_marks));
+        _marks.Clear();
+        _marksKey = null;
+
+        _listQueue.Clear();
+        _listKey = null;
+        _forecastNext = null;
+        Cancellation.CancelAndDispose(ref _forecastCts);
+        _forecastGeneration++;
+        _app.BranchList.SetNeedsDraw();
+    }
+
+    /// <summary>
     /// Makes the marks of <paramref name="key"/> the ones on screen. The marks of the key left are kept as a copy. A key seen recently
     /// gets its marks back at once; any other key starts with none, so every row shows "·" until its mark arrives. Redraws the list.
     /// </summary>

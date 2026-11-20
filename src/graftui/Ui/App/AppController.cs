@@ -281,7 +281,7 @@ public sealed class AppController
         App.Keyboard.KeyDown += OnKeyDown;
 
         BranchesTab.RequestPreview();
-        ReloadCountsAsync();
+        ReloadCountsAsync(blankMarks: false);
         return window;
     }
 
@@ -862,9 +862,14 @@ public sealed class AppController
     /// since the read started. <paramref name="then"/> runs there afterwards, once the read is applied or dropped: a screen that depends on
     /// the snapshot (the pause screen) is then drawn from a fresh read.
     /// </summary>
-    internal void ReloadCountsAsync(Action? then = null)
+    internal void ReloadCountsAsync(Action? then = null, bool blankMarks = true)
     {
         var seq = SnapshotSeq;
+
+        // A write has finished and its snapshot is on the way: the branch marks are blanked until the new snapshot is applied. The
+        // startup read passes blankMarks false, since there are no marks to blank yet (the new look only, see MarksStale).
+        if (blankMarks)
+            BranchesTab.MarksStale();
         Task.Run(() =>
         {
             RepoSnapshot? s = null;

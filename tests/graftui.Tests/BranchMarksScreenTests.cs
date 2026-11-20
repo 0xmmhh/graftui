@@ -222,6 +222,27 @@ public sealed class BranchMarksScreenTests : IDisposable
         Assert.False(app.BranchesTab.Marks.ContainsKey("feature/conflict"));
     }
 
+    // 12. A write's reload blanks every row before the new snapshot is applied; the same key gets its marks back at once, with nothing queued.
+    [Fact]
+    public void A_reload_blanks_every_row_until_the_snapshot_is_applied_and_the_same_key_gets_its_marks_back()
+    {
+        var snapshot = ReadSnapshot();
+        var app = OpenApp(snapshot, newUi: true);
+        foreach (var name in OtherNames)
+            MarkBranch(app, snapshot, name);
+
+        app.ReloadCountsAsync();
+
+        Assert.Empty(app.BranchesTab.Marks);
+        foreach (var name in OtherNames)
+            Assert.Equal("·", BranchMarks.Cell(name, false, false, new Style(Ink.Fg), app.BranchesTab.Marks, Glyphs.Unicode).Text);
+
+        app.ApplySnapshot(ReadSnapshot());
+
+        Assert.Equal(OtherNames.Length, app.BranchesTab.Marks.Count);
+        Assert.Empty(app.BranchesTab.ListQueueNames);
+    }
+
     private static readonly string[] OtherNames =
     [
         "feature/conflict",

@@ -147,8 +147,9 @@ internal sealed partial class BranchesTab
             if (cache)
                 _forecasts[ForecastKey(L)] = f;
 
-            // The branch's mark (the new look only). The selected branch's own result comes here too, from the preview.
-            if (_newUi)
+            // The branch's mark (the new look only). The selected branch's own result comes here too, from the preview. No key set means
+            // the list is blank (MarksStale), so no mark is written until the next snapshot is applied.
+            if (_newUi && _marksKey is not null)
             {
                 _marks[L.Selected] = BranchMarks.Of(L, f);
                 _app.BranchList.SetNeedsDraw();
