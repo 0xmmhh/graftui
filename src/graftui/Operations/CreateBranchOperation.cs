@@ -76,10 +76,15 @@ public sealed class CreateBranchOperation(GitClient git) : IGitOperation<CreateB
         if (SymbolicHead(git, log) != HeadsPrefix + from || RefOrEmpty(git, log, "HEAD") != check.Tip)
             return Failed(name, check.Tip, "HEAD moved since the check; nothing was created", log);
 
-        // 2. Create and switch. git refuses before it writes the ref, so a failure leaves no branch behind.
+        // 2. Create and switch. git refuses before it writes the ref, so a failure leaves no branch behind, unless a
+        // failing post-checkout hook exits non-zero after the create and switch happened.
         var sw = Call(git, log, GitArgs.Switch, "-c", name);
         if (!sw.Success)
         {
+            if (SymbolicHead(git, log) == HeadsPrefix + name && RefOrEmpty(git, log, HeadsPrefix + name) == check.Tip)
+                return Created(name, check,
+                    $"created {name} at {Short(check.Tip)} and switched to it (git exited {sw.ExitCode} after switching: a post-checkout hook?)",
+                    log);
             var exists = RefOrEmpty(git, log, HeadsPrefix + name).Length > 0;
             return Failed(name, check.Tip,
                 exists ? $"git reported an error, but {name} exists: check git branch" : FirstLine(sw), log);
@@ -92,9 +97,16 @@ public sealed class CreateBranchOperation(GitClient git) : IGitOperation<CreateB
             return Failed(name, check.Tip, $"{name} was created, but it could not be verified: check git status", log);
 
         // 4. The undo step, saved only now. The branch stands even when its step cannot be saved.
+        return Created(name, check, $"created {name} at {Short(check.Tip)} and switched to it", log);
+    }
+
+    /// <summary>
+    /// The Done outcome with the undo step saved: the branch stands even when its step cannot be saved.
+    /// </summary>
+    private BranchChangeOutcome Created(string name, CreateBranchCheck check, string message, List<GitResult> log)
+    {
         var undo = new UndoRecord(UndoKind.CreateBranch, $"creation of {name}", [new RefChange(HeadsPrefix + name, "", check.Tip)],
-            Branch: name, Head: check.Tip, OtherBranch: from);
-        var message = $"created {name} at {Short(check.Tip)} and switched to it";
+            Branch: name, Head: check.Tip, OtherBranch: check.From);
         var problemSaving = new UndoLog(git).Push(undo, log);
         if (problemSaving is not null)
             return new BranchChangeOutcome(BranchChangeKind.Done, name, null, check.Tip,

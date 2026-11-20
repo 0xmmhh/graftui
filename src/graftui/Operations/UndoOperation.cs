@@ -597,12 +597,19 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         var branch = s.Branch!;
         var other = s.OtherBranch!;
         var wasOn = CurrentRef(log) == BranchRef(branch);
+        var note = "";
         if (wasOn)
         {
             var sw = Call(log, GitArgs.Switch, "--no-guess", other);
             if (!sw.Success)
-                return ($"{GitClient.Describe(sw)}; nothing was undone", "");
-            if (CurrentRef(log) != BranchRef(other))
+            {
+                // A failing post-checkout hook exits non-zero after the switch happened: only a HEAD that did not
+                // move means the switch really failed.
+                if (CurrentRef(log) != BranchRef(other))
+                    return ($"{GitClient.Describe(sw)}; nothing was undone", "");
+                note = $" (git exited {sw.ExitCode} after switching: a post-checkout hook?)";
+            }
+            else if (CurrentRef(log) != BranchRef(other))
                 return ($"HEAD is not on {other} after the switch; check git status", "");
         }
 
@@ -616,7 +623,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (RevParse(log, BranchRef(branch)) != "")
             return ($"{branch} is still there after the undo; check git branch", "");
 
-        return (null, wasOn ? $"↶ Removed {branch} and switched back to {other}" : $"↶ Removed {branch}");
+        return (null, wasOn ? $"↶ Removed {branch} and switched back to {other}{note}" : $"↶ Removed {branch}");
     }
 
     /// <summary>Rename: the branch goes back to its old name. HEAD follows it when it was on it.</summary>
@@ -636,7 +643,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         return (null, $"↶ Renamed {now} back to {old}");
     }
 
-    /// <summary>Delete: the branch is made again at the commit it had.</summary>
+    /// <summary>Delete: the branch is made again at the commit it had, then its own config (the upstream) goes back.</summary>
     private (string? Problem, string Caption) RestoreBranch(UndoRecord s, List<GitResult> log)
     {
         var branch = s.Branch!;
@@ -647,7 +654,39 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (RevParse(log, BranchRef(branch)) != tip)
             return ($"{branch} was made again, but not at {Short(tip)}; check git branch", "");
 
+        // The config goes back only after the branch exists. A step saved before graftui kept the config has none.
+        if (s.BranchConfig is not null && !WriteBranchConfig(log, s.BranchConfig))
+            return ($"restored {branch}, but its upstream setting could not be written", "");
+
         return (null, $"↶ Restored {branch} at {Short(tip)}");
+    }
+
+    /// <summary>
+    /// Writes saved config entries back and checks they read the same. False when any write or the check fails.
+    /// </summary>
+    private bool WriteBranchConfig(List<GitResult> log, IReadOnlyList<ConfigPair> pairs)
+    {
+        foreach (var pair in pairs)
+        {
+            if (!Call(log, "config", "--local", "--add", pair.Key, pair.Value).Success)
+                return false;
+        }
+        var list = Call(log, "config", "--local", "--null", "--list");
+        if (!list.Success)
+            return false;
+        var back = new List<ConfigPair>();
+        foreach (var record in list.StdOut.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var cut = record.IndexOf('\n');
+            if (cut >= 0)
+                back.Add(new ConfigPair(record.Substring(0, cut), record.Substring(cut + 1)));
+        }
+        foreach (var pair in pairs)
+        {
+            if (!back.Contains(pair))
+                return false;
+        }
+        return true;
     }
 
     /// <summary>

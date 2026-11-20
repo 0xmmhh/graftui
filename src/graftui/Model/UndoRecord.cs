@@ -11,6 +11,9 @@ public enum UndoKind { Commit, Amend, Merge, Discard, Stash, Pop, Unstage, Creat
 /// <summary>One stage-0 index entry from `git ls-files -s -z`. Mode "" = path absent from the index.</summary>
 public sealed record IndexEntry(string Path, string Mode, string Blob);
 
+/// <summary>One `git config` entry: the full key and its value.</summary>
+public sealed record ConfigPair(string Key, string Value);
+
 /// <summary>
 /// One undoable step, stored as the message of a commit under refs/graftui/undo/. Only the fields that the kind needs are set.
 /// What each kind records, and how UndoOperation checks it before it runs, is described on UndoOperation.
@@ -31,7 +34,8 @@ public sealed record UndoRecord(
     IReadOnlyList<IndexEntry>? IndexAfter = null,  // unstage: entries the guard expects now
     string? StateBefore = null,                    // pop: snapshot commit (see WorkState)
     string? StateAfter = null,                     // pop
-    string? OtherBranch = null)                    // create: the branch HEAD was on; rename: the old name
+    string? OtherBranch = null,                    // create: the branch HEAD was on; rename: the old name
+    IReadOnlyList<ConfigPair>? BranchConfig = null) // delete: the branch's own config, written back on undo
 {
     /// <summary>The kind as a lowercase word. Not stored: the JSON has only Kind.</summary>
     [JsonIgnore]

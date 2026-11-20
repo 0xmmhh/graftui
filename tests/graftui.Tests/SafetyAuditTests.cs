@@ -358,7 +358,7 @@ public class SafetyAuditTests
         Assert.False(File.Exists(marker), "the hook opened /dev/tty");
     }
 
-    [Fact(Skip = "safety-audit: a switch whose post-checkout hook fails is reported as failed although HEAD moved")]
+    [Fact]
     public void A_switch_whose_post_checkout_hook_fails_is_reported_as_switched()
     {
         if (OperatingSystem.IsWindows())
@@ -375,7 +375,7 @@ public class SafetyAuditTests
         Assert.Equal(SwitchKind.Switched, outcome.Kind);
     }
 
-    [Fact(Skip = "safety-audit: a new branch whose post-checkout hook fails is made and checked out, but gets no undo step")]
+    [Fact]
     public void A_new_branch_whose_post_checkout_hook_fails_gets_its_undo_step()
     {
         if (OperatingSystem.IsWindows())
@@ -912,7 +912,7 @@ public class SafetyAuditTests
 
     // ---- 13. a branch's config ----
 
-    [Fact(Skip = "safety-audit: undo of a branch deletion does not bring back the branch's upstream (branch.<name>.remote and .merge)")]
+    [Fact]
     public void Undo_of_a_branch_deletion_brings_back_its_upstream()
     {
         using var repo = TempRepo.FastForwardable();
@@ -930,7 +930,7 @@ public class SafetyAuditTests
         Assert.Equal("refs/heads/feature", repo.Git.Run("config", "branch.feature.merge").StdOut.Trim());
     }
 
-    [Fact(Skip = "safety-audit: a branch merged into HEAD but ahead of its upstream cannot be deleted, even with Force (git branch -d checks the upstream)")]
+    [Fact]
     public void A_merged_branch_that_is_ahead_of_its_upstream_can_be_deleted_with_force()
     {
         using var repo = MergedButAheadOfUpstream();

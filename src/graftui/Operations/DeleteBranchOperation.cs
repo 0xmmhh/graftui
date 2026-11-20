@@ -5,11 +5,12 @@ using static graftui.Operations.BranchGit;
 namespace graftui.Operations;
 
 /// <summary>
-/// Deletes a branch (D). A merged branch is deleted with `git branch -d`. An unmerged one only with Force, which runs
-/// `git branch -D`; the UI asks twice before it sets Force. The current branch is refused.
+/// Deletes a branch (D). Without Force it runs `git branch -d`, which also refuses a branch whose upstream is behind;
+/// with Force it runs `git branch -D`, and the UI asks twice before it sets Force. The current branch is refused.
 /// Check records the tip, whether the branch is merged into HEAD, how many commits HEAD lacks (Ahead), and how many commits
 /// no other local branch holds (Lost). Run re-checks the tip and HEAD, deletes, verifies the ref is gone, and saves a
-/// DeleteBranch undo step whose parent is the tip, so the commits stay reachable. Run never throws.
+/// DeleteBranch undo step whose parent is the tip, so the commits stay reachable. The branch's own config is saved too,
+/// so undo brings back the upstream. Run never throws.
 /// </summary>
 public sealed class DeleteBranchOperation(GitClient git) : IGitOperation<DeleteBranchRequest, DeleteBranchCheck, BranchChangeOutcome>
 {
@@ -94,18 +95,30 @@ public sealed class DeleteBranchOperation(GitClient git) : IGitOperation<DeleteB
         if (!merged && !request.Force)
             return Failed(name, check.Tip, BranchRefusals.NotMergedNow(name), log);
 
-        // 3. Delete. -d only when merged; -D loses the commits no other branch holds, so only with Force.
-        var del = Call(git, log, "branch", merged ? "-d" : "-D", name);
-        if (!del.Success)
-            return Failed(name, check.Tip, $"git refused to delete {name} ({FirstLine(del)}); nothing was deleted", log);
+        // 3. The branch's own config, read before the delete removes it, so undo brings back the upstream.
+        // Records are key\nvalue\0; only branch.<name>.* entries are kept (a branch name may hold . or +).
+        var config = Call(git, log, "config", "--local", "--null", "--list");
+        if (!config.Success)
+            return Failed(name, check.Tip, $"{GitClient.Describe(config)}; nothing was deleted", log);
+        var saved = BranchConfig(config.StdOut, name);
 
-        // 4. Verify the ref is gone.
+        // 4. Delete. -D only with Force: it loses the commits no other branch holds. A -d that git refuses although
+        // the branch is merged into HEAD means the upstream is behind, so that refusal asks for Force.
+        var del = Call(git, log, "branch", request.Force ? "-D" : "-d", name);
+        if (!del.Success)
+        {
+            if (merged && !request.Force)
+                return Failed(name, check.Tip, BranchRefusals.NotMergedUpstream(name), log);
+            return Failed(name, check.Tip, $"git refused to delete {name} ({FirstLine(del)}); nothing was deleted", log);
+        }
+
+        // 5. Verify the ref is gone.
         if (RefOrEmpty(git, log, reference).Length > 0)
             return Failed(name, check.Tip, $"{name} is still there after git branch; check git branch", log);
 
-        // 5. The undo step, saved only now. The deletion stands even when its step cannot be saved.
+        // 6. The undo step, saved only now. The deletion stands even when its step cannot be saved.
         var undo = new UndoRecord(UndoKind.DeleteBranch, $"deletion of {name}", [new RefChange(reference, check.Tip, "")],
-            Branch: name, Head: check.Tip);
+            Branch: name, Head: check.Tip, BranchConfig: saved);
         var message = $"deleted {name} (was {Short(check.Tip)})";
         var problemSaving = new UndoLog(git).Push(undo, log);
         if (problemSaving is not null)
@@ -120,4 +133,25 @@ public sealed class DeleteBranchOperation(GitClient git) : IGitOperation<DeleteB
 
     private static BranchChangeOutcome Failed(string name, string tip, string message, List<GitResult> log) =>
         new(BranchChangeKind.Failed, name, null, tip, message, log);
+
+    /// <summary>
+    /// The branch's own config entries from `git config --null --list`: records are key\nvalue\0, split on the first
+    /// newline so a value may hold more lines. Only branch.&lt;name&gt;.* keys are kept, matched with an ordinal prefix.
+    /// </summary>
+    private static List<ConfigPair> BranchConfig(string list, string name)
+    {
+        var pairs = new List<ConfigPair>();
+        var prefix = "branch." + name + ".";
+        foreach (var record in list.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var cut = record.IndexOf('\n');
+            if (cut < 0)
+                continue;
+            var key = record.Substring(0, cut);
+            if (!key.StartsWith(prefix, StringComparison.Ordinal))
+                continue;
+            pairs.Add(new ConfigPair(key, record.Substring(cut + 1)));
+        }
+        return pairs;
+    }
 }
