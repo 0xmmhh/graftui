@@ -58,6 +58,18 @@ public class NumstatParserTests
     }
 
     [Fact]
+    public void A_path_with_a_newline_keeps_the_newline()
+    {
+        // -z leaves paths unquoted, so a newline in a name reaches the parser as it is.
+        var files = NumstatParser.Parse("1\t0\todd\nname.txt\0" + "2\t2\tafter.txt\0");
+
+        Assert.NotNull(files);
+        Assert.Equal(2, files.Count);
+        Assert.Equal(new IncomingFile("odd\nname.txt", null, 1, 0), files.Files[0]);
+        Assert.Equal(new IncomingFile("after.txt", null, 2, 2), files.Files[1]);
+    }
+
+    [Fact]
     public void Empty_output_is_no_files()
     {
         var files = NumstatParser.Parse("");

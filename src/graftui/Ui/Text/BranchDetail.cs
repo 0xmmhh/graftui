@@ -123,7 +123,8 @@ public static class BranchDetail
         lines.Add(Plain("latest on " + d.Name, Dim, width));
         if (d.Layout is null)
         {
-            lines.Add(Plain("reading…", Dim, width));
+            // Nothing is said while the layout loads: the block is drawn again when it arrives.
+            lines.Add(EmptyLine());
             return;
         }
 
@@ -140,7 +141,8 @@ public static class BranchDetail
         var layout = d.Layout;
         if (layout is null)
         {
-            lines.Add(Plain("reading…", Dim, width));
+            // Nothing is said while the layout loads (or while the block is blank): the block is drawn again when it arrives.
+            lines.Add(EmptyLine());
             return;
         }
 
@@ -165,7 +167,7 @@ public static class BranchDetail
         if (d.FilesState == IncomingFilesState.Read && d.Files is not null)
             AddFiles(d.Files, commits, width, lines, rows);
         else if (d.FilesState == IncomingFilesState.Reading)
-            lines.Add(Plain(commits + " · …", Dim, width));
+            lines.Add(Plain(commits + " · reading…", Dim, width));
         else
             lines.Add(Plain(commits, Dim, width));
     }

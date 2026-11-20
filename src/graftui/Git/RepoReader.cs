@@ -13,6 +13,7 @@ public sealed class RepoReader(GitClient git)
     private GitClient? _root;
 
     // git's version, read by the first files read and kept once known. Null while it is not known (a failed `git version`).
+    // Two files reads on two workers may both ask git for it before either keeps it: the answer is the same, so the race is harmless.
     private Version? _gitVersion;
 
     /// <summary>The first git whose `diff --no-relative` the files read uses. Older git gives the summary only.</summary>

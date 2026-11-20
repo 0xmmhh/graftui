@@ -78,7 +78,11 @@ public sealed class BranchesView : PaneView
         var detail = NewLook && innerW - 1 >= BranchDetail.MinWidth ? Detail : null;
         var detailRows = 0;
         if (detail is not null)
-            (listH, detailRows) = BranchDetail.Split(listH, Branches.Count);
+        {
+            var split = BranchDetail.Split(listH, Branches.Count);
+            listH = split.ListRows;
+            detailRows = split.DetailRows;
+        }
 
         var sel = Math.Clamp(Selected, 0, Branches.Count - 1);
         _top = ScrollTop(sel, _top, Branches.Count, listH);

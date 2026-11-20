@@ -64,13 +64,13 @@ public class BranchDetailTests
     }
 
     [Fact]
-    public void The_current_branch_while_its_layout_loads_shows_reading()
+    public void The_current_branch_while_its_layout_loads_says_nothing()
     {
         var lines = BranchDetail.Lines(Input(null, current: true, name: "main"), Width, 6);
 
         Assert.Equal(2, lines.Count);
         Assert.Equal("latest on main", LeftText(lines[0]));
-        Assert.Equal("reading…", LeftText(lines[1]));
+        Assert.Equal("", LeftText(lines[1]));
     }
 
     // ---------- the other rows of the table ----------
@@ -88,12 +88,22 @@ public class BranchDetailTests
     }
 
     [Fact]
-    public void A_branch_whose_layout_is_loading_shows_reading()
+    public void A_branch_whose_layout_is_loading_shows_its_name_and_says_nothing()
     {
         var lines = BranchDetail.Lines(Input(null), Width, 6);
 
         Assert.Equal("feature/picks", LeftText(lines[0]));
-        Assert.Equal("reading…", LeftText(lines[1]));
+        Assert.Equal("", LeftText(lines[1]));
+        Assert.Equal(2, lines.Count);
+    }
+
+    [Fact]
+    public void A_blank_block_has_empty_rows_and_claims_nothing()
+    {
+        var lines = BranchDetail.Lines(Input(null, name: ""), Width, 6);
+
+        Assert.Equal("", LeftText(lines[0]));
+        Assert.Equal("", LeftText(lines[1]));
         Assert.Equal(2, lines.Count);
     }
 
@@ -128,11 +138,11 @@ public class BranchDetailTests
     }
 
     [Fact]
-    public void While_the_files_read_the_summary_ends_in_an_ellipsis()
+    public void While_the_files_read_the_summary_says_reading()
     {
         var lines = BranchDetail.Lines(Input(Picks(), state: IncomingFilesState.Reading), 40, 6);
 
-        Assert.Equal("3 new commits · …", LeftText(lines[1]));
+        Assert.Equal("3 new commits · reading…", LeftText(lines[1]));
         Assert.Equal(2, lines.Count);
     }
 

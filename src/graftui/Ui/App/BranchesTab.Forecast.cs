@@ -98,7 +98,14 @@ internal sealed partial class BranchesTab
         _previewSeq++;
 
         if (!MayDrawPreview)
+        {
+            // A result or a question owns the art, so nothing is drawn. The new look still reads the selected layout (RequestPreview draws
+            // only when it may), so the detail block gets its data: PreviewLoaded caches the layout and sets the block without drawing.
+            // Not while paused: the pause screen would replace the art.
+            if (_newUi && !_app.IsPaused && _app.Snapshot.Branches.Count > 0)
+                RequestPreview();
             return;
+        }
 
         var shown = _shown;
         if (shown is null || !ShowsSnapshot(shown, _app.Snapshot))

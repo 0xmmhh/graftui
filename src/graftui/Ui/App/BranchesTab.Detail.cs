@@ -5,13 +5,17 @@ namespace graftui.Ui.App;
 
 /// <summary>
 /// The detail block under the branch list (the new look): the selected branch's new commits and the files they change. The files come from
-/// one git diff per selected branch, cached by its merge base and tip for the snapshot (ClearCache empties the cache). A read whose selection
-/// or snapshot has gone is cancelled, and its answer is dropped. While the marks are blank (an operation has started, or the snapshot is being
-/// read again) the block is blank too, so no row shows what the operation may have changed. UI thread only, except the worker's read.
+/// one git diff per selected branch. Their answers are cached by the merge base and tip (two commits, which never change), so a cached answer
+/// stays right across snapshots; the cache is bounded (see FilesKept). A read whose selection or snapshot has gone is cancelled, and its answer
+/// is dropped. While the marks are blank (an operation has started, or the snapshot is being read again) the block is blank too, so no row
+/// shows what the operation may have changed. UI thread only, except the worker's read.
 /// </summary>
 internal sealed partial class BranchesTab
 {
-    // The files of each (merge base, tip) read in this snapshot. A null value means the read failed. ClearCache empties it.
+    /// <summary>The most files answers kept. Past this the cache is emptied, so it stays small on a long session.</summary>
+    internal const int FilesKept = 32;
+
+    // The files of each (merge base, tip) read. A null value means the read failed.
     private readonly Dictionary<(string Base, string Tip), IncomingFiles?> _files = new();
 
     // The key of the files read running now, or null when none runs.
@@ -88,6 +92,8 @@ internal sealed partial class BranchesTab
         if (seq != _filesSeq)
             return;
 
+        if (_files.Count > FilesKept)
+            _files.Clear();
         _files[key] = files;
         _filesKey = null;
         Cancellation.CancelAndDispose(ref _filesCts);
@@ -147,8 +153,9 @@ internal sealed partial class BranchesTab
     private bool FilesReadingFor((string Base, string Tip) key) => _filesKey.HasValue && _filesKey.Value.Equals(key);
 
     /// <summary>
-    /// The layout the block is drawn from: the cached preview layout, or the shown layout when it is for this snapshot. The cache is emptied by
-    /// every snapshot, but a preview that still matches the snapshot needs no read again.
+    /// The layout the block is drawn from: the cached preview layout, or the shown layout. The preview cache is emptied by every snapshot, so
+    /// the shown layout is the one that still answers for a snapshot with the same tips. ShowsSnapshot is what makes that safe: it compares
+    /// the current branch, HEAD, and the selected branch and its tip with the snapshot, so a layout of other tips is never used.
     /// </summary>
     private GraphLayout? DetailLayout(RepoSnapshot snap, Branch b)
     {
@@ -171,7 +178,7 @@ internal sealed partial class BranchesTab
     private BranchDetailInput DetailOf(Branch b, GraphLayout? layout, IncomingFiles? files, IncomingFilesState state) =>
         new(b.Name, _app.InkOf(b.Name), b.IsCurrent, _app.Snapshot.CurrentBranch.Length == 0, layout, files, state);
 
-    // The block while the marks are blank: its rows are kept (so the list does not change height), and they say "reading…".
+    // The block while the marks are blank: no name and no layout, so only empty rows show (the list keeps its height). Nothing is claimed.
     private static BranchDetailInput BlankDetail() =>
         new("", Ink.Fg, false, false, null, null, IncomingFilesState.NotNeeded);
 }

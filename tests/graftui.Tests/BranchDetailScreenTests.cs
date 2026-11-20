@@ -178,21 +178,47 @@ public sealed class BranchDetailScreenTests : IDisposable
         Assert.Equal(3, back.Files?.Count);
     }
 
-    // 8. A new snapshot with the same tips keeps the block's layout, and reads the files again (the files cache is per snapshot).
+    // 8. A new snapshot with the same tips keeps the block's files: they are answers for two commits, which do not change.
     [Fact]
-    public void A_new_snapshot_with_the_same_tips_reads_the_files_again()
+    public void A_new_snapshot_with_the_same_tips_keeps_the_files_read()
     {
         var snapshot = ReadSnapshot();
         var app = OpenApp(snapshot, newUi: true);
         app.BranchesTab.SelectName("feature/picks");
         PreviewLoaded(app, snapshot, "feature/picks");
+        var (mergeBase, tip) = FilesKey(snapshot, "feature/picks");
+        app.BranchesTab.FilesLoaded(app.BranchesTab.IncomingFilesSeq, (mergeBase, tip), _reader.LoadIncomingFiles(mergeBase, tip, CancellationToken.None));
         var before = app.BranchesTab.IncomingFilesSeq;
 
         app.ApplySnapshot(ReadSnapshot());
 
         Assert.NotNull(app.BranchList.Detail?.Layout);
-        Assert.Equal(IncomingFilesState.Reading, app.BranchList.Detail?.FilesState);
-        Assert.True(app.BranchesTab.IncomingFilesSeq > before);
+        Assert.Equal(IncomingFilesState.Read, app.BranchList.Detail?.FilesState);
+        Assert.Equal(3, app.BranchList.Detail?.Files?.Count);
+        Assert.Equal(before, app.BranchesTab.IncomingFilesSeq);
+    }
+
+    // 8b. A snapshot that arrives while a result is on screen still loads the selected layout, so the block gets real data (not stuck).
+    [Fact]
+    public void A_snapshot_while_a_result_is_shown_still_loads_the_layout()
+    {
+        var snapshot = ReadSnapshot();
+        var app = OpenApp(snapshot, newUi: true);
+        app.BranchesTab.SelectName("feature/picks");
+        PreviewLoaded(app, snapshot, "feature/picks");
+        var before = app.BranchesTab.PreviewSeq;
+        var fresh = ReadSnapshot();
+
+        // A busy app draws nothing: the preview may not replace the art. The layout is still asked for.
+        app.Busy = true;
+        app.ApplySnapshot(fresh);
+
+        // SnapshotChanged bumps the number once; the layout load it starts takes one more.
+        Assert.Equal(before + 2, app.BranchesTab.PreviewSeq);
+
+        PreviewLoaded(app, fresh, "feature/picks");
+        Assert.Equal("feature/picks", app.BranchList.Detail?.Name);
+        Assert.NotNull(app.BranchList.Detail?.Layout);
     }
 
     // 9. A moved tip is another snapshot: the block has no layout until the preview of the new tip loads, so it says "reading…".
