@@ -234,7 +234,7 @@ public sealed class ArtPaneView : PaneView
                 for (var x = 0; x < art.W; x++)
                 {
                     var cell = grid[x, y];
-                    Paint.Put(this, art.X + x, art.Y + y, cell.Ch, Palette.Get(cell.Style));
+                    Paint.Put(this, art.X + x, art.Y + y, cell.Ch, Palette.Get(cell.Style, cell.Bg));
                 }
         }
 

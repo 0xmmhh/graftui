@@ -4,7 +4,8 @@ using Terminal.Gui.Text;
 
 namespace graftui.Ui.Scenes;
 
-public readonly record struct Cell(char Ch, Style Style);
+/// <summary>One glyph, its style and its background. Bg defaults to the terminal's background.</summary>
+public readonly record struct Cell(char Ch, Style Style, CellBg Bg = CellBg.None);
 
 /// <summary>
 /// A character grid the scenes draw into. One cell per glyph; the view turns each cell into one terminal cell.
@@ -40,10 +41,25 @@ public sealed class ArtGrid(int width, int height)
 
     private bool In(int x, int y) => x >= 0 && y >= 0 && x < Width && y < Height;
 
+    /// <summary>Writes a glyph and its style. The cell keeps its background.</summary>
     public void Put(int x, int y, char ch, Style s)
     {
         if (In(x, y))
-            _cells[x, y] = new Cell(ch, s);
+            _cells[x, y] = new Cell(ch, s, _cells[x, y].Bg);
+    }
+
+    /// <summary>Sets the background of one cell. Its glyph and style stay as they are.</summary>
+    public void SetBg(int x, int y, CellBg bg)
+    {
+        if (In(x, y))
+            _cells[x, y] = _cells[x, y] with { Bg = bg };
+    }
+
+    /// <summary>Writes the glyph only where the cell is still blank (the mock's fill). A cell with a glyph is left alone.</summary>
+    public void PutIfBlank(int x, int y, char ch, Style s)
+    {
+        if (In(x, y) && _cells[x, y].Ch == ' ')
+            Put(x, y, ch, s);
     }
 
     /// <summary>Writes one glyph per rune. Anything that is not exactly one column wide becomes '?', so columns stay aligned.</summary>

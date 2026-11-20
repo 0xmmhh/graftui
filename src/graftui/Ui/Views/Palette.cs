@@ -21,6 +21,8 @@ public static class Palette
     public static Color Bad { get; private set; } = new(0xff, 0x6b, 0x6b);
     public static Color Warn { get; private set; } = new(0xf0, 0xa3, 0x5e);
     public static Color Hash { get; private set; } = new(0xb3, 0x9b, 0x62);
+    /// <summary>The faint ink: the lines and dots of lanes that are not on the selected branch's path.</summary>
+    public static Color Faint { get; private set; } = new(0x3a, 0x45, 0x56);
 
     // The branch colours, lane 0 first (the trunk's). Six, to match BranchLanes.Count.
     private static Color[] _lanes =
@@ -52,12 +54,25 @@ public static class Palette
         Bad = t.Bad;
         Warn = t.Warn;
         Hash = t.Hash;
+        Faint = t.Faint;
         _lanes = t.Lanes.ToArray();
     }
 
     /// <summary>Attribute for a semantic style. Background is the selection colour for selected rows, otherwise the terminal background.</summary>
     public static Attribute Get(Style s, bool selectedRow = false) =>
         new(ForeColor(s.Ink), selectedRow ? SelRow : Term, s.Bold ? TextStyle.Bold : TextStyle.None);
+
+    /// <summary>Attribute for an art cell: the style's foreground on the cell's own background (terminal, selected row or chip).</summary>
+    public static Attribute Get(Style s, CellBg bg)
+    {
+        var back = Term;
+        if (bg == CellBg.Sel)
+            back = SelRow;
+        else if (bg == CellBg.Chip)
+            back = Chip;
+
+        return new Attribute(ForeColor(s.Ink), back, s.Bold ? TextStyle.Bold : TextStyle.None);
+    }
 
     /// <summary>A key label in the key bar: dark text on a dim chip.</summary>
     public static Attribute KeyChip => new(Term, Dim);
@@ -83,6 +98,9 @@ public static class Palette
         // A branch lane is one of the six lane colours; the role inks below are unchanged.
         if (ink >= Ink.Lane0 && ink <= Ink.Lane5)
             return _lanes[(int)ink - (int)Ink.Lane0];
+
+        if (ink == Ink.Faint)
+            return Faint;
 
         return ink switch
         {

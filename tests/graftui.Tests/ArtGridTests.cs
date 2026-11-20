@@ -20,6 +20,86 @@ public class ArtGridTests
     }
 
     [Fact]
+    public void Put_keeps_the_background_that_SetBg_gave_the_cell()
+    {
+        var grid = new ArtGrid(3, 1);
+
+        grid.SetBg(1, 0, CellBg.Sel);
+        grid.Put(1, 0, 'x', Bad);
+
+        Assert.Equal(new Cell('x', Bad, CellBg.Sel), grid[1, 0]);
+    }
+
+    [Fact]
+    public void Text_and_lines_keep_the_background_too()
+    {
+        var grid = new ArtGrid(5, 2);
+
+        grid.SetBg(2, 0, CellBg.Chip);
+        grid.Text(0, 0, "abcde", Bad);
+        grid.HLine(0, 4, 1, Bad);
+        grid.SetBg(3, 1, CellBg.Sel);
+        grid.VLine(3, 0, 1, Bad);
+
+        Assert.Equal(CellBg.Chip, grid[2, 0].Bg);
+        Assert.Equal(CellBg.Sel, grid[3, 1].Bg);
+    }
+
+    [Fact]
+    public void Clear_removes_the_background()
+    {
+        var grid = new ArtGrid(3, 1);
+        grid.SetBg(1, 0, CellBg.Sel);
+
+        grid.Clear(0, 2, 0, 0);
+
+        Assert.Equal(new Cell(' ', Blank), grid[1, 0]);
+    }
+
+    [Fact]
+    public void PutIfBlank_writes_only_where_the_cell_is_blank()
+    {
+        var grid = new ArtGrid(3, 1);
+        grid.Put(0, 0, 'x', Bad);
+
+        grid.PutIfBlank(0, 0, '-', Blank);
+        grid.PutIfBlank(1, 0, '-', Bad);
+
+        Assert.Equal('x', grid[0, 0].Ch);
+        Assert.Equal(Bad, grid[0, 0].Style);
+        Assert.Equal('-', grid[1, 0].Ch);
+        Assert.Equal(Bad, grid[1, 0].Style);
+    }
+
+    [Fact]
+    public void PutIfBlank_keeps_the_background()
+    {
+        var grid = new ArtGrid(3, 1);
+        grid.SetBg(1, 0, CellBg.Sel);
+
+        grid.PutIfBlank(1, 0, '-', Bad);
+
+        Assert.Equal(new Cell('-', Bad, CellBg.Sel), grid[1, 0]);
+    }
+
+    [Fact]
+    public void SetBg_and_PutIfBlank_ignore_cells_outside_the_grid()
+    {
+        var grid = new ArtGrid(2, 1);
+
+        grid.SetBg(-1, 0, CellBg.Sel);
+        grid.SetBg(2, 0, CellBg.Sel);
+        grid.PutIfBlank(-1, 0, 'x', Bad);
+        grid.PutIfBlank(2, 0, 'x', Bad);
+
+        foreach (var cell in Cells(grid))
+        {
+            Assert.Equal(' ', cell.Ch);
+            Assert.Equal(CellBg.None, cell.Bg);
+        }
+    }
+
+    [Fact]
     public void Writes_outside_the_grid_are_ignored_and_reads_outside_give_a_blank()
     {
         var grid = new ArtGrid(5, 3);
