@@ -654,7 +654,7 @@ public class SafetyAuditTests
 
     // ---- 9. assume-unchanged and skip-worktree files (a local edit that git status does not show) ----
 
-    [Fact(Skip = "safety-audit: stash (z) destroys a local edit to an assume-unchanged file: git stash resets it and does not save it")]
+    [Fact]
     public void Stash_keeps_a_local_edit_to_an_assume_unchanged_file()
     {
         using var repo = ConfigAndApp();
@@ -669,7 +669,7 @@ public class SafetyAuditTests
         Assert.Equal("MY LOCAL CONFIG\n", Text(repo.Dir, "config.json"));
     }
 
-    [Fact(Skip = "safety-audit: stash-merge-pop destroys a local edit to an assume-unchanged file (its git stash push resets it)")]
+    [Fact]
     public void Stash_merge_keeps_a_local_edit_to_an_assume_unchanged_file()
     {
         using var repo = TempRepo.FastForwardable();
@@ -685,7 +685,7 @@ public class SafetyAuditTests
         Assert.Equal("MY LOCAL A\n", Text(repo.Dir, "a.txt"));
     }
 
-    [Fact(Skip = "safety-audit: a pop that conflicts and is rolled back destroys a local edit to an assume-unchanged file")]
+    [Fact]
     public void A_rolled_back_pop_keeps_a_local_edit_to_an_assume_unchanged_file()
     {
         using var repo = ConfigAndApp();
@@ -703,7 +703,7 @@ public class SafetyAuditTests
         Assert.Equal("MY LOCAL CONFIG\n", Text(repo.Dir, "config.json"));
     }
 
-    [Fact(Skip = "safety-audit: undo of a pop destroys a local edit to an assume-unchanged file")]
+    [Fact]
     public void Undo_of_a_pop_keeps_a_local_edit_to_an_assume_unchanged_file()
     {
         using var repo = ConfigAndApp();
@@ -738,6 +738,76 @@ public class SafetyAuditTests
         // `git ls-files -v` marks a skip-worktree entry with S.
         Assert.StartsWith("S ", repo.Run("ls-files", "-v", "--", "config.json"));
         Assert.Equal("", repo.Run("for-each-ref", "refs/graftui/rescue/"));
+    }
+
+    [Fact]
+    public void A_flagged_file_with_no_local_edit_does_not_block_stash_pop_or_undo()
+    {
+        using var repo = ConfigAndApp();
+        repo.Run("update-index", "--assume-unchanged", "config.json");
+        repo.Write("app.txt", "edited\n");
+
+        Assert.Equal(StashKind.Stashed, Stash(repo.Git).Kind);
+        Assert.Equal(PopKind.Popped, Pop(repo.Git).Kind);
+        Assert.Equal(UndoOutcomeKind.Undone, Undo(repo.Git).Kind);
+    }
+
+    [Fact]
+    public void Stash_refusing_a_hidden_edit_leaves_the_repo_unchanged()
+    {
+        using var repo = ConfigAndApp();
+        repo.Write("app.txt", "edited\n");
+        KeepLocalConfig(repo, "--assume-unchanged");
+        var before = repo.Status();
+        var stashList = repo.Run("stash", "list");
+        var head = repo.Run("rev-parse", "HEAD");
+
+        var check = new StashOperation(repo.Git).Check(new StashRequest(null));
+
+        Assert.False(check.CanRun, "the stash ran although a hidden edit is in the tree");
+        Assert.Contains("config.json", check.Refusal);
+        Assert.Equal(before, repo.Status());
+        Assert.Equal(stashList, repo.Run("stash", "list"));
+        Assert.Equal(head, repo.Run("rev-parse", "HEAD"));
+        Assert.Equal("MY LOCAL CONFIG\n", Text(repo.Dir, "config.json"));
+    }
+
+    [Fact]
+    public void Pop_refusing_a_hidden_edit_leaves_the_repo_unchanged()
+    {
+        using var repo = ConfigAndApp();
+        repo.Write("app.txt", "edited\n");
+        repo.Run("stash", "push", "-q");
+        KeepLocalConfig(repo, "--assume-unchanged");
+        var before = repo.Status();
+        var stashList = repo.Run("stash", "list");
+        var head = repo.Run("rev-parse", "HEAD");
+
+        var check = new PopOperation(repo.Git).Check(new PopRequest(null));
+
+        Assert.False(check.CanRun, "the pop ran although a hidden edit is in the tree");
+        Assert.Contains("config.json", check.Refusal);
+        Assert.Equal(before, repo.Status());
+        Assert.Equal(stashList, repo.Run("stash", "list"));
+        Assert.Equal(head, repo.Run("rev-parse", "HEAD"));
+        Assert.Equal("MY LOCAL CONFIG\n", Text(repo.Dir, "config.json"));
+    }
+
+    [Fact]
+    public void HiddenEdits_Find_reads_a_name_with_a_space_and_a_newline()
+    {
+        using var repo = TempRepo.Create();
+        var odd = "a name\nwith a newline.txt";
+        repo.Write(odd, "committed\n");
+        repo.Run("add", "--", odd);
+        repo.Run("commit", "-q", "-m", "Add odd name");
+        repo.Run("update-index", "--assume-unchanged", "--", odd);
+        repo.Write(odd, "MY LOCAL EDIT\n");
+        var log = new List<GitResult>();
+
+        var hidden = HiddenEdits.Find(repo.Git, log);
+
+        Assert.Equal([odd], hidden);
     }
 
     // ---- 10. an ignored local file in the way ----
@@ -1024,7 +1094,7 @@ public class SafetyAuditTests
 
     // ---- 14. a path that is staged as deleted and also untracked ----
 
-    [Fact(Skip = "safety-audit: a file that is staged as deleted and kept as an untracked file is stashed, and then cannot be popped or un-stashed")]
+    [Fact]
     public void A_stash_of_a_file_that_is_staged_as_deleted_and_untracked_can_be_popped()
     {
         using var repo = TempRepo.Create();

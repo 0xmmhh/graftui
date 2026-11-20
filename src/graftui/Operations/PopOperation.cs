@@ -100,6 +100,10 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         // git add -N makes an index entry with no content; the pop would not restore it, so it is refused as Discard refuses it.
         if (status.Unstaged.FirstOrDefault(f => f.Kind == ChangeKind.Added) is { } intent)
             return Refused(ChangeRefusals.IntentToAddStash(intent.Path), log);
+        // A hidden edit (assume-unchanged) is invisible to the status above: the pop's reset would overwrite it.
+        var hidden = HiddenEdits.Find(git, log);
+        if (hidden.Count > 0)
+            return Refused(ChangeRefusals.HiddenEdit(hidden[0]), log);
 
         // 4. The entry's message, as the stash list shows it. It is stored back if the undo step runs.
         var message = Call(log, GitArgs.Stash, "list", "-n", "1", "--format=%gs");
@@ -123,6 +127,10 @@ public sealed class PopOperation(GitClient git) : IGitOperation<PopRequest, PopC
         var headNow = Call(log, GitArgs.RevParse, "-q", GitArgs.Verify, "HEAD");
         if (!headNow.Success || headNow.StdOut.Trim() != head)
             return Done(PopKind.Failed, check.TopMessage, [], null, "HEAD moved since the check; nothing was popped", log);
+        // The hidden-edit check from CheckCore, again before the state is saved and anything is written.
+        var hidden = HiddenEdits.Find(git, log);
+        if (hidden.Count > 0)
+            return Done(PopKind.Failed, check.TopMessage, [], null, ChangeRefusals.HiddenEdit(hidden[0]) + "; nothing was popped", log);
 
         // 2. Save the whole state, and keep the copy under a ref while the files move.
         var before = state.Take(log);

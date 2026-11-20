@@ -89,6 +89,10 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         var refusal = StashOperation.Refusal(status);
         if (refusal is not null)
             return Refused(refusal, log);
+        // A hidden edit (assume-unchanged) is invisible to the status above: the stash push would overwrite it.
+        var hidden = HiddenEdits.Find(git, log);
+        if (hidden.Count > 0)
+            return Refused(ChangeRefusals.HiddenEdit(hidden[0]), log);
 
         // 5. The branch must exist, and must have something HEAD lacks.
         if (RefOrEmpty(git, log, HeadsPrefix + branch).Length == 0)
@@ -138,6 +142,11 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         var below = RevParse(log, StashRef);
         if (below is null)
             return Untouched("could not read the stash; nothing was stashed");
+        // The hidden-edit check from CheckCore, again before the stash push writes anything.
+        var hidden = HiddenEdits.Find(git, log);
+        if (hidden.Count > 0)
+            return Untouched(ChangeRefusals.HiddenEdit(hidden[0]) + "; nothing was stashed");
+
         var push = Call(log, GitArgs.Stash, "push", "-u", "-m", $"{MessageStart}{branch} into {into}");
         var top = RevParse(log, StashRef);
         if (top is null)

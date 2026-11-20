@@ -71,6 +71,10 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
         var refusal = Refusal(status);
         if (refusal is not null)
             return Refused(refusal, log);
+        // A hidden edit (assume-unchanged) is invisible to the status above: git stash would overwrite it without saving it.
+        var hidden = HiddenEdits.Find(git, log);
+        if (hidden.Count > 0)
+            return Refused(ChangeRefusals.HiddenEdit(hidden[0]), log);
 
         return new StashCheck(null, status.Rows, head.StdOut.Trim(), gitDir, log);
     }
@@ -89,6 +93,10 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
         var refusal = Refusal(before);
         if (refusal is not null)
             return Done(StashKind.Failed, [], null, refusal, log);
+        // The hidden-edit check from CheckCore, again before the stash push writes anything.
+        var hidden = HiddenEdits.Find(git, log);
+        if (hidden.Count > 0)
+            return Done(StashKind.Failed, [], null, ChangeRefusals.HiddenEdit(hidden[0]) + "; nothing was stashed", log);
 
         // 2. Stash. A new entry is the one that moved refs/stash.
         var below = RevParse(log, StashRef);
@@ -147,6 +155,17 @@ public sealed class StashOperation(GitClient git) : IGitOperation<StashRequest, 
         // git add -N makes an index entry with no content, which `git stash push -u` cannot save: git fails with "Entry not uptodate".
         if (status.Unstaged.FirstOrDefault(f => f.Kind == ChangeKind.Added) is { } intent)
             return ChangeRefusals.IntentToAddStash(intent.Path);
+        // A path staged as deleted and also kept as an untracked file: git stashes it away, and its own pop cannot bring it back.
+        foreach (var stagedRow in status.Staged)
+        {
+            if (stagedRow.Kind != ChangeKind.Deleted)
+                continue;
+            foreach (var unstagedRow in status.Unstaged)
+            {
+                if (unstagedRow.Kind == ChangeKind.Untracked && unstagedRow.Path == stagedRow.Path)
+                    return ChangeRefusals.DeletedAndUntracked(stagedRow.Path);
+            }
+        }
         return null;
     }
 
