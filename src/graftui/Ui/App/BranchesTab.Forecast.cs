@@ -84,6 +84,9 @@ internal sealed partial class BranchesTab
     /// </summary>
     internal void SnapshotChanged()
     {
+        // The graph of the new snapshot is read even while a result or a question is on screen: git log is read-only and takes no lock.
+        EnsureLaneGraph();
+
         Cancellation.CancelAndDispose(ref _previewCts);
         _previewSeq++;
 

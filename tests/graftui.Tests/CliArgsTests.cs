@@ -39,6 +39,29 @@ public class CliArgsTests
     }
 
     [Fact]
+    public void New_ui_flag_turns_the_new_look_on_and_is_off_by_default()
+    {
+        Assert.True(Ok("--new-ui").NewUi);
+        Assert.False(Ok().NewUi);
+    }
+
+    [Fact]
+    public void The_new_look_is_on_by_the_flag_or_by_GRAFTUI_UI_new_and_off_otherwise()
+    {
+        Assert.True(CliArgs.NewUiOn(true, null));
+        Assert.True(CliArgs.NewUiOn(false, "new"));
+        Assert.True(CliArgs.NewUiOn(false, "NEW"));
+        Assert.False(CliArgs.NewUiOn(false, null));
+        Assert.False(CliArgs.NewUiOn(false, "old"));
+    }
+
+    [Fact]
+    public void Help_lists_the_new_ui_flag()
+    {
+        Assert.Contains("--new-ui", CliArgs.HelpText);
+    }
+
+    [Fact]
     public void Make_edits_is_a_flag_that_sets_MakeEdits()
     {
         Assert.True(Ok("--make-edits").MakeEdits);

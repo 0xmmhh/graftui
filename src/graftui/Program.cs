@@ -89,7 +89,9 @@ try
 
     // Changes-tab paths are relative to the top-level folder, so that work runs there even when graftui was started in a subfolder.
     var root = git.GetTopLevel() ?? git.RepoPath;
-    gui = new AppController(app, git, new GitClient(root), snapshot, repoDisplay);
+    // The new look stays hidden until the redesign is complete: --new-ui or GRAFTUI_UI=new turns it on. It is set once, here.
+    var newUi = CliArgs.NewUiOn(options.NewUi, Environment.GetEnvironmentVariable("GRAFTUI_UI"));
+    gui = new AppController(app, git, new GitClient(root), snapshot, repoDisplay, newUi);
     var window = gui.BuildWindow();
     windowHandle = window;
     app.Run(window);

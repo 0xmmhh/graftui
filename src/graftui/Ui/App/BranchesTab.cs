@@ -22,6 +22,9 @@ internal sealed partial class BranchesTab
 
     private readonly AppController _app;
 
+    // The new look (--new-ui). Off: the preview is main's, and no lane graph is read.
+    private readonly bool _newUi;
+
     // Keyed by the selected branch's name as well as its tip: branches that share a commit have different layouts.
     private readonly Dictionary<(string Current, string Head, string Name, string Tip), GraphLayout> _cache = new();
 
@@ -29,9 +32,10 @@ internal sealed partial class BranchesTab
     private CancellationTokenSource? _previewCts;
     private int _previewSeq;
 
-    internal BranchesTab(AppController app)
+    internal BranchesTab(AppController app, bool newUi)
     {
         _app = app;
+        _newUi = newUi;
         _selected = FirstNonCurrent(app.Snapshot);
     }
 
@@ -191,6 +195,9 @@ internal sealed partial class BranchesTab
         if (_app.Snapshot.Branches.Count == 0)
             return;
 
+        // The lane graph is read alongside the layout; the sheet waits for both.
+        EnsureLaneGraph();
+
         // Any request still in flight is stale now, even when the answer is cached: its result must not overwrite this one.
         Cancellation.CancelAndDispose(ref _previewCts);
         _previewCts = new CancellationTokenSource();
@@ -262,6 +269,9 @@ internal sealed partial class BranchesTab
             _app.Art.Title = "Preview";
             _app.Art.FallbackCaption = new Caption("no branches", Muted);
             _app.Art.Panel = null;
+            // A sheet from an earlier snapshot must not survive this one (the new look only).
+            if (_newUi)
+                _app.Art.ShowScene(null);
         }
     }
 
@@ -287,16 +297,38 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>
-    /// Draws the preview art for a layout: with the forecast when it is known, else the plain one, and then the forecast is started.
-    /// It does not touch the status bar.
+    /// Draws the preview art for a layout: the browse sheet when the lane graph of the snapshot is read, else the plain preview. The
+    /// forecast is then started when it is not known. It does not touch the status bar.
     /// </summary>
     internal void DrawPreview(GraphLayout layout)
     {
         _shown = layout;
-        _app.Art.Title = "Preview";
-        _app.Art.Direction = cols => DirectionLine.Browse(layout, cols);
         // The forecast is read after the preview loads (see RequestForecast): until then the panel and the caption are the plain ones.
         var forecast = CachedForecast(layout);
+        var graph = _newUi ? LaneGraphForSnapshot() : null;
+        if (graph is not null)
+            ShowBrowseSheet(layout, forecast, graph);
+        else
+            DrawOldPreview(layout, forecast);
+
+        if (forecast is null)
+            RequestForecast(layout);
+    }
+
+    // The sheet: the forecast line, the command, the lane graph and the incoming commits, drawn at the pane's size on each draw.
+    private void ShowBrowseSheet(GraphLayout layout, MergeForecast? forecast, LaneGraph graph)
+    {
+        var input = new PreviewSheetInput(layout, forecast, graph, _app.Snapshot.Clean);
+        _app.Art.Title = PreviewText.Title(layout);
+        _app.Art.ShowSheet((w, h) => PreviewSheets.Build(input, w, h, Glyphs.Unicode));
+        _app.Art.SetNeedsDraw();
+    }
+
+    // Today's preview, drawn while the lane graph is not read (or failed): the single-line art, the caption and the commit list.
+    private void DrawOldPreview(GraphLayout layout, MergeForecast? forecast)
+    {
+        _app.Art.Title = "Preview";
+        _app.Art.Direction = cols => DirectionLine.Browse(layout, cols);
         var clean = _app.Snapshot.Clean;
         _app.Art.Panel = forecast is null
             ? CommitLists.Idle(layout)
@@ -328,9 +360,6 @@ internal sealed partial class BranchesTab
             return new SceneFrame(grid, caption);
         }, IsStraight(layout));
         _app.Art.SetNeedsDraw();
-
-        if (forecast is null)
-            RequestForecast(layout);
     }
 
     /// <summary>

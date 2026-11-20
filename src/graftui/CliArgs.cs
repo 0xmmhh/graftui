@@ -7,7 +7,7 @@ namespace graftui;
 /// The parsed command line. Help and Version are acted on by Program in that order; neither needs a repo.
 /// MakeEdits is the hidden developer flag (see CONTRIBUTING.md); it is left out of HelpText on purpose.
 /// </summary>
-internal sealed record CliOptions(bool Help, bool Version, bool Sandbox, bool MakeEdits, string? Theme, string? RepoPath);
+internal sealed record CliOptions(bool Help, bool Version, bool Sandbox, bool MakeEdits, string? Theme, string? RepoPath, bool NewUi = false);
 
 /// <summary>Either the options, or the one stderr line for a bad command line (Program adds "Try 'graftui --help'.").</summary>
 internal sealed record CliParse(CliOptions? Options, string? Error);
@@ -24,6 +24,7 @@ Usage:
 
 Options:
   --theme <name>   colours: default, lifted, muted, high-contrast, light
+  --new-ui         the new look, still being built (same as GRAFTUI_UI=new)
   --version        print the version
   --help           show this help
 
@@ -52,7 +53,7 @@ Both tabs: v all commands · Esc quit
     private sealed class Parser
     {
         private readonly List<string> _errors = [];
-        private bool _help, _version, _sandbox, _makeEdits, _themeSeen, _pathsOnly;
+        private bool _help, _version, _sandbox, _makeEdits, _newUi, _themeSeen, _pathsOnly;
         private string? _theme, _path;
 
         public void Read(string arg, Queue<string> rest)
@@ -82,6 +83,9 @@ Both tabs: v all commands · Esc quit
                 case "--sandbox":
                     _sandbox = true;
                     break;
+                case "--new-ui":
+                    _newUi = true;
+                    break;
                 // Hidden on purpose: a developer flag, documented in CONTRIBUTING.md and not in --help.
                 case "--make-edits":
                     _makeEdits = true;
@@ -102,7 +106,7 @@ Both tabs: v all commands · Esc quit
         public CliParse Result()
         {
             if (_help || _version)
-                return new CliParse(new CliOptions(_help, _version, _sandbox, _makeEdits, _theme, _path), null);
+                return new CliParse(new CliOptions(_help, _version, _sandbox, _makeEdits, _theme, _path, _newUi), null);
 
             if (_sandbox && _path is not null)
                 _errors.Add("graftui: --sandbox opens ~/.graftui/sandbox; it can't be combined with a path");
@@ -112,7 +116,7 @@ Both tabs: v all commands · Esc quit
                 _errors.Add("graftui: --make-edits can't be combined with --sandbox; run them one after the other");
 
             return _errors.Count == 0
-                ? new CliParse(new CliOptions(false, false, _sandbox, _makeEdits, _theme, _path), null)
+                ? new CliParse(new CliOptions(false, false, _sandbox, _makeEdits, _theme, _path, _newUi), null)
                 : new CliParse(null, _errors[0]);
         }
 
@@ -145,6 +149,13 @@ Both tabs: v all commands · Esc quit
                 _errors.Add($"graftui: unknown theme '{name}'; choose one of: {ThemeList}");
         }
     }
+
+    /// <summary>
+    /// Whether the new look is on: the --new-ui flag, or GRAFTUI_UI=new in the environment. The environment value is passed in, so this
+    /// stays pure. Any other environment value leaves the new look off.
+    /// </summary>
+    public static bool NewUiOn(bool flag, string? environmentValue) =>
+        flag || string.Equals(environmentValue, "new", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>"graftui 0.1.0": the informational version without any "+build" suffix.</summary>
     public static string VersionLine()
