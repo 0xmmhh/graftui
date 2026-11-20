@@ -269,6 +269,34 @@ public sealed class PreviewSheetTests
         Assert.Equal("+1 more", string.Concat(last.Segs.Select(s => s.Text)));
     }
 
+    [Theory]
+    [InlineData(1, 1, 2)]
+    [InlineData(3, 3, 2)]
+    [InlineData(1, 5, 2)]
+    [InlineData(3, 5, 3)]
+    public void A_short_incoming_list_keeps_a_commit_and_accounts_for_the_rest(int count, int ahead, int rows)
+    {
+        var commits = Enumerable.Range(0, count)
+            .Select(i => Layouts.C("c" + i.ToString("00000000"), subject: "commit " + i)).ToList();
+        var layout = MergeCommit() with { Ahead = ahead, SelectedNew = commits };
+
+        var lines = PreviewSheets.Incoming(layout, 7, rows);
+        var text = lines.Select(line => string.Concat(line.Segs.Select(seg => seg.Text))).ToArray();
+
+        Assert.Equal(rows, lines.Count);
+        Assert.Equal(Enumerable.Range(7, rows), lines.Select(line => line.Row));
+        Assert.Contains("c000000  commit 0", text);
+        if (ahead == 1)
+            Assert.Equal(PreviewText.IncomingTitle, text[0]);
+        else if (rows == 2)
+            Assert.Equal("+" + (ahead - 1) + " more · " + PreviewText.IncomingTitle, text[0]);
+        else
+        {
+            Assert.Equal(PreviewText.IncomingTitle, text[0]);
+            Assert.Equal("+" + (ahead - 1) + " more", text[^1]);
+        }
+    }
+
     [Fact]
     public void A_too_short_pane_has_no_graph_and_no_rows_for_the_rest()
     {

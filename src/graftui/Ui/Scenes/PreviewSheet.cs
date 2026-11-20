@@ -96,7 +96,7 @@ public static class PreviewSheets
 
     /// <summary>
     /// The incoming list: a title at firstRow, then the selected branch's new commits, newest first, all within rows rows. When
-    /// there are more commits than fit, the last row says how many are left out.
+    /// there are more commits than fit, the last row (or the title in a two-row list) says how many are left out.
     /// </summary>
     internal static IReadOnlyList<SheetLine> Incoming(GraphLayout L, int firstRow, int rows)
     {
@@ -117,15 +117,20 @@ public static class PreviewSheets
         var more = 0;
         if (total > slots || count < total)
         {
-            // One slot goes to the "+N more" line. It is also needed when git's list is capped (count < total) and everything fits.
-            shown = Math.Min(count, slots - 1);
+            // Reserve a count row when possible, keeping at least one commit even when git's list is capped.
+            shown = Math.Min(count, Math.Max(1, slots - 1));
             more = total - shown;
         }
 
         for (var i = 0; i < shown; i++)
             lines.Add(CommitLine(L.SelectedNew[i], firstRow + 1 + i));
 
-        if (more > 0)
+        if (more > 0 && slots == 1 && count > 0)
+        {
+            // Keep a commit visible; put the count first so narrow panes retain it when the title is clipped.
+            lines[0] = new SheetLine(firstRow, new List<Seg> { new Seg("+" + more + " more · " + PreviewText.IncomingTitle, Dim) });
+        }
+        else if (more > 0)
             lines.Add(new SheetLine(firstRow + 1 + shown, new List<Seg> { new Seg("+" + more + " more", Dim) }));
         return lines;
     }
