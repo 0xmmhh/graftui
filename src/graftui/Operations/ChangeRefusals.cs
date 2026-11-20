@@ -39,6 +39,12 @@ public static class ChangeRefusals
 
     public static string NestedRepoDiscard(string path) => $"{path} is a separate git repository: graftui won't discard it";
 
+    public static string DiscardParentIsFile(string path, string parent) =>
+        $"{parent} is a file now, so bringing back {path} would delete it: move it away first";
+
+    public static string DiscardIsFolder(string path) =>
+        $"{path} is a folder now, so bringing back the file would delete what is in it: move it away first";
+
     public static string NestedRepoStash(string path) => $"{path} is a separate git repository: graftui won't stash or pop over it";
 
     /// <summary>A saved state that graftui keeps under a ref until the user deals with it. what says whose state it is.</summary>
