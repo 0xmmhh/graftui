@@ -131,6 +131,10 @@ internal sealed class Animator
         _app.Keys.Busy = false;
         _app.Keys.SetNeedsDraw();
         _app.Art.SetNeedsDraw();
+
+        // The merge ran but there is no snapshot after it: the counts are read again, and the marks stay blank until that read is applied.
+        if (pending.After is null)
+            _app.ReloadCountsAsync();
         _anim = null;
         _clock = null;
         _pending = null;

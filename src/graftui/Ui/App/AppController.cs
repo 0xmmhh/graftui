@@ -866,8 +866,9 @@ public sealed class AppController
     {
         var seq = SnapshotSeq;
 
-        // A write has finished and its snapshot is on the way: the branch marks are blanked until the new snapshot is applied. The
-        // startup read passes blankMarks false, since there are no marks to blank yet (the new look only, see MarksStale).
+        // The snapshot on screen may be out of date (a change or a refusal ended, and the counts are read again): the branch marks are
+        // blanked until the read is applied. A caller that has just applied the snapshot, or a startup read, passes blankMarks false.
+        // The new look only (see MarksStale).
         if (blankMarks)
             BranchesTab.MarksStale();
         Task.Run(() =>
@@ -894,8 +895,14 @@ public sealed class AppController
     {
         if (failed is not null)
             ShowGitError(failed);
-        else if (s is not null && !Busy && seq == SnapshotSeq)
+        if (failed is null && s is not null && !Busy && seq == SnapshotSeq)
             ApplySnapshot(s);
+        else if (!Busy)
+        {
+            // The read was not applied (it failed, or a newer snapshot came first): the marks blanked for it come back now, and the
+            // preview's forecast is asked for again. While an operation is still busy, its end does that instead.
+            BranchesTab.MarksBack();
+        }
         then?.Invoke();
     }
 

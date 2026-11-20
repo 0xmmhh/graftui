@@ -58,7 +58,7 @@ internal sealed partial class BranchesTab
         _app.Busy = false;
         _app.Keys.Busy = false;
         _app.Keys.SetNeedsDraw();
-        EnsureListForecasts();
+        MarksBack();
     }
 
     /// <summary>
@@ -120,7 +120,8 @@ internal sealed partial class BranchesTab
         if (f.Select is { } name)
             SelectName(name);
         _app.Result = SelectedName();
-        _app.ReloadCountsAsync(() => ShowPauseAfter(f.Result));
+        // The snapshot was applied just above (when there was one): the marks are not blanked again here.
+        _app.ReloadCountsAsync(() => ShowPauseAfter(f.Result), blankMarks: f.After is null);
     }
 
     /// <summary>
@@ -172,7 +173,7 @@ internal sealed partial class BranchesTab
         _app.ShowGitError(ex);
         _app.MarkChangeOutcomeShown();
         RestoreAfterError();
-        _app.ReloadCountsAsync();
+        _app.ReloadCountsAsync(blankMarks: false);
     }
 
     /// <summary>Gives the keys back after a check failed before anything started: the preview of the selection comes back.</summary>
@@ -211,7 +212,7 @@ internal sealed partial class BranchesTab
 
         _app.Result = SelectedName();
         EndWork();
-        _app.ReloadCountsAsync();
+        _app.ReloadCountsAsync(blankMarks: false);
     }
 
     /// <summary>The result of a change that git refused after its animation had started: the refusal over the art, as a refusal screen.</summary>

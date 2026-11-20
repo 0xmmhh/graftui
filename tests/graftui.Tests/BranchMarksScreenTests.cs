@@ -185,9 +185,9 @@ public sealed class BranchMarksScreenTests : IDisposable
         Assert.Empty(app.BranchesTab.ListQueueNames);
     }
 
-    // 10. A "·" (Unknown) result is not a mark: the branch is queued again for the same tips.
+    // 10. A real Unavailable answer is a mark like any other: the same tips do not queue that branch again.
     [Fact]
-    public void An_unknown_mark_is_queued_again_for_the_same_tips()
+    public void An_unavailable_result_is_not_queued_again_for_the_same_tips()
     {
         var snapshot = ReadSnapshot();
         var app = OpenApp(snapshot, newUi: true);
@@ -198,7 +198,43 @@ public sealed class BranchMarksScreenTests : IDisposable
 
         app.ApplySnapshot(ReadSnapshot());
 
+        Assert.DoesNotContain("feature/conflict", app.BranchesTab.ListQueueNames);
+    }
+
+    // 10b. A job that gave no answer (cancelled, or dropped by a newer snapshot) sets no mark, so the branch is queued again.
+    [Fact]
+    public void A_job_that_gave_no_answer_sets_no_mark_so_the_branch_is_queued_again()
+    {
+        var snapshot = ReadSnapshot();
+        var app = OpenApp(snapshot, newUi: true);
+        var running = app.BranchesTab.ForecastGeneration;
+        var layout = _reader.LoadForecastLayout(snapshot, BranchNamed(snapshot, "feature/conflict"), CancellationToken.None);
+
+        app.ApplySnapshot(ReadSnapshot());
+
+        // Queued again while the old job still holds the slot (its late result has not arrived yet).
         Assert.Contains("feature/conflict", app.BranchesTab.ListQueueNames);
+
+        app.BranchesTab.ForecastDone(layout, MergeForecast.Unavailable([]), running);
+
+        Assert.False(app.BranchesTab.Marks.ContainsKey("feature/conflict"));
+    }
+
+    // 14. A counts read that fails after a blank brings the marks back at once, since no snapshot is applied to end the blank.
+    [Fact]
+    public void A_failed_counts_read_after_a_blank_brings_the_marks_back()
+    {
+        var snapshot = ReadSnapshot();
+        var app = OpenApp(snapshot, newUi: true);
+        foreach (var name in OtherNames)
+            MarkBranch(app, snapshot, name);
+
+        app.ReloadCountsAsync();
+        Assert.Empty(app.BranchesTab.Marks);
+
+        app.CountsRead(null, new InvalidOperationException("boom"), app.SnapshotSeq, null);
+
+        Assert.Equal(OtherNames.Length, app.BranchesTab.Marks.Count);
     }
 
     // 11. A clear while a list job runs: the generation moves on, the queue is built again, and the job's late result is dropped.

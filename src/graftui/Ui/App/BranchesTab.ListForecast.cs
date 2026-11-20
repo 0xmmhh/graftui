@@ -10,7 +10,8 @@ namespace graftui.Ui.App;
 /// the others, nearest the selection first, at most <see cref="ListForecastMax"/>.
 /// Marks belong to one snapshot key (see <see cref="LaneGraphKey"/>). A new key shows "·" on every row at once; the marks of the last
 /// <see cref="MarkKeysKept"/> keys are kept, so an undo back to one of them shows its marks without a new read. A mark of "·" (Unknown)
-/// does not count as done: the branch is forecast again for the same key on the next snapshot.
+/// is a mark like any other: a real Unavailable answer counts as done for its key. A job that gave no answer (cancelled, or its layout could
+/// not be read) sets no mark, so its branch is queued again on the next snapshot.
 /// Limit: the key is made of the branch names and tips, not of the merge configuration. A change to merge.ff or
 /// branch.&lt;current&gt;.mergeOptions with the same tips is seen by the marks only after the next tip change. The preview forecasts the
 /// selected branch again each time it is shown after a snapshot change, so the selected branch's detail is never stale.
@@ -142,6 +143,10 @@ internal sealed partial class BranchesTab
     // (the current key is the other one).
     private void RememberMarks(string key, Dictionary<string, BranchMark> marks)
     {
+        // Nothing to keep: a key with no marks is simply queued again when it comes back.
+        if (marks.Count == 0)
+            return;
+
         var index = IndexOfSaved(key);
         if (index >= 0)
             _savedMarks.RemoveAt(index);
@@ -160,9 +165,23 @@ internal sealed partial class BranchesTab
         return -1;
     }
 
-    /// <summary>True when the branch has a real mark for this key. "·" (Unknown) is not a mark: the branch is forecast again.</summary>
-    private bool IsMarked(string name) =>
-        _marks.TryGetValue(name, out var mark) && mark != BranchMark.Unknown;
+    /// <summary>True when the branch has a mark for this key. A real Unavailable answer is a mark too; a job that gave no answer leaves none.</summary>
+    private bool IsMarked(string name) => _marks.ContainsKey(name);
+
+    /// <summary>
+    /// Brings the marks back after a blank that no snapshot ended: a counts read failed or was dropped, or an operation ended with no write.
+    /// The preview's forecast, which MarksStale cancelled, is asked for again. The new look only. UI thread only.
+    /// </summary>
+    internal void MarksBack()
+    {
+        if (!_newUi)
+            return;
+
+        EnsureListForecasts();
+        var shown = _shown;
+        if (shown is not null && MayDrawPreview)
+            RequestForecast(shown);
+    }
 
     // A detached HEAD refuses every merge, a pause owns the art, and without commits or branches there is nothing to forecast.
     private bool CanForecastList(RepoSnapshot snap) =>
@@ -189,9 +208,8 @@ internal sealed partial class BranchesTab
     }
 
     /// <summary>
-    /// Runs one list job on the worker: the forecast layout (one merge-base read), then the forecast. When the layout cannot be read, the
-    /// job reports a minimal stand-in with an Unavailable forecast, and nothing is cached for it: only the mark is set, to "·". Either way
-    /// ForecastFinished releases the slot.
+    /// Runs one list job on the worker: the forecast layout (one merge-base read), then the forecast. A job that is cancelled, or whose
+    /// layout cannot be read, gives no answer: no mark and nothing cached. Either way ForecastFinished releases the slot.
     /// </summary>
     private void StartListForecast(Branch b)
     {
@@ -217,12 +235,19 @@ internal sealed partial class BranchesTab
             }
             catch (Exception)
             {
-                // Not logged: a list mark is not a git command the Commands pane shows.
+                // Not logged: a list mark is not a git command the Commands pane shows. No answer means no mark: the branch is queued again.
                 var stub = GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, b.Name, snap.HeadHash ?? "", b.Hash);
-                _app.Ui(() => ForecastFinished(stub, MergeForecast.Unavailable([]), generation, false));
+                _app.Ui(() => ForecastFinished(stub, null, generation, cache: false));
                 return;
             }
-            _app.Ui(() => ForecastFinished(layout, f, generation, true));
+
+            // A job cancelled while it ran has no answer to keep (Forecast answers Unavailable then): no mark, so the branch stays queueable.
+            if (ct.IsCancellationRequested)
+            {
+                _app.Ui(() => ForecastFinished(layout, null, generation, cache: false));
+                return;
+            }
+            _app.Ui(() => ForecastFinished(layout, f, generation, cache: true));
         }, CancellationToken.None);
     }
 }

@@ -359,7 +359,7 @@ internal sealed partial class ChangesTab
         _app.Keys.SetNeedsDraw();
         _app.Art.SetNeedsDraw();
         // Ends a check that changed nothing (a form opens, or a refusal): the marks come back. After a write the reload applies them.
-        _app.BranchesTab.EnsureListForecasts();
+        _app.BranchesTab.MarksBack();
     }
 
     private void Flash(string text, Style style)
