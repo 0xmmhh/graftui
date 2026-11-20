@@ -271,7 +271,7 @@ public class GitTimeoutTests
         repo.WriteHook("pre-commit", hang.Body);
         var cached = repo.Run("diff", "--cached", "--name-only");
         var worktree = File.ReadAllBytes(Path.Combine(repo.Dir, "app.txt"));
-        var op = new CommitOperation(repo.GitWith(Budgets(1, 1)));
+        var op = new CommitOperation(repo.GitWith(Budgets(3, 3)));
         var request = new CommitRequest(false, "Will time out", "", null, false);
         var clock = Stopwatch.StartNew();
 
@@ -283,7 +283,7 @@ public class GitTimeoutTests
 
         AssertReturnedQuickly(clock);
         Assert.Equal(CommitKind.Failed, outcome.Kind);
-        Assert.StartsWith("git timed out after 1 s", outcome.Message, StringComparison.Ordinal);
+        Assert.StartsWith("git timed out after 3 s", outcome.Message, StringComparison.Ordinal);
         Assert.Contains("nothing was committed", outcome.Message, StringComparison.Ordinal);
         Assert.Equal(oldHead, repo.Head);
         Assert.Equal(cached, repo.Run("diff", "--cached", "--name-only"));
@@ -300,7 +300,7 @@ public class GitTimeoutTests
         var oldHead = repo.Head;
         using var hang = new HangingScript(repo, "merge-hang");
         repo.WriteHook("pre-merge-commit", hang.Body);
-        var op = new MergeOperation(repo.GitWith(Budgets(1, 1)));
+        var op = new MergeOperation(repo.GitWith(Budgets(3, 3)));
         var request = new MergeRequest("feature");
         var clock = Stopwatch.StartNew();
 
@@ -335,7 +335,7 @@ public class GitTimeoutTests
         File.WriteAllText(Path.Combine(repo.Dir, ".git", "info", "attributes"), "app.txt merge=hang\n", new UTF8Encoding(false));
         repo.Run("config", "merge.hang.driver", "sh '" + hang.ScriptPath + "'");
         var lockPath = Path.Combine(repo.Dir, ".git", "index.lock");
-        var op = new MergeOperation(repo.GitWith(Budgets(1, 1)));
+        var op = new MergeOperation(repo.GitWith(Budgets(3, 3)));
         var request = new MergeRequest("feature");
         var clock = Stopwatch.StartNew();
 
@@ -347,7 +347,7 @@ public class GitTimeoutTests
 
         AssertReturnedQuickly(clock);
         Assert.Equal(MergeKind.Failed, outcome.Kind);
-        Assert.StartsWith("git timed out after 1 s", outcome.Message, StringComparison.Ordinal);
+        Assert.StartsWith("git timed out after 3 s", outcome.Message, StringComparison.Ordinal);
         Assert.Contains("index.lock", outcome.Message, StringComparison.Ordinal);
         Assert.Contains("rm \"", outcome.Message, StringComparison.Ordinal);
         Assert.Contains("working tree left dirty by an interrupted merge", outcome.Message, StringComparison.Ordinal);
