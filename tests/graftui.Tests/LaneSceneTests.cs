@@ -539,5 +539,38 @@ public sealed class LaneSceneTests
         Assert.Equal(0, g.Height);
     }
 
+    // An unrelated branch whose hidden commits are in the window runs from its gap mark to its first dot, with no fork.
+    [Fact]
+    public void An_unrelated_lane_with_hidden_commits_runs_from_its_gap()
+    {
+        var graph = Graph(Chain("a3", "a2", "a1"), Chain(Ids(11, "r")), Br("lone", "r11"));
+        var p = LaneFit.Fit(graph, "lone", GhostKind.None, 86, 10);
+        var g = LaneScene.Render(p, Glyphs.Unicode);
+        var lone = graph.Lanes.Single(l => l.Name == "lone");
+        var y = p.YOf(lone.Index);
+        var gapX = p.XOf(lone.Gap);
+        var dotX = p.XOf(lone.Commits[0].Column);
+
+        Assert.True(lone.Hidden > 0);
+        Assert.Equal(-1, lone.Parent);
+        Assert.Equal('┈', g[gapX, y].Ch);
+        for (var x = gapX + 1; x < dotX; x++)
+            Assert.Equal('─', g[x, y].Ch);
+        Assert.Equal('●', g[dotX, y].Ch);
+    }
+
+    // The base with older history (BaseMore): its lead-in mark sits just left of its first dot, and the line runs to that dot.
+    [Fact]
+    public void The_base_lead_in_touches_its_first_dot()
+    {
+        var graph = LaneGraphBuilder.Build(new LaneGraphInput("main", Chain(Ids(12)), true, [Br("feature", "b1")], [C("b1", "z0")], false));
+        var p = LaneFit.Fit(graph, "feature", GhostKind.None, 80, 10);
+        var g = LaneScene.Render(p, Glyphs.Unicode);
+
+        Assert.True(graph.BaseMore);
+        Assert.Equal('┈', g[p.GraphX - 1, p.YOf(0)].Ch);
+        Assert.Equal('●', g[p.GraphX, p.YOf(0)].Ch);
+    }
+
     private static Ink InkAt(ArtGrid grid, int x, int y) => grid[x, y].Style.Ink;
 }
