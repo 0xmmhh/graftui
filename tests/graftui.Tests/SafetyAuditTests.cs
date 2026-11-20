@@ -190,6 +190,8 @@ public class SafetyAuditTests
         repo.Run("switch", "-q", "-c", "feature");
         File.WriteAllText(Path.Combine(repo.Dir, "sub", "s.txt"), "s2\n");
         var subGit = new GitClient(Path.Combine(repo.Dir, "sub"));
+        Assert.True(subGit.Run("config", "--local", "user.name", "t").Success);
+        Assert.True(subGit.Run("config", "--local", "user.email", "t@example.invalid").Success);
         Assert.True(subGit.Run("commit", "-q", "-a", "-m", "s2").Success);
         repo.Run("add", "sub");
         repo.Run("commit", "-q", "-m", "Bump sub");
