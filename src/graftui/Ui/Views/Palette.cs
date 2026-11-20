@@ -77,6 +77,9 @@ public static class Palette
     /// <summary>A key label in the key bar: dark text on a dim chip.</summary>
     public static Attribute KeyChip => new(Term, Dim);
 
+    /// <summary>The new look's key chip (the mock's): light text on the frame shade.</summary>
+    public static Attribute KeyChipFramed => new(Fg, Frame);
+
     public static Scheme RootScheme => new(new Attribute(Fg, Term));
 
     /// <summary>Background of the message box's fields: a shade darker than the terminal, so the typed text stands out.</summary>

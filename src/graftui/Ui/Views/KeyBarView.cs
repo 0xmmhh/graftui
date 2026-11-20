@@ -18,9 +18,16 @@ public enum KeyBarMode { Branches, Changes, Input, Ask, Message, Confirm, Todo }
 public sealed class KeyBarView : View
 {
     private static readonly Style Fg = new(Ink.Fg);
+    private static readonly Style Dim = new(Ink.Dim);
     private const string CancelLabel = " cancel";
 
     public bool Busy { get; set; }
+
+    /// <summary>
+    /// The new look (--new-ui): the chips sit on the frame shade with light text, the labels are dim, and the Branches bar lists r rebase.
+    /// Off: the chips and labels are the old ones.
+    /// </summary>
+    public bool NewLook { get; set; }
 
     public KeyBarMode Mode { get; set; } = KeyBarMode.Branches;
 
@@ -52,13 +59,14 @@ public sealed class KeyBarView : View
         if (w <= 0)
             return true;
 
-        var chip = Palette.KeyChip;
+        var chip = NewLook ? Palette.KeyChipFramed : Palette.KeyChip;
+        var label = NewLook ? Dim : Fg;
         var max = w - 1;
         var x = 1;
         if (Busy)
         {
             x += Chip(x, " Esc ", chip, max);
-            Paint.Text(this, x, 0, " quit (waits for git)", max - x, Fg);
+            Paint.Text(this, x, 0, " quit (waits for git)", max - x, label);
         }
         else
         {
@@ -69,7 +77,7 @@ public sealed class KeyBarView : View
                 if (i > 0)
                     x += Paint.Text(this, x, 0, new string(' ', separator), max - x, Fg);
                 x += Chip(x, $" {items[i].Key} ", chip, max);
-                x += Paint.Text(this, x, 0, items[i].Label, max - x, Fg);
+                x += Paint.Text(this, x, 0, items[i].Label, max - x, label);
             }
         }
 
@@ -77,21 +85,31 @@ public sealed class KeyBarView : View
     }
 
     /// <summary>The (key, label, priority) items for the current mode. Labels start with a space.</summary>
-    internal IReadOnlyList<(string Key, string Label, int Priority)> Items() => Mode switch
+    internal IReadOnlyList<(string Key, string Label, int Priority)> Items()
     {
-        KeyBarMode.Changes => ChangesItems(ChangesState),
-        KeyBarMode.Input => InputItems(BodyFocused),
-        KeyBarMode.Message => MessageItems(MessageEnterLabel),
-        KeyBarMode.Confirm => ConfirmItems(),
-        KeyBarMode.Todo => TodoItems(),
-        KeyBarMode.Ask =>
-        [
-            (AskKey, AskYesLabel, 4),
-            ("n", AskNoLabel, 4),
-            ("Esc", CancelLabel, 5),
-        ],
-        _ => BranchesItems(BranchesState),
-    };
+        switch (Mode)
+        {
+            case KeyBarMode.Changes:
+                return ChangesItems(ChangesState);
+            case KeyBarMode.Input:
+                return InputItems(BodyFocused);
+            case KeyBarMode.Message:
+                return MessageItems(MessageEnterLabel);
+            case KeyBarMode.Confirm:
+                return ConfirmItems();
+            case KeyBarMode.Todo:
+                return TodoItems();
+            case KeyBarMode.Ask:
+                return
+                [
+                    (AskKey, AskYesLabel, 4),
+                    ("n", AskNoLabel, 4),
+                    ("Esc", CancelLabel, 5),
+                ];
+            default:
+                return BranchesItems(BranchesState, NewLook);
+        }
+    }
 
     /// <summary>
     /// The Changes tab's main keys in the order they are listed: the rest (stage and unstage all, amend, discard,
@@ -169,11 +187,11 @@ public sealed class KeyBarView : View
         ];
 
     /// <summary>
-    /// The Branches tab's main keys in the order they are listed: the rest (new, rename, delete, rebase, interactive,
-    /// the arrows) still work and are listed in the ? popup. Priority decides what is dropped first when the bar is narrow
-    /// (higher is kept): Esc, Tab, ?, m, s, u.
+    /// The Branches tab's main keys in the order they are listed: the rest (new, rename, delete, interactive, the arrows) still work and
+    /// are listed in the ? popup. Priority decides what is dropped first when the bar is narrow (higher is kept): Esc, Tab, ?, m, s, u.
+    /// <paramref name="withRebase"/> (the new look) adds r rebase after s switch, with the lowest priority: it goes first on a narrow bar.
     /// </summary>
-    internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s)
+    internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s, bool withRebase = false)
     {
         if (s.Pause is not null)
             return PauseItems(s.Pause.Value);
@@ -183,6 +201,8 @@ public sealed class KeyBarView : View
             items.Add(("m", " merge", 9));
         if (s.CanSwitch)
             items.Add(("s", " switch", 8));
+        if (withRebase && s.CanRebase)
+            items.Add(("r", " rebase", 6));
         if (s.HasUndo)
             items.Add(("u", " undo", 7));
         items.Add(("?", " help", 10));

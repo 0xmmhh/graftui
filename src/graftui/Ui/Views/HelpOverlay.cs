@@ -47,7 +47,7 @@ public static class HelpOverlay
         return SharedLegend;
     }
 
-    /// <summary>The Branches tab's keys in browse mode. The bar shows only Tab, m, s, u and ?; the rest still work.</summary>
+    /// <summary>The Branches tab's keys in browse mode. The bar shows only Tab, m, s, u and ? (r only in the new look); the rest still work.</summary>
     internal static IReadOnlyList<HelpRow> BranchesRows() =>
     [
         new HelpRow("Tab", "switch tab"),

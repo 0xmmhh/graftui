@@ -158,6 +158,9 @@ public sealed class AppController
 
     internal ChangesView ChangesList { get; private set; } = null!;
 
+    /// <summary>The new look's tab row (row 1, "Branches │ Changes"). Null under the old look, which has no tab row.</summary>
+    internal TabRowView? Tabs { get; private set; }
+
     /// <summary>The message box's subject line and body. They are subviews of the art pane and are shown only while a message is being typed.</summary>
     internal TextField SubjectField { get; private set; } = null!;
     internal BodyTextView BodyField { get; private set; } = null!;
@@ -183,7 +186,15 @@ public sealed class AppController
     internal BranchAnimator BranchAnimator { get; }
     internal Animator Animator { get; }
 
-    internal ScreenLayout CurrentLayout() => ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _listWidth.Width);
+    /// <summary>
+    /// The layout of the screen now. The new look (--new-ui) and the old one are chosen once, here, by NewUi; no view asks again.
+    /// </summary>
+    internal ScreenLayout CurrentLayout()
+    {
+        if (NewUi)
+            return ScreenLayout.ComputeFramed(App.Screen.Width, App.Screen.Height);
+        return ScreenLayout.Compute(App.Screen.Width, App.Screen.Height, _listWidth.Width);
+    }
 
     /// <summary>True when the whole art, and so the message box's fields, fits inside the art pane at this size.</summary>
     internal bool ArtFits()
@@ -204,14 +215,14 @@ public sealed class AppController
         BranchList = new BranchesView
         {
             X = 0,
-            Y = 1,
+            Y = Pos.Func(_ => CurrentLayout().PanesY),
             Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().BranchWidth),
             Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
         };
         Art = new ArtPaneView
         {
             X = Pos.Func(_ => CurrentLayout().BranchWidth),
-            Y = 1,
+            Y = Pos.Func(_ => CurrentLayout().PanesY),
             Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().Cols - CurrentLayout().BranchWidth),
             Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
             DirectionRule = false,
@@ -228,11 +239,16 @@ public sealed class AppController
         ChangesList = new ChangesView
         {
             X = 0,
-            Y = 1,
+            Y = Pos.Func(_ => CurrentLayout().PanesY),
             Width = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().BranchWidth),
             Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : CurrentLayout().TopHeight),
             Visible = false,
         };
+        if (NewUi)
+        {
+            // The tab row is row 1 and is hidden with the panes when the screen is too small.
+            Tabs = new TabRowView { X = 0, Y = 1, Width = Dim.Fill(), Height = Dim.Func(_ => CurrentLayout().TooSmall ? 0 : 1) };
+        }
         BuildMessageBox();
         Keys = new KeyBarView { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1 };
         _tooSmall = new TooSmallView
@@ -258,7 +274,12 @@ public sealed class AppController
         BranchesTab.ShowInitialState();
         SyncBranchKeys();
 
-        window.Add(Status, BranchList, ChangesList, Art, Log, Keys, _tooSmall);
+        if (NewUi)
+            ApplyNewLook();
+        window.Add(Status);
+        if (Tabs is not null)
+            window.Add(Tabs);
+        window.Add(BranchList, ChangesList, Art, Log, Keys, _tooSmall);
 
         App.ScreenChanged += (_, _) =>
         {
@@ -272,6 +293,7 @@ public sealed class AppController
             Art.SetNeedsDraw();
             BranchList.SetNeedsDraw();
             Log.SetNeedsDraw();
+            Tabs?.SetNeedsDraw();
         };
         // The todo list hides its art by the pane's height. The viewport is current only after the layout, which runs after ScreenChanged.
         Art.ViewportChanged += (_, _) => BranchesTab.RefreshTodoArt();
@@ -283,6 +305,21 @@ public sealed class AppController
         BranchesTab.RequestPreview();
         ReloadCountsAsync(blankMarks: false);
         return window;
+    }
+
+    /// <summary>
+    /// The new look's frame, set once when the window is built (--new-ui only): square corners on the panes. The tab row now names the
+    /// tabs, so the list panes carry only their own name and lose the "Branches │ Changes" title.
+    /// </summary>
+    private void ApplyNewLook()
+    {
+        BranchList.SquareCorners = true;
+        ChangesList.SquareCorners = true;
+        Art.SquareCorners = true;
+        Log.SquareCorners = true;
+        BranchList.TitleSegs = null;
+        ChangesList.TitleSegs = null;
+        Keys.NewLook = true;
     }
 
     /// <summary>The subject line's row: the name box's row while the branch name is being typed, else the subject row of the art.</summary>
@@ -452,8 +489,8 @@ public sealed class AppController
     {
         var layout = CurrentLayout();
         if (Log.Open)
-            return 1 + layout.TopHeight + layout.LogHeight - layout.OpenLogHeight;
-        return 1 + layout.TopHeight;
+            return layout.LogY + layout.LogHeight - layout.OpenLogHeight;
+        return layout.LogY;
     }
 
     /// <summary>The Commands pane's height: one row for the strip, the list's height when it is open, nothing when the screen is too small.</summary>
@@ -728,6 +765,11 @@ public sealed class AppController
         var onChanges = ActiveTab == TabKind.Changes;
         BranchList.Visible = !onChanges;
         ChangesList.Visible = onChanges;
+        if (Tabs is not null)
+        {
+            Tabs.ChangesActive = onChanges;
+            Tabs.SetNeedsDraw();
+        }
         Keys.Mode = onChanges ? KeyBarMode.Changes : KeyBarMode.Branches;
         Keys.SetNeedsDraw();
         BranchList.SetNeedsDraw();
