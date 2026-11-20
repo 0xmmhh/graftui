@@ -29,10 +29,11 @@ public sealed class ArtPaneView : PaneView
     private static readonly Style FrameStyle = new(Ink.Frame);
 
     private Func<ArtGeometry, SceneFrame>? _scene;
+    private Func<int, int, PreviewSheet>? _sheet;
 
     /// <summary>
-    /// The scene drawn in the art. Setting it also clears <see cref="SingleLine"/>, so a scene set this way has the normal height.
-    /// Use <see cref="ShowScene"/> when a scene should have a height of its own.
+    /// The scene drawn in the art. Setting it also clears <see cref="SingleLine"/> and <see cref="Sheet"/>, so a scene set this way has
+    /// the normal height. Use <see cref="ShowScene"/> when a scene should have a height of its own.
     /// </summary>
     public Func<ArtGeometry, SceneFrame>? Scene
     {
@@ -40,10 +41,33 @@ public sealed class ArtPaneView : PaneView
         set
         {
             _scene = value;
+            _sheet = null;
             SingleLine = false;
             HideArt = false;
         }
     }
+
+    /// <summary>
+    /// The browse sheet, made for the pane's text width and inner rows, or null. While it is set, the pane draws its frame, its title
+    /// and the sheet only. <see cref="Scene"/> and <see cref="ShowScene"/> clear it.
+    /// </summary>
+    public Func<int, int, PreviewSheet>? Sheet => _sheet;
+
+    /// <summary>
+    /// Shows a browse sheet in the pane. It clears the scene, the caption, the commit list and the direction line first, so nothing
+    /// from an earlier screen is left over. The title is set by the caller.
+    /// </summary>
+    public void ShowSheet(Func<int, int, PreviewSheet> sheet)
+    {
+        Scene = null;
+        FallbackCaption = null;
+        Panel = null;
+        Below = null;
+        Direction = NoDirection;
+        _sheet = sheet;
+    }
+
+    private static IReadOnlyList<Seg> NoDirection(int cols) => [];
 
     /// <summary>
     /// True while the Branches preview of a straight graph is drawn in 5 rows instead of 9: the line stays on its row, and the caption,
@@ -58,6 +82,7 @@ public sealed class ArtPaneView : PaneView
     public void ShowScene(Func<ArtGeometry, SceneFrame>? scene, bool singleLine = false)
     {
         _scene = scene;
+        _sheet = null;
         SingleLine = singleLine;
         HideArt = false;
     }
@@ -218,6 +243,12 @@ public sealed class ArtPaneView : PaneView
         if (cw <= 0 || ih <= 0)
             return true;
 
+        if (_sheet is not null)
+        {
+            DrawSheet(_sheet(cw, ih), cw);
+            return true;
+        }
+
         DrawSegs(2, 1, Direction(cw), cw);
         if (DirectionRule)
             DrawRule(2, 2, cw);
@@ -278,6 +309,27 @@ public sealed class ArtPaneView : PaneView
                 DrawSegs(4, layout.BelowTop + k, lines[k], cw - 2);
         }
         return true;
+    }
+
+    // The sheet: its text lines at the text column, then its lane graph one column left of the text (its column 0 is the pad column).
+    private void DrawSheet(PreviewSheet sheet, int cw)
+    {
+        foreach (var line in sheet.Lines)
+            DrawSegs(2, 1 + line.Row, line.Segs, cw);
+
+        var grid = sheet.Graph;
+        var lastRow = Viewport.Height - 2;
+        for (var y = 0; y < grid.Height; y++)
+        {
+            var row = 1 + sheet.GraphRow + y;
+            if (row > lastRow)
+                break;
+            for (var x = 0; x < grid.Width; x++)
+            {
+                var cell = grid[x, y];
+                Paint.Put(this, 1 + x, row, cell.Ch, Palette.Get(cell.Style, cell.Bg));
+            }
+        }
     }
 
     private void DrawCentred(string text, int y, int cw, Style style)
