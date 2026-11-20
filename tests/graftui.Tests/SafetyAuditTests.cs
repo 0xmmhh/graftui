@@ -953,6 +953,25 @@ public class SafetyAuditTests
     }
 
     [Fact]
+    public void Skipping_is_refused_when_a_fold_follows_after_dropped_rows()
+    {
+        using var repo = FirstCommitConflicts();
+        var op = new RebaseOperation(repo.Git);
+        var rows = op.Check(new RebaseRequest("main")).Rows;
+        var plan = new List<RebaseRow> { rows[0], rows[1] with { Action = RebaseAction.Drop }, rows[2] with { Action = RebaseAction.Fixup } };
+        var check = op.Check(new RebaseRequest("main", plan));
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(new RebaseRequest("main", plan), check).Kind);
+        var resume = new ResumeSequenceOperation(repo.Git);
+
+        // The dropped row makes no commit, so skipping the stop would fold the fixup into main's tip.
+        var skipCheck = resume.Check(new ResumeRequest(ResumeAction.Skip));
+
+        Assert.False(skipCheck.CanRun);
+        Assert.Contains("folded into", skipCheck.Refusal);
+    }
+
+    [Fact]
     public void Skipping_a_pick_whose_next_row_is_also_a_pick_still_works()
     {
         using var repo = FirstCommitConflicts();

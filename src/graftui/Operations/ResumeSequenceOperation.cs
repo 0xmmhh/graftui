@@ -265,10 +265,16 @@ public sealed class ResumeSequenceOperation(GitClient git) : IGitOperation<Resum
             var action = stop.Rows[i].Action;
             if (action != RebaseAction.Pick && action != RebaseAction.Reword && action != RebaseAction.Edit)
                 return null;
-            var next = stop.Rows[i + 1].Action;
-            return next == RebaseAction.Squash || next == RebaseAction.Fixup
-                ? SequenceRefusals.SkipWouldFold(stop.ShortCommit)
-                : null;
+            // A dropped row makes no commit, so look past dropped rows for the next row that does something.
+            var j = i + 1;
+            while (j < stop.Rows.Count && stop.Rows[j].Action == RebaseAction.Drop)
+                j++;
+            if (j == stop.Rows.Count)
+                return null;
+            var next = stop.Rows[j].Action;
+            if (next == RebaseAction.Squash || next == RebaseAction.Fixup)
+                return SequenceRefusals.SkipWouldFold(stop.ShortCommit);
+            return null;
         }
         return null;
     }
