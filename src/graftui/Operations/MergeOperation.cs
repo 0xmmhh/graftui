@@ -133,6 +133,11 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
                     // A failed status is an unknown state, so it is not up to date (as in Inspect).
                     if (!mergeHead && state.Success && string.IsNullOrWhiteSpace(state.StdOut))
                         return Done(MergeKind.UpToDate, head, NoFiles, "already up to date" + suffix);
+                    // Roll back only a merge git left in progress. Without MERGE_HEAD the changes are not provably the merge's
+                    // (another process may have staged a file), so they are reported and left alone: a reset could discard them.
+                    if (!mergeHead)
+                        return Done(MergeKind.Failed, null, NoFiles,
+                            "the working tree changed during the merge; nothing was rolled back, check git status" + suffix);
                     var (leftover, _) = Rollback(Run, oldHead, true);
                     if (leftover is not null)
                         return Done(MergeKind.Failed, null, NoFiles, leftover + suffix);
