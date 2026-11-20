@@ -22,6 +22,9 @@ internal sealed partial class BranchesTab
 
     private readonly AppController _app;
 
+    // The new look (--new-ui). Off: the preview is main's, and no lane graph is read.
+    private readonly bool _newUi;
+
     // Keyed by the selected branch's name as well as its tip: branches that share a commit have different layouts.
     private readonly Dictionary<(string Current, string Head, string Name, string Tip), GraphLayout> _cache = new();
 
@@ -29,9 +32,10 @@ internal sealed partial class BranchesTab
     private CancellationTokenSource? _previewCts;
     private int _previewSeq;
 
-    internal BranchesTab(AppController app)
+    internal BranchesTab(AppController app, bool newUi)
     {
         _app = app;
+        _newUi = newUi;
         _selected = FirstNonCurrent(app.Snapshot);
     }
 
@@ -265,8 +269,9 @@ internal sealed partial class BranchesTab
             _app.Art.Title = "Preview";
             _app.Art.FallbackCaption = new Caption("no branches", Muted);
             _app.Art.Panel = null;
-            // A sheet from an earlier snapshot must not survive this one.
-            _app.Art.ShowScene(null);
+            // A sheet from an earlier snapshot must not survive this one (the new look only).
+            if (_newUi)
+                _app.Art.ShowScene(null);
         }
     }
 
@@ -300,7 +305,7 @@ internal sealed partial class BranchesTab
         _shown = layout;
         // The forecast is read after the preview loads (see RequestForecast): until then the panel and the caption are the plain ones.
         var forecast = CachedForecast(layout);
-        var graph = LaneGraphForSnapshot();
+        var graph = _newUi ? LaneGraphForSnapshot() : null;
         if (graph is not null)
             ShowBrowseSheet(layout, forecast, graph);
         else

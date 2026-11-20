@@ -42,6 +42,10 @@ internal sealed partial class BranchesTab
     /// </summary>
     internal void EnsureLaneGraph()
     {
+        // The new look is off: no graph is read, and no worker is started.
+        if (!_newUi)
+            return;
+
         var snap = _app.Snapshot;
         var key = LaneGraphKey(snap);
         if (key == _laneKey)

@@ -169,6 +169,27 @@ public sealed class PreviewSheetScreenTests : IDisposable
         Assert.NotNull(app.Art.Scene);
     }
 
+    // With the new look off (the default, as on main), no lane graph is read and the old preview is drawn.
+    [Fact]
+    public void With_the_new_look_off_no_lane_graph_is_read_and_the_old_preview_is_drawn()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot, newUi: false);
+        app.BranchesTab.SelectName("feature");
+        var layout = LayoutOf(repo, snapshot, "feature");
+
+        app.BranchesTab.DrawPreview(layout);
+        app.BranchesTab.EnsureLaneGraph();
+        LoadGraph(app, repo, snapshot);
+        app.BranchesTab.DrawPreview(layout);
+
+        Assert.Equal(0, app.BranchesTab.LaneGraphSeq);
+        Assert.Null(app.Art.Sheet);
+        Assert.NotNull(app.Art.Scene);
+        Assert.Equal("Preview", app.Art.Title);
+    }
+
     // Reads the lane graph the way the worker does, and hands it to the tab as the UI thread would receive it.
     private static void LoadGraph(AppController app, TempRepo repo, RepoSnapshot snapshot)
     {
@@ -186,9 +207,10 @@ public sealed class PreviewSheetScreenTests : IDisposable
     private static GraphLayout LayoutOf(TempRepo repo, RepoSnapshot snapshot, string name) =>
         new RepoReader(repo.Git).LoadLayout(snapshot, snapshot.Branches.Single(b => b.Name == name), CancellationToken.None);
 
-    private AppController OpenApp(TempRepo repo, RepoSnapshot snapshot)
+    // The new look is on unless a test says otherwise: these tests are about the sheet.
+    private AppController OpenApp(TempRepo repo, RepoSnapshot snapshot, bool newUi = true)
     {
-        var app = new AppController(_ui, repo.Git, repo.Git, snapshot, "repo");
+        var app = new AppController(_ui, repo.Git, repo.Git, snapshot, "repo", newUi);
         app.BuildWindow().Layout(_ui.Screen.Size);
         return app;
     }

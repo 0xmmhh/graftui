@@ -30,7 +30,8 @@ public sealed class AppController
     private TooSmallView _tooSmall = null!;
     private Window? _window;
 
-    public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay)
+    /// <param name="newUi">True when the new look is on (see <see cref="CliArgs.NewUiOn"/>). Off by default: the screen is main's.</param>
+    public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay, bool newUi = false)
     {
         App = app;
         Git = git;
@@ -55,7 +56,7 @@ public sealed class AppController
         Snapshot = initial;
         _listWidth = new BranchListWidth(BranchesView.WantedWidth(initial.Branches, initial.Counts));
         _repoDisplay = repoDisplay;
-        BranchesTab = new BranchesTab(this);
+        BranchesTab = new BranchesTab(this, newUi);
         ChangesTab = new ChangesTab(this);
         ChangesAnimator = new ChangesAnimator(this);
         BranchAnimator = new BranchAnimator(this);
