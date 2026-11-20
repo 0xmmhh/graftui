@@ -6,30 +6,16 @@ namespace graftui.Tests;
 /// <summary>
 /// The lane graph read from git. Only throwaway repos and the sandbox copy under the temp folder; never the graftui repo.
 /// </summary>
-public sealed class LaneGraphReaderTests : IDisposable
+public sealed class LaneGraphReaderTests : IClassFixture<ReadOnlySandbox>
 {
-    private readonly string _dir = TempRepo.NewSandboxDir();
     private readonly GitClient _git;
     private readonly RepoReader _reader;
 
-    public LaneGraphReaderTests()
+    public LaneGraphReaderTests(ReadOnlySandbox sandbox)
     {
-        try
-        {
-            Sandbox.RebuildAt(_dir, TextWriter.Null);
-        }
-        catch
-        {
-            // Dispose never runs when the constructor throws, so clean up the temp root here.
-            TempRepo.DeleteSandboxRoot(_dir);
-            throw;
-        }
-
-        _git = new GitClient(_dir);
-        _reader = new RepoReader(_git);
+        _git = sandbox.Git;
+        _reader = sandbox.Reader;
     }
-
-    public void Dispose() => TempRepo.DeleteSandboxRoot(_dir);
 
     [Fact]
     public void The_sandbox_graph()
