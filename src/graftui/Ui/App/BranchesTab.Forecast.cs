@@ -62,6 +62,7 @@ internal sealed partial class BranchesTab
         }
 
         _forecastRunning = true;
+        _forecastName = L.Selected;
         var forecaster = _app.Forecaster;
         var generation = _forecastGeneration;
 
@@ -86,6 +87,9 @@ internal sealed partial class BranchesTab
     {
         // The graph of the new snapshot is read even while a result or a question is on screen: git log is read-only and takes no lock.
         EnsureLaneGraph();
+
+        // The marks of the other branches are queued for the new snapshot (the new look only; a snapshot with the same tips keeps them).
+        EnsureListForecasts();
 
         Cancellation.CancelAndDispose(ref _previewCts);
         _previewSeq++;
@@ -129,20 +133,30 @@ internal sealed partial class BranchesTab
     internal void ForecastDone(GraphLayout L, MergeForecast f, int generation)
     {
         _forecastRunning = false;
+        _forecastName = null;
 
         // A result from before the last ClearCache is dropped: its snapshot is gone. The waiting layout still runs below.
         if (generation == _forecastGeneration)
         {
             _forecasts[ForecastKey(L)] = f;
 
+            // The branch's mark (the new look only). The selected branch's own result comes here too, from the preview.
+            if (_newUi)
+            {
+                _marks[L.Selected] = BranchMarks.Of(L, f);
+                _app.BranchList.SetNeedsDraw();
+            }
+
             var shown = _shown;
             if (shown is not null && ForecastKey(shown) == ForecastKey(L) && MayDrawPreview)
                 DrawPreview(shown);
         }
 
+        // The selected branch goes before the queue; the queue then fills the slot if nothing took it.
         var next = _forecastNext;
         _forecastNext = null;
         if (next is not null)
             RequestForecast(next);
+        PumpListForecasts();
     }
 }

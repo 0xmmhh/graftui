@@ -34,6 +34,7 @@ public sealed class AppController
     public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay, bool newUi = false)
     {
         App = app;
+        NewUi = newUi;
         Git = git;
         Reader = new RepoReader(git);
         RootGit = rootGit;
@@ -114,6 +115,10 @@ public sealed class AppController
     public void MarkQuitting() => Gate.MarkQuitting();
 
     internal IApplication App { get; }
+
+    /// <summary>True when the new look is on (--new-ui). Off: the screen is main's, and no new git read runs.</summary>
+    internal bool NewUi { get; }
+
     internal GitClient Git { get; }
     internal RepoReader Reader { get; }
     internal MergeOperation MergeOp { get; }
@@ -244,6 +249,9 @@ public sealed class AppController
         BranchList.Counts = Snapshot.Counts;
         BranchList.Selected = BranchesTab.Selected;
         BranchList.PausedBranch = SequenceStatus.PausedBranch(Snapshot);
+        // The new look's marks (--new-ui). Off: the list draws the star as before, and BranchesTab queues no forecast.
+        BranchList.NewLook = NewUi;
+        BranchList.Marks = BranchesTab.Marks;
         _tooSmall.Cols = App.Screen.Width;
         _tooSmall.Rows = App.Screen.Height;
         Art.ScreenCols = App.Screen.Width;

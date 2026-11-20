@@ -56,6 +56,10 @@ internal sealed partial class BranchesTab
         _forecasts.Clear();
         _forecastNext = null;
 
+        // The queue of marks is for the old snapshot: it is emptied, and EnsureListForecasts builds it again for the new one.
+        _listQueue.Clear();
+        _listKey = null;
+
         // The running forecast answers for the old snapshot: its reads stop now, and its result is dropped by the generation check.
         Cancellation.CancelAndDispose(ref _forecastCts);
         _forecastGeneration++;
@@ -197,6 +201,9 @@ internal sealed partial class BranchesTab
 
         // The lane graph is read alongside the layout; the sheet waits for both.
         EnsureLaneGraph();
+
+        // The marks of the other branches are queued too (the new look only; this covers the first preview, before any snapshot change).
+        EnsureListForecasts();
 
         // Any request still in flight is stale now, even when the answer is cached: its result must not overwrite this one.
         Cancellation.CancelAndDispose(ref _previewCts);
