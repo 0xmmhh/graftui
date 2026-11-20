@@ -15,6 +15,7 @@ An animated git TUI: merge, stage, commit, stash, switch and undo, and see the r
 </p>
 
 <p>
+  <a href="https://graftui.app"><b>Website</b></a> ·
   <a href="#install">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#usage">Usage</a> ·
