@@ -6,10 +6,12 @@ namespace graftui.Tests;
 /// <summary>What the screen reads from the sandbox: branch counts and preview layouts.</summary>
 public sealed class RepoReaderSandboxTests : IClassFixture<ReadOnlySandbox>
 {
+    private readonly GitClient _git;
     private readonly RepoReader _reader;
 
     public RepoReaderSandboxTests(ReadOnlySandbox sandbox)
     {
+        _git = sandbox.Git;
         _reader = sandbox.Reader;
     }
 
@@ -174,13 +176,21 @@ public sealed class RepoReaderSandboxTests : IClassFixture<ReadOnlySandbox>
     [Fact]
     public void A_branch_behind_main_forecasts_as_up_to_date()
     {
+        // The sandbox is shared by this class: the branch is deleted again so the other cases see the same branch list.
         _git.Run("branch", "old", "main~1");
-        var snap = _reader.LoadSnapshot(withCounts: true, CancellationToken.None);
-        var old = snap.Branches.Single(b => b.Name == "old");
+        try
+        {
+            var snap = _reader.LoadSnapshot(withCounts: true, CancellationToken.None);
+            var old = snap.Branches.Single(b => b.Name == "old");
 
-        var layout = _reader.LoadForecastLayout(snap, old, CancellationToken.None);
+            var layout = _reader.LoadForecastLayout(snap, old, CancellationToken.None);
 
-        Assert.Equal(GraphKind.UpToDate, layout.Kind);
+            Assert.Equal(GraphKind.UpToDate, layout.Kind);
+        }
+        finally
+        {
+            _git.Run("branch", "-D", "old");
+        }
     }
 
     [Fact]
