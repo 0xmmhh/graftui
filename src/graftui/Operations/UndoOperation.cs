@@ -607,6 +607,10 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
                 // move means the switch really failed.
                 if (CurrentRef(log) != BranchRef(other))
                     return ($"{GitClient.Describe(sw)}; nothing was undone", "");
+                // The hook may also have moved the branch HEAD is back on, and the guard checked it before the
+                // switch ran: its commits must still hold the created branch's, or removing the branch loses them.
+                if (!BranchGit.IsAncestor(git, log, s.Head!, BranchRef(other)))
+                    return ($"{BranchRefusals.UndoWouldLose(other, branch)}; the undo step is kept", "");
                 note = $" (git exited {sw.ExitCode} after switching: a post-checkout hook?)";
             }
             else if (CurrentRef(log) != BranchRef(other))
@@ -655,25 +659,54 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
             return ($"{branch} was made again, but not at {Short(tip)}; check git branch", "");
 
         // The config goes back only after the branch exists. A step saved before graftui kept the config has none.
-        if (s.BranchConfig is not null && !WriteBranchConfig(log, s.BranchConfig))
-            return ($"restored {branch}, but its upstream setting could not be written", "");
+        // A failed write rolls this attempt back (see UndoBranchRestore), so the step on top can be retried.
+        if (s.BranchConfig is not null)
+        {
+            var (problem, written) = WriteBranchConfig(log, s.BranchConfig);
+            if (problem is not null)
+                return (UndoBranchRestore(branch, tip, written, problem, log), "");
+        }
 
         return (null, $"↶ Restored {branch} at {Short(tip)}");
     }
 
     /// <summary>
-    /// Writes saved config entries back and checks they read the same. False when any write or the check fails.
+    /// A config write failed after the branch was made again, so this attempt is rolled back — the entries it wrote
+    /// are unset, then the branch goes again, deleted with the tip it was made at so an unrelated branch at that
+    /// name is never touched. The undo step stays on top, and the next u retries instead of being refused because
+    /// a branch of that name exists again. Whatever could not be rolled back is named.
     /// </summary>
-    private bool WriteBranchConfig(List<GitResult> log, IReadOnlyList<ConfigPair> pairs)
+    private string UndoBranchRestore(string branch, string tip, List<ConfigPair> written, string problem, List<GitResult> log)
     {
+        var message = $"could not write {branch}'s saved settings back ({problem})";
+        foreach (var pair in written)
+        {
+            if (!Call(log, "config", "--local", "--unset", pair.Key).Success)
+                message += $"; its setting {pair.Key} could not be removed: check git config --get-all {pair.Key}";
+        }
+        var again = Call(log, GitArgs.UpdateRef, "-d", BranchRef(branch), tip);
+        if (!again.Success || RevParse(log, BranchRef(branch)) != "")
+            return $"{message}; {branch} is still there, so u will keep refusing this step: check git branch";
+        return $"{message}; {branch} was removed again, so the undo can be retried";
+    }
+
+    /// <summary>
+    /// Writes saved config entries back and checks they read the same. Returns the problem (null when every write
+    /// and the check succeeded) and the entries it wrote, so a caller that reports the problem can roll them back.
+    /// </summary>
+    private (string? Problem, List<ConfigPair> Written) WriteBranchConfig(List<GitResult> log, IReadOnlyList<ConfigPair> pairs)
+    {
+        var written = new List<ConfigPair>();
         foreach (var pair in pairs)
         {
-            if (!Call(log, "config", "--local", "--add", pair.Key, pair.Value).Success)
-                return false;
+            var add = Call(log, "config", "--local", "--add", pair.Key, pair.Value);
+            if (!add.Success)
+                return (GitClient.Describe(add), written);
+            written.Add(pair);
         }
         var list = Call(log, "config", "--local", "--null", "--list");
         if (!list.Success)
-            return false;
+            return (GitClient.Describe(list), written);
         var back = new List<ConfigPair>();
         foreach (var record in list.StdOut.Split('\0', StringSplitOptions.RemoveEmptyEntries))
         {
@@ -684,9 +717,9 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         foreach (var pair in pairs)
         {
             if (!back.Contains(pair))
-                return false;
+                return ("the written settings did not read back as saved", written);
         }
-        return true;
+        return (null, written);
     }
 
     /// <summary>

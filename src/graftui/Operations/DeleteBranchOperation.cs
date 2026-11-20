@@ -103,11 +103,13 @@ public sealed class DeleteBranchOperation(GitClient git) : IGitOperation<DeleteB
         var saved = BranchConfig(config.StdOut, name);
 
         // 4. Delete. -D only with Force: it loses the commits no other branch holds. A -d that git refuses although
-        // the branch is merged into HEAD means the upstream is behind, so that refusal asks for Force.
+        // the branch is merged into HEAD is its upstream being behind — but only the repo state can say so: git
+        // refuses other deletions too (the branch is checked out in a linked worktree, a lock, permissions), and
+        // Force does not answer those, so git's own refusal is kept for them.
         var del = Call(git, log, "branch", request.Force ? "-D" : "-d", name);
         if (!del.Success)
         {
-            if (merged && !request.Force)
+            if (merged && !request.Force && AheadOfUpstream(check.Tip, name, log))
                 return Failed(name, check.Tip, BranchRefusals.NotMergedUpstream(name), log);
             return Failed(name, check.Tip, $"git refused to delete {name} ({FirstLine(del)}); nothing was deleted", log);
         }
@@ -135,8 +137,25 @@ public sealed class DeleteBranchOperation(GitClient git) : IGitOperation<DeleteB
         new(BranchChangeKind.Failed, name, null, tip, message, log);
 
     /// <summary>
+    /// True when the branch is merged into HEAD but its upstream lacks its commits: the one `git branch -d`
+    /// refusal that Force answers. The upstream name comes from the branch's own config; a branch with none (or
+    /// a git that cannot be asked) never gets the Force advice.
+    /// </summary>
+    private bool AheadOfUpstream(string tip, string name, List<GitResult> log)
+    {
+        var list = Call(git, log, "for-each-ref", "--format=%(upstream)", HeadsPrefix + name);
+        if (!list.Success)
+            return false;
+        var upstream = list.StdOut.Trim();
+        return upstream.Length > 0 && !IsAncestor(git, log, tip, upstream);
+    }
+
+    /// <summary>
     /// The branch's own config entries from `git config --null --list`: records are key\nvalue\0, split on the first
-    /// newline so a value may hold more lines. Only branch.&lt;name&gt;.* keys are kept, matched with an ordinal prefix.
+    /// newline so a value may hold more lines. A valueless entry (a bare `rebase` under [branch "x"]) is listed as
+    /// the key alone, and git reads it as true. A key belongs to the branch only when its subsection is exactly the
+    /// branch's name: git splits the variable at the LAST dot, so branch.feature.extra.remote is the branch
+    /// feature.extra (a branch name may hold . or +), not a variable of feature.
     /// </summary>
     private static List<ConfigPair> BranchConfig(string list, string name)
     {
@@ -145,12 +164,17 @@ public sealed class DeleteBranchOperation(GitClient git) : IGitOperation<DeleteB
         foreach (var record in list.Split('\0', StringSplitOptions.RemoveEmptyEntries))
         {
             var cut = record.IndexOf('\n');
-            if (cut < 0)
-                continue;
-            var key = record.Substring(0, cut);
+            var key = cut < 0 ? record : record.Substring(0, cut);
             if (!key.StartsWith(prefix, StringComparison.Ordinal))
                 continue;
-            pairs.Add(new ConfigPair(key, record.Substring(cut + 1)));
+            // The part after the branch's own name is the variable, which holds no dot: a dot means the
+            // subsection runs on (feature.extra, not feature).
+            var variable = key.Substring(prefix.Length);
+            if (variable.Length == 0 || variable.IndexOf('.') >= 0)
+                continue;
+            pairs.Add(cut < 0
+                ? new ConfigPair(key, "true")
+                : new ConfigPair(key, record.Substring(cut + 1)));
         }
         return pairs;
     }
