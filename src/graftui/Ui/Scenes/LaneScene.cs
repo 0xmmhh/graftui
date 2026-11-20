@@ -202,14 +202,19 @@ public static class LaneScene
     // Pass 4: the merges. The line from the merged lane runs to the merge commit, then turns up or down into it.
     private static void DrawMerges(ArtGrid grid, LanePlacement p, Glyphs glyphs)
     {
-        foreach (var link in p.Graph.Links)
+        // Coloured connectors claim shared cells before faint connectors, as in DrawLines.
+        for (var pass = 0; pass < 2; pass++)
         {
-            if (link.Kind != LinkKind.Merge || !p.IsKept(link.FromLane) || !p.IsKept(link.ToLane))
-                continue;
-            if (link.ToColumn < p.FirstColumn)
-                continue;
+            var on = pass == 0;
+            foreach (var link in p.Graph.Links)
+            {
+                if (link.Kind != LinkKind.Merge || !p.IsKept(link.FromLane) || !p.IsKept(link.ToLane))
+                    continue;
+                if (link.ToColumn < p.FirstColumn || p.IsOn(link.FromLane) != on)
+                    continue;
 
-            DrawMerge(grid, p, glyphs, link);
+                DrawMerge(grid, p, glyphs, link);
+            }
         }
     }
 
@@ -248,6 +253,9 @@ public static class LaneScene
             grid.Put(x, y, corner, style);
         else if (ch == glyphs.Line)
             grid.Put(x, y, tee, style);
+        else if ((ch == glyphs.MergeUp && corner == glyphs.MergeDown) ||
+                 (ch == glyphs.MergeDown && corner == glyphs.MergeUp))
+            grid.Put(x, y, glyphs.MergeMid, grid[x, y].Style);
     }
 
     // Pass 5: the dashed marks where history is left out: every lead-in point, and the gap of each lane with hidden commits.

@@ -401,6 +401,50 @@ public sealed class LaneSceneTests
         Assert.Equal('┴', g[p.XOf(merge.ToColumn), p.YOf(y.Index)].Ch);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Selected_octopus_merge_corner_keeps_its_colour(bool reverse)
+    {
+        var graph = Graph([C("m", "a2", "y1", "x1"), C("a2", "a1"), C("a1")],
+            [C("x1", "a1"), C("y1", "a1")], Br("x", "x1"), Br("y", "y1"));
+        if (reverse)
+            graph = graph with { Links = graph.Links.Reverse().ToArray() };
+        var p = LaneFit.Fit(graph, "x", GhostKind.None, 80, 20);
+        var lane = graph.LaneOf("x");
+        var merge = graph.Links.Single(l => l.Kind == LinkKind.Merge && l.FromLane == lane);
+        var grid = LaneScene.Render(p, Glyphs.Unicode);
+
+        Assert.Equal(('╯', BranchInks.Of(graph.Lanes[lane].ColorLane)),
+            (grid[p.XOf(merge.ToColumn), p.YOf(lane)].Ch, grid[p.XOf(merge.ToColumn), p.YOf(lane)].Style.Ink));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void Coincident_merges_keep_both_vertical_connections(bool reverse, bool basic)
+    {
+        var graph = Graph([C("m", "a2", "x1"), C("a2", "a1"), C("a1")],
+            [C("x1", "a1"), C("y1", "a1"), C("ym", "y1", "x1")], Br("x", "x1"), Br("y", "ym"));
+        if (reverse)
+            graph = graph with { Links = graph.Links.Reverse().ToArray() };
+        var lane = graph.LaneOf("x");
+        var merges = graph.Links.Where(l => l.Kind == LinkKind.Merge && l.FromLane == lane).ToArray();
+        Assert.Equal(2, merges.Length);
+        Assert.Equal(merges[0].ToColumn, merges[1].ToColumn);
+        var p = LaneFit.Fit(graph, "x", GhostKind.None, 80, 20);
+        var grid = LaneScene.Render(p, basic ? Glyphs.Basic : Glyphs.Unicode);
+        var x = p.XOf(merges[0].ToColumn);
+        var y = p.YOf(lane);
+
+        Assert.Equal('┤', grid[x, y].Ch);
+        Assert.Equal('│', grid[x, y - 1].Ch);
+        Assert.Equal('│', grid[x, y + 1].Ch);
+        Assert.Equal(BranchInks.Of(graph.Lanes[lane].ColorLane), grid[x, y].Style.Ink);
+    }
+
     [Fact]
     public void An_unrelated_lane_has_no_connector()
     {
