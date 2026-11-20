@@ -810,6 +810,64 @@ public class SafetyAuditTests
         Assert.Equal([odd], hidden);
     }
 
+    [Fact]
+    public void Stash_keeps_a_local_edit_flagged_as_both_skip_worktree_and_assume_unchanged()
+    {
+        using var repo = ConfigAndApp();
+        KeepLocalConfig(repo, "--assume-unchanged");
+        KeepLocalConfig(repo, "--skip-worktree");
+        repo.Write("app.txt", "edited\n");
+        // `git ls-files -v` marks a file that carries both flags with a lowercase 's', not 'h'.
+        Assert.StartsWith("s ", repo.Run("ls-files", "-v", "--", "config.json"));
+
+        Assert.Equal(StashKind.Stashed, Stash(repo.Git).Kind);
+
+        Assert.Equal("MY LOCAL CONFIG\n", Text(repo.Dir, "config.json"));
+        Assert.StartsWith("s ", repo.Run("ls-files", "-v", "--", "config.json"));
+    }
+
+    [Fact]
+    public void An_unchanged_flagged_link_does_not_block_a_stash()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        using var repo = ConfigAndApp();
+        var link = Path.Combine(repo.Dir, "link");
+        File.CreateSymbolicLink(link, "config.json");
+        repo.Run("add", "link");
+        repo.Run("commit", "-q", "-m", "Track a link");
+        repo.Run("update-index", "--assume-unchanged", "link");
+        repo.Write("app.txt", "edited\n");
+
+        Assert.Equal(StashKind.Stashed, Stash(repo.Git).Kind);
+    }
+
+    [Fact]
+    public void A_retargeted_flagged_link_refuses_the_stash_and_changes_nothing()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        using var repo = ConfigAndApp();
+        var link = Path.Combine(repo.Dir, "link");
+        File.CreateSymbolicLink(link, "config.json");
+        repo.Run("add", "link");
+        repo.Run("commit", "-q", "-m", "Track a link");
+        repo.Run("update-index", "--assume-unchanged", "link");
+        File.Delete(link);
+        File.CreateSymbolicLink(link, "app.txt");
+        repo.Write("app.txt", "edited\n");
+        var before = repo.Status();
+        var head = repo.Run("rev-parse", "HEAD");
+
+        var check = new StashOperation(repo.Git).Check(new StashRequest(null));
+
+        Assert.False(check.CanRun, "the stash ran although a flagged link was re-pointed");
+        Assert.Contains("link", check.Refusal);
+        Assert.Equal(before, repo.Status());
+        Assert.Equal(head, repo.Run("rev-parse", "HEAD"));
+        Assert.Equal("", repo.Run("stash", "list"));
+    }
+
     // ---- 10. an ignored local file in the way ----
 
     [Fact(Skip = "safety-audit: undo of a merge overwrites an ignored local file at a path the older commit tracks (reset --keep)")]

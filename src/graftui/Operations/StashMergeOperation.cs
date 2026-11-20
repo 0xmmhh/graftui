@@ -142,10 +142,28 @@ public sealed class StashMergeOperation(GitClient git) : IGitOperation<StashMerg
         var below = RevParse(log, StashRef);
         if (below is null)
             return Untouched("could not read the stash; nothing was stashed");
-        // The hidden-edit check from CheckCore, again before the stash push writes anything.
-        var hidden = HiddenEdits.Find(git, log);
+        // The hidden-edit check from CheckCore, again before the stash push writes anything. A scan that fails
+        // here goes through the same cleanup as a refusal: nothing has been stashed yet, so the copy is dropped
+        // when the tree is still as it was, and kept (and named) otherwise.
+        IReadOnlyList<string> hidden;
+        try
+        {
+            hidden = HiddenEdits.Find(git, log);
+        }
+        catch (Exception ex)
+        {
+            return Untouched(ex.Message + "; nothing was stashed");
+        }
         if (hidden.Count > 0)
             return Untouched(ChangeRefusals.HiddenEdit(hidden[0]) + "; nothing was stashed");
+        // The stash's own shape check from CheckCore, again before the push writes anything: the tree may have
+        // changed since the check into a shape its pop could not bring back (a path staged as deleted and untracked).
+        var stNow = Call(log, StatusArgs);
+        if (!stNow.Success)
+            return Untouched(GitClient.Describe(stNow) + "; nothing was stashed");
+        var refusalNow = StashOperation.Refusal(StatusParser.Parse(stNow.StdOut));
+        if (refusalNow is not null)
+            return Untouched(refusalNow + "; nothing was stashed");
 
         var push = Call(log, GitArgs.Stash, "push", "-u", "-m", $"{MessageStart}{branch} into {into}");
         var top = RevParse(log, StashRef);
