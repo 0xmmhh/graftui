@@ -5,7 +5,10 @@ namespace graftui.Ui.Text;
 /// branch colours (see <see cref="Model.BranchLanes"/>): a branch's ink is Lane0 + its lane. Lane0..Lane5 must stay last and in
 /// order: Palette maps them to the lane colours as a range.
 /// </summary>
-public enum Ink : byte { Fg, Dim, Cur, Inc, Mrg, Ok, Bad, Warn, Hash, Frame, Lane0, Lane1, Lane2, Lane3, Lane4, Lane5 }
+public enum Ink : byte { Fg, Dim, Cur, Inc, Mrg, Ok, Bad, Warn, Hash, Frame, Faint, Lane0, Lane1, Lane2, Lane3, Lane4, Lane5 }
+
+/// <summary>The background of one art cell. Sel is the selected row's colour, Chip the chip shade. None is the terminal's background.</summary>
+public enum CellBg : byte { None, Sel, Chip }
 
 public readonly record struct Style(Ink Ink, bool Bold = false);
 

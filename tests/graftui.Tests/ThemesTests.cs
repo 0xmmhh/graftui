@@ -49,6 +49,7 @@ public class ThemesTests
         Assert.Equal(new Color(0xff, 0x6b, 0x6b), d.Bad);
         Assert.Equal(new Color(0xf0, 0xa3, 0x5e), d.Warn);
         Assert.Equal(new Color(0xb3, 0x9b, 0x62), d.Hash);
+        Assert.Equal(new Color(0x3a, 0x45, 0x56), d.Faint);
     }
 
     [Fact]
@@ -68,7 +69,33 @@ public class ThemesTests
         Assert.Equal(Palette.Bad, d.Bad);
         Assert.Equal(Palette.Warn, d.Warn);
         Assert.Equal(Palette.Hash, d.Hash);
+        Assert.Equal(Palette.Faint, d.Faint);
         Assert.Equal(Palette.Chip, d.Chip);
+    }
+
+    [Theory]
+    [MemberData(nameof(EveryThemeName))]
+    public void Every_theme_has_a_faint_ink_that_differs_from_the_background_and_from_dim(string name)
+    {
+        Assert.True(Themes.TryGet(name, out var t));
+        Assert.NotEqual(t.Term, t.Faint);
+        Assert.NotEqual(t.Dim, t.Faint);
+    }
+
+    [Fact]
+    public void A_cell_background_is_the_terminal_the_selected_row_or_the_chip()
+    {
+        var style = new Style(Ink.Fg);
+
+        Assert.Equal(Palette.Term, Palette.Get(style, CellBg.None).Background);
+        Assert.Equal(Palette.SelRow, Palette.Get(style, CellBg.Sel).Background);
+        Assert.Equal(Palette.Chip, Palette.Get(style, CellBg.Chip).Background);
+    }
+
+    [Fact]
+    public void Faint_ink_is_drawn_in_the_faint_colour()
+    {
+        Assert.Equal(Palette.Faint, Palette.Get(new Style(Ink.Faint)).Foreground);
     }
 
     [Fact]
