@@ -583,8 +583,9 @@ public sealed class AppController
         if (Log.Open && CurrentLayout().TooSmall)
             CloseLog();
 
-        // The open Commands list is a peek over the top panes: Esc or l closes it. v switches its list (below). Any other key closes it
-        // and is then handled as usual.
+        // The open Commands list is a peek over the top panes: Esc or l closes it. v switches its list (below). The scroll keys
+        // (↑/↓ a line, PgUp/PgDn a page, Home the oldest, End the newest again) stay with the list, so they do not reach the branch
+        // list under it. Any other key closes the list and is then handled as usual.
         if (Log.Open)
         {
             // A question or a text field is open on a tab: the list closes and the key is spent, so a y or a typed letter is not taken
@@ -599,6 +600,11 @@ public sealed class AppController
             {
                 e.Handled = true;
                 CloseLog();
+                return;
+            }
+            if (Log.ScrollKey(e))
+            {
+                e.Handled = true;
                 return;
             }
             if (e != Key.V)

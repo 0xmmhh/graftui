@@ -90,13 +90,14 @@ public sealed class CommandsListScreenTests : IDisposable
     }
 
     [Fact]
-    public void A_key_that_is_not_v_l_or_esc_closes_the_list_and_then_acts()
+    public void A_key_that_is_not_v_l_esc_or_a_scroll_key_closes_the_list_and_then_acts()
     {
         using var repo = TempRepo.Diverged(false);
         var app = Open(repo);
         _ui.Keyboard.RaiseKeyDownEvent(Key.L);
 
-        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorDown);
+        // ← is not one of the list's keys (↑/↓ now scroll it), so it closes the list and is handled as usual.
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorLeft);
 
         Assert.False(app.Log.Open);
     }
@@ -157,6 +158,116 @@ public sealed class CommandsListScreenTests : IDisposable
         _ui.Keyboard.RaiseKeyDownEvent(Key.L);
 
         Assert.False(app.Log.Open);
+    }
+
+    [Fact]
+    public void The_scroll_keys_stay_with_the_open_list_instead_of_closing_it()
+    {
+        using var repo = TempRepo.Diverged(false);
+        var app = Open(repo);
+        for (var i = 0; i < 30; i++)
+            app.Log.Add(new LogLine(LogKind.Message, "line " + i, 0));
+        _ui.Keyboard.RaiseKeyDownEvent(Key.L);
+        // The test drives the layout of the window, as the other screen tests do; the app's run loop does it in the real program.
+        app.Art.SuperView!.Layout(_ui.Screen.Size);
+        Assert.True(app.Log.FollowsNewest);
+
+        var up = Key.CursorUp;
+        _ui.Keyboard.RaiseKeyDownEvent(up);
+
+        Assert.True(up.Handled);
+        Assert.True(app.Log.Open);
+        Assert.False(app.Log.FollowsNewest);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.End);
+
+        Assert.True(app.Log.Open);
+        Assert.True(app.Log.FollowsNewest);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorUp);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.PageUp);
+
+        Assert.True(app.Log.Open);
+        Assert.False(app.Log.FollowsNewest);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.Home);
+
+        Assert.True(app.Log.Open);
+        Assert.Equal(0, app.Log.ScrolledTop);
+    }
+
+    [Fact]
+    public void Closing_the_list_with_l_or_esc_follows_the_newest_lines_again()
+    {
+        using var repo = TempRepo.Diverged(false);
+        var app = Open(repo);
+        for (var i = 0; i < 30; i++)
+            app.Log.Add(new LogLine(LogKind.Message, "line " + i, 0));
+        _ui.Keyboard.RaiseKeyDownEvent(Key.L);
+        app.Art.SuperView!.Layout(_ui.Screen.Size);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.PageUp);
+        Assert.False(app.Log.FollowsNewest);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.Esc);
+
+        Assert.False(app.Log.Open);
+        Assert.True(app.Log.FollowsNewest);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.L);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorUp);
+        Assert.False(app.Log.FollowsNewest);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.L);
+
+        Assert.False(app.Log.Open);
+        Assert.True(app.Log.FollowsNewest);
+    }
+
+    [Fact]
+    public void A_command_arriving_while_the_list_is_scrolled_does_not_move_the_view()
+    {
+        using var repo = TempRepo.Diverged(false);
+        var app = Open(repo);
+        for (var i = 0; i < 30; i++)
+            app.Log.Add(new LogLine(LogKind.Message, "line " + i, 0));
+        _ui.Keyboard.RaiseKeyDownEvent(Key.L);
+        app.Art.SuperView!.Layout(_ui.Screen.Size);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorUp);
+        var top = app.Log.ScrolledTop;
+        Assert.False(app.Log.FollowsNewest);
+
+        app.Log.Add(new LogLine(LogKind.Message, "a new command", 0));
+
+        Assert.False(app.Log.FollowsNewest);
+        Assert.Equal(top, app.Log.ScrolledTop);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.End);
+        Assert.True(app.Log.FollowsNewest);
+    }
+
+    [Fact]
+    public void While_the_list_is_open_the_scroll_keys_do_not_reach_the_branch_list()
+    {
+        using var repo = TempRepo.Diverged(false);
+        var app = Open(repo);
+        for (var i = 0; i < 30; i++)
+            app.Log.Add(new LogLine(LogKind.Message, "line " + i, 0));
+        var selected = app.BranchesTab.SelectedName();
+        _ui.Keyboard.RaiseKeyDownEvent(Key.L);
+        app.Art.SuperView!.Layout(_ui.Screen.Size);
+
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorUp);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorDown);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.PageUp);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.PageDown);
+
+        Assert.True(app.Log.Open);
+        Assert.Equal(selected, app.BranchesTab.SelectedName());
+
+        // With the list closed the same keys go to the branch list again.
+        _ui.Keyboard.RaiseKeyDownEvent(Key.Esc);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.CursorDown);
+
+        Assert.NotEqual(selected, app.BranchesTab.SelectedName());
     }
 
     [Fact]
