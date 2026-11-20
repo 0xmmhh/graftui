@@ -679,9 +679,14 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     private string UndoBranchRestore(string branch, string tip, List<ConfigPair> written, string problem, List<GitResult> log)
     {
         var message = $"could not write {branch}'s saved settings back ({problem})";
+        // --unset-all: a key saved with more than one value (several merge lines) was added once per value.
+        var removed = new List<string>();
         foreach (var pair in written)
         {
-            if (!Call(log, "config", "--local", "--unset", pair.Key).Success)
+            if (removed.Contains(pair.Key))
+                continue;
+            removed.Add(pair.Key);
+            if (!Call(log, "config", "--local", "--unset-all", pair.Key).Success)
                 message += $"; its setting {pair.Key} could not be removed: check git config --get-all {pair.Key}";
         }
         var again = Call(log, GitArgs.UpdateRef, "-d", BranchRef(branch), tip);
