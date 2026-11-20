@@ -66,6 +66,117 @@ public sealed class PreviewSheetScreenTests : IDisposable
         Assert.Null(app.Art.Sheet);
     }
 
+    // 2. A loaded graph turns the preview into the sheet: the sheet is drawn, the scene is gone, and the title is the sheet's.
+    [Fact]
+    public void A_loaded_graph_turns_the_preview_into_the_sheet()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        app.BranchesTab.SelectName("feature");
+        app.BranchesTab.DrawPreview(LayoutOf(repo, snapshot, "feature"));
+
+        LoadGraph(app, repo, snapshot);
+
+        Assert.NotNull(app.Art.Sheet);
+        Assert.Null(app.Art.Scene);
+        Assert.Equal("If you press m: feature → main", app.Art.Title);
+    }
+
+    // 3. A graph read that is no longer the newest is dropped: the old preview stays.
+    [Fact]
+    public void A_stale_graph_is_dropped()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        app.BranchesTab.SelectName("feature");
+        app.BranchesTab.DrawPreview(LayoutOf(repo, snapshot, "feature"));
+        app.BranchesTab.EnsureLaneGraph();
+        var graph = new RepoReader(repo.Git).LoadLaneGraph(snapshot, CancellationToken.None);
+
+        app.BranchesTab.LaneGraphLoaded(app.BranchesTab.LaneGraphSeq - 1, BranchesTab.LaneGraphKey(snapshot), graph);
+
+        Assert.Null(app.Art.Sheet);
+        Assert.NotNull(app.Art.Scene);
+    }
+
+    // 4. A failed read keeps the old preview, and the same snapshot is not read again.
+    [Fact]
+    public void A_failed_read_keeps_the_old_preview_and_is_not_retried()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        app.BranchesTab.SelectName("feature");
+        app.BranchesTab.DrawPreview(LayoutOf(repo, snapshot, "feature"));
+        app.BranchesTab.EnsureLaneGraph();
+        var seq = app.BranchesTab.LaneGraphSeq;
+
+        app.BranchesTab.LaneGraphLoaded(seq, BranchesTab.LaneGraphKey(snapshot), null);
+        app.BranchesTab.RequestPreview();
+
+        Assert.Equal(seq, app.BranchesTab.LaneGraphSeq);
+        Assert.Null(app.Art.Sheet);
+    }
+
+    // 5. A new snapshot (a commit on main here) reads the graph again.
+    [Fact]
+    public void A_new_snapshot_reads_the_graph_again()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        app.BranchesTab.EnsureLaneGraph();
+        var before = app.BranchesTab.LaneGraphSeq;
+
+        repo.Commit("d.txt", "d\n", "Add d on main");
+        app.ApplySnapshot(ReadSnapshot(repo));
+
+        Assert.Equal(before + 1, app.BranchesTab.LaneGraphSeq);
+    }
+
+    // 7. The current branch's preview is the "main is checked out" sheet.
+    [Fact]
+    public void Selecting_the_current_branch_shows_main_is_checked_out()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        app.BranchesTab.SelectName("main");
+        LoadGraph(app, repo, snapshot);
+
+        app.BranchesTab.DrawPreview(LayoutOf(repo, snapshot, "main"));
+
+        Assert.NotNull(app.Art.Sheet);
+        Assert.Equal("main is checked out", app.Art.Title);
+    }
+
+    // 8. A result screen is not replaced by a graph that arrives late.
+    [Fact]
+    public void A_result_screen_is_not_replaced_by_a_late_graph()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        app.BranchesTab.SelectName("feature");
+        app.BranchesTab.DrawPreview(LayoutOf(repo, snapshot, "feature"));
+        app.Result = "feature";
+
+        LoadGraph(app, repo, snapshot);
+
+        Assert.Null(app.Art.Sheet);
+        Assert.NotNull(app.Art.Scene);
+    }
+
+    // Reads the lane graph the way the worker does, and hands it to the tab as the UI thread would receive it.
+    private static void LoadGraph(AppController app, TempRepo repo, RepoSnapshot snapshot)
+    {
+        app.BranchesTab.EnsureLaneGraph();
+        var graph = new RepoReader(repo.Git).LoadLaneGraph(snapshot, CancellationToken.None);
+        app.BranchesTab.LaneGraphLoaded(app.BranchesTab.LaneGraphSeq, BranchesTab.LaneGraphKey(snapshot), graph);
+    }
+
     // The sheet function used by the tests that only check where the sheet is.
     private static PreviewSheet EmptySheet(int cw, int rows) =>
         new(new List<SheetLine>(), new ArtGrid(cw + 1, 0), PreviewSheets.HeadRows);
