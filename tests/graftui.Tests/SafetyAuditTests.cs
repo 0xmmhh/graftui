@@ -311,7 +311,7 @@ public class SafetyAuditTests
 
     // ---- 5. commit signing ----
 
-    [Fact(Skip = "safety-audit: a rebase whose commit cannot be signed stops mid-rebase and graftui refuses continue, skip and abort")]
+    [Fact]
     public void A_rebase_whose_commits_cannot_be_signed_can_be_aborted()
     {
         using var repo = SequenceRepos.Feature4();
@@ -851,7 +851,7 @@ public class SafetyAuditTests
 
     // ---- 12. interactive-rebase and cherry-pick stops ----
 
-    [Fact(Skip = "safety-audit: skipping a conflicted commit whose next row is a fixup folds the fixup into the base branch's commit")]
+    [Fact]
     public void Skipping_a_commit_does_not_fold_its_fixup_into_the_base_branchs_commit()
     {
         using var repo = FirstCommitConflicts();
@@ -874,7 +874,7 @@ public class SafetyAuditTests
         Assert.True(stillRebasing || onMain, "feature is no longer on top of main: main's tip commit was rewritten into it");
     }
 
-    [Fact(Skip = "safety-audit: Continue while another tracked file has unstaged edits is refused by git, and the pause comes back with no reason")]
+    [Fact]
     public void A_continue_that_git_refuses_says_why()
     {
         using var repo = SequenceRepos.FeatureConflict();
@@ -885,15 +885,18 @@ public class SafetyAuditTests
         var resume = new ResumeSequenceOperation(repo.Git);
 
         var check = resume.Check(new ResumeRequest(ResumeAction.Continue));
-        var said = check.Refusal;
+        var said = check.Refusal ?? "";
         if (check.CanRun)
             said = resume.Run(new ResumeRequest(ResumeAction.Continue), check).Message;
 
-        // git says "cannot rebase: You have unstaged changes"; graftui shows "rebase paused at <hash>" with an empty file list.
-        Assert.Contains("unstaged", said);
+        // git refuses the continue (wording varies with the git version: "You must edit all merge conflicts…" on 2.56,
+        // "You have unstaged changes" on others); the pause now repeats git's own reason instead of the bare hash.
+        Assert.StartsWith("rebase paused at ", said);
+        var parts = said.Split(';', 2);
+        Assert.True(parts.Length == 2 && parts[1].Trim().Length > 0, $"the pause says nothing about why: {said}");
     }
 
-    [Fact(Skip = "safety-audit: a cherry-pick whose commit cannot be signed is shown as a pause with no files and no reason")]
+    [Fact]
     public void A_cherry_pick_whose_commit_cannot_be_signed_says_why()
     {
         using var repo = SequenceRepos.Picks();
@@ -908,6 +911,63 @@ public class SafetyAuditTests
 
         // Either the pick is aborted and reported as failed, or the pause says that signing failed.
         Assert.Contains("gpg", outcome.Message);
+    }
+
+    [Fact]
+    public void A_real_cherry_pick_conflict_is_still_reported_as_a_cherry_pick()
+    {
+        using var repo = SequenceRepos.PickConflict();
+        var picks = repo.Run("rev-list", "--reverse", "main..feature").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var op = new CherryPickOperation(repo.Git);
+        var check = op.Check(new CherryPickRequest(picks));
+        Assert.True(check.CanRun, check.Refusal);
+
+        var outcome = op.Run(new CherryPickRequest(picks), check);
+
+        // The pause holds CHERRY_PICK_HEAD and no rebase state, so it stays a cherry-pick whichever check reads first.
+        Assert.Equal(SequenceOutcomeKind.Paused, outcome.Kind);
+        Assert.StartsWith("cherry-pick paused at", outcome.Message);
+        var gitDir = Path.Combine(repo.Dir, ".git");
+        Assert.Equal("cherry-pick", RepoState.InProgress(args => repo.Git.Run(args), gitDir));
+    }
+
+    [Fact]
+    public void Skipping_a_stopped_fixup_row_still_works()
+    {
+        using var repo = SequenceRepos.FeatureConflict();
+        var op = new RebaseOperation(repo.Git);
+        var rows = op.Check(new RebaseRequest("main")).Rows;
+        var plan = new List<RebaseRow> { rows[0], rows[1], rows[2] with { Action = RebaseAction.Fixup }, rows[3] };
+        var check = op.Check(new RebaseRequest("main", plan));
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(new RebaseRequest("main", plan), check).Kind);
+        var resume = new ResumeSequenceOperation(repo.Git);
+
+        // The stop is the fixup row itself (its commit changes app.txt, which conflicts): the skip drops it, nothing folds.
+        var skipCheck = resume.Check(new ResumeRequest(ResumeAction.Skip));
+        Assert.True(skipCheck.CanRun, skipCheck.Refusal);
+        var skipped = resume.Run(new ResumeRequest(ResumeAction.Skip), skipCheck);
+
+        Assert.Equal(SequenceOutcomeKind.Done, skipped.Kind);
+        Assert.DoesNotContain("Add password check", repo.Run("log", "--format=%s", "main..HEAD"));
+    }
+
+    [Fact]
+    public void Skipping_a_pick_whose_next_row_is_also_a_pick_still_works()
+    {
+        using var repo = FirstCommitConflicts();
+        var op = new RebaseOperation(repo.Git);
+        var check = op.Check(new RebaseRequest("main"));
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(new RebaseRequest("main"), check).Kind);
+        var resume = new ResumeSequenceOperation(repo.Git);
+
+        var skipCheck = resume.Check(new ResumeRequest(ResumeAction.Skip));
+        Assert.True(skipCheck.CanRun, skipCheck.Refusal);
+        var skipped = resume.Run(new ResumeRequest(ResumeAction.Skip), skipCheck);
+
+        // "Add extra" and "Add last" apply cleanly once the conflicting first commit is gone.
+        Assert.Equal(SequenceOutcomeKind.Done, skipped.Kind);
     }
 
     // ---- 13. a branch's config ----
