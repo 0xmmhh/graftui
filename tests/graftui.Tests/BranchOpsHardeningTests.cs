@@ -220,4 +220,22 @@ public sealed class BranchOpsHardeningTests
         Assert.True(check.CanRun, check.Refusal);
         return op.Run(new UndoRequest(check.StepRef), check);
     }
+
+    [Fact]
+    public void Undo_of_a_deletion_does_not_double_settings_that_survived_the_delete()
+    {
+        using var repo = TempRepo.FastForwardable();
+        repo.Run("merge", "-q", "feature");
+        repo.Run("config", "branch.feature.remote", "origin");
+        var op = new DeleteBranchOperation(repo.Git);
+        var check = op.Check(new DeleteBranchRequest("feature"));
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Equal(BranchChangeKind.Done, op.Run(new DeleteBranchRequest("feature", check.Tip), check).Kind);
+        // As if .git/config had been locked during the delete: the setting is still there.
+        repo.Run("config", "branch.feature.remote", "origin");
+
+        Assert.Equal(UndoOutcomeKind.Undone, Undo(repo.Git).Kind);
+
+        Assert.Equal("origin", repo.Run("config", "--get-all", "branch.feature.remote").Trim());
+    }
 }

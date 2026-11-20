@@ -702,6 +702,18 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     private (string? Problem, List<ConfigPair> Written) WriteBranchConfig(List<GitResult> log, IReadOnlyList<ConfigPair> pairs)
     {
         var written = new List<ConfigPair>();
+        // git branch -d can delete a branch but leave its settings when .git/config was locked. Values that survived
+        // would be doubled by --add, so each saved key is cleared first (exit 5 means it was not there, which is fine).
+        var cleared = new List<string>();
+        foreach (var pair in pairs)
+        {
+            if (cleared.Contains(pair.Key))
+                continue;
+            cleared.Add(pair.Key);
+            var unset = Call(log, "config", "--local", "--unset-all", pair.Key);
+            if (!unset.Success && unset.ExitCode != 5)
+                return (GitClient.Describe(unset), written);
+        }
         foreach (var pair in pairs)
         {
             var add = Call(log, "config", "--local", "--add", pair.Key, pair.Value);
