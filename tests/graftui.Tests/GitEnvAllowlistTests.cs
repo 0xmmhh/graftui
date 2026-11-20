@@ -37,7 +37,6 @@ public sealed class GitEnvAllowlistTests : IDisposable
     [InlineData("SSH_AGENT_PID")]
     [InlineData("GPG_AGENT_INFO")]
     [InlineData("GNUPGHOME")]
-    [InlineData("GPG_TTY")]
     [InlineData("DISPLAY")]
     [InlineData("WAYLAND_DISPLAY")]
     [InlineData("GIT_CONFIG_GLOBAL")]
@@ -74,6 +73,7 @@ public sealed class GitEnvAllowlistTests : IDisposable
     [InlineData("GIT_CONFIG_VALUE_0")]
     [InlineData("GIT_CONFIG_PARAMETERS")]
     [InlineData("GIT_CONFIG_FOO")]
+    [InlineData("GPG_TTY")]
     [InlineData("GIT_CEILING_DIRECTORIES")]
     [InlineData("GIT_DISCOVERY_ACROSS_FILESYSTEM")]
     public void Dangerous_names_do_not_pass_the_allowlist(string name)
@@ -132,7 +132,6 @@ public sealed class GitEnvAllowlistTests : IDisposable
         var env = result.StdOut.Split('\n');
 
         Assert.Contains("SSH_AUTH_SOCK=/tmp/graftui-test-agent.sock", env);
-        Assert.Contains("GPG_TTY=/dev/graftui-test-tty", env);
         Assert.Contains("XDG_GRAFTUI_TEST=xdg-test-value", env);
 
         // The tests' hermetic config still reaches git.
@@ -156,7 +155,7 @@ public sealed class GitEnvAllowlistTests : IDisposable
             "GIT_ASKPASS=", "SSH_ASKPASS=",
             "EDITOR=", "VISUAL=",
             "GIT_CONFIG_COUNT=", "GIT_CONFIG_KEY_0=", "GIT_CONFIG_VALUE_0=",
-            "LC_ALL=",
+            "LC_ALL=", "GPG_TTY=",
         };
         foreach (var prefix in dropped)
             Assert.DoesNotContain(env, line => line.StartsWith(prefix, StringComparison.Ordinal));

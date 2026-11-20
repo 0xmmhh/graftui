@@ -74,7 +74,8 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
 
     // Parent environment entries a git child inherits. Everything else is dropped: GIT_DIR, GIT_WORK_TREE,
     // GIT_INDEX_FILE, GIT_ASKPASS, SSH_ASKPASS, EDITOR, VISUAL, GIT_CONFIG_COUNT/KEY_n/VALUE_n and
-    // GIT_CONFIG_PARAMETERS must never reach git. GIT_CONFIG_GLOBAL and GIT_CONFIG_NOSYSTEM pass through, so the
+    // GIT_CONFIG_PARAMETERS must never reach git. GPG_TTY is left out on purpose: it would let a pinentry draw on the
+    // TUI's own terminal (signing should use a GUI pinentry or fail, never take over the screen). GIT_CONFIG_GLOBAL and GIT_CONFIG_NOSYSTEM pass through, so the
     // tests' hermetic config (and the user's own global config choice) still applies. The locale (LANG and every LC_*)
     // passes too, so hooks and signing helpers keep the user's character set; UseEnglishMessages then changes only the
     // message language. The caller's env is applied after this, so RunWithIndex (GIT_INDEX_FILE) and
@@ -82,7 +83,7 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     private static readonly HashSet<string> AllowedEnvNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "HOME", "PATH", "USER", "LOGNAME", "SHELL", "TMPDIR", "TERM",
-        "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GPG_AGENT_INFO", "GNUPGHOME", "GPG_TTY",
+        "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GPG_AGENT_INFO", "GNUPGHOME",
         "DISPLAY", "WAYLAND_DISPLAY",
         "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
         "LANG",
