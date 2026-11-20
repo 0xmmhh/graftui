@@ -65,6 +65,14 @@ internal static class UndoJson
             return null;
         if (!EntriesAreComplete(step.IndexBefore) || !EntriesAreComplete(step.IndexAfter))
             return null;
+        if (step.BranchConfig is not null)
+        {
+            foreach (var pair in step.BranchConfig)
+            {
+                if (pair is null || pair.Key is null || pair.Value is null)
+                    return null;
+            }
+        }
         return step;
     }
 

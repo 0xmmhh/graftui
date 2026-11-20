@@ -597,12 +597,23 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         var branch = s.Branch!;
         var other = s.OtherBranch!;
         var wasOn = CurrentRef(log) == BranchRef(branch);
+        var note = "";
         if (wasOn)
         {
             var sw = Call(log, GitArgs.Switch, "--no-guess", other);
             if (!sw.Success)
-                return ($"{GitClient.Describe(sw)}; nothing was undone", "");
-            if (CurrentRef(log) != BranchRef(other))
+            {
+                // A failing post-checkout hook exits non-zero after the switch happened: only a HEAD that did not
+                // move means the switch really failed.
+                if (CurrentRef(log) != BranchRef(other))
+                    return ($"{GitClient.Describe(sw)}; nothing was undone", "");
+                // The hook may also have moved the branch HEAD is back on, and the guard checked it before the
+                // switch ran: its commits must still hold the created branch's, or removing the branch loses them.
+                if (!BranchGit.IsAncestor(git, log, s.Head!, BranchRef(other)))
+                    return ($"{BranchRefusals.UndoWouldLose(other, branch)}; the undo step is kept", "");
+                note = $" (git exited {sw.ExitCode} after switching: a post-checkout hook?)";
+            }
+            else if (CurrentRef(log) != BranchRef(other))
                 return ($"HEAD is not on {other} after the switch; check git status", "");
         }
 
@@ -616,7 +627,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (RevParse(log, BranchRef(branch)) != "")
             return ($"{branch} is still there after the undo; check git branch", "");
 
-        return (null, wasOn ? $"↶ Removed {branch} and switched back to {other}" : $"↶ Removed {branch}");
+        return (null, wasOn ? $"↶ Removed {branch} and switched back to {other}{note}" : $"↶ Removed {branch}");
     }
 
     /// <summary>Rename: the branch goes back to its old name. HEAD follows it when it was on it.</summary>
@@ -636,7 +647,7 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         return (null, $"↶ Renamed {now} back to {old}");
     }
 
-    /// <summary>Delete: the branch is made again at the commit it had.</summary>
+    /// <summary>Delete: the branch is made again at the commit it had, then its own config (the upstream) goes back.</summary>
     private (string? Problem, string Caption) RestoreBranch(UndoRecord s, List<GitResult> log)
     {
         var branch = s.Branch!;
@@ -647,7 +658,85 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
         if (RevParse(log, BranchRef(branch)) != tip)
             return ($"{branch} was made again, but not at {Short(tip)}; check git branch", "");
 
+        // The config goes back only after the branch exists. A step saved before graftui kept the config has none.
+        // A failed write rolls this attempt back (see UndoBranchRestore), so the step on top can be retried.
+        if (s.BranchConfig is not null)
+        {
+            var (problem, written) = WriteBranchConfig(log, s.BranchConfig);
+            if (problem is not null)
+                return (UndoBranchRestore(branch, tip, written, problem, log), "");
+        }
+
         return (null, $"↶ Restored {branch} at {Short(tip)}");
+    }
+
+    /// <summary>
+    /// A config write failed after the branch was made again, so this attempt is rolled back — the entries it wrote
+    /// are unset, then the branch goes again, deleted with the tip it was made at so an unrelated branch at that
+    /// name is never touched. The undo step stays on top, and the next u retries instead of being refused because
+    /// a branch of that name exists again. Whatever could not be rolled back is named.
+    /// </summary>
+    private string UndoBranchRestore(string branch, string tip, List<ConfigPair> written, string problem, List<GitResult> log)
+    {
+        var message = $"could not write {branch}'s saved settings back ({problem})";
+        // --unset-all: a key saved with more than one value (several merge lines) was added once per value.
+        var removed = new List<string>();
+        foreach (var pair in written)
+        {
+            if (removed.Contains(pair.Key))
+                continue;
+            removed.Add(pair.Key);
+            if (!Call(log, "config", "--local", "--unset-all", pair.Key).Success)
+                message += $"; its setting {pair.Key} could not be removed: check git config --get-all {pair.Key}";
+        }
+        var again = Call(log, GitArgs.UpdateRef, "-d", BranchRef(branch), tip);
+        if (!again.Success || RevParse(log, BranchRef(branch)) != "")
+            return $"{message}; {branch} is still there, so u will keep refusing this step: check git branch";
+        return $"{message}; {branch} was removed again, so the undo can be retried";
+    }
+
+    /// <summary>
+    /// Writes saved config entries back and checks they read the same. Returns the problem (null when every write
+    /// and the check succeeded) and the entries it wrote, so a caller that reports the problem can roll them back.
+    /// </summary>
+    private (string? Problem, List<ConfigPair> Written) WriteBranchConfig(List<GitResult> log, IReadOnlyList<ConfigPair> pairs)
+    {
+        var written = new List<ConfigPair>();
+        // git branch -d can delete a branch but leave its settings when .git/config was locked. Values that survived
+        // would be doubled by --add, so each saved key is cleared first (exit 5 means it was not there, which is fine).
+        var cleared = new List<string>();
+        foreach (var pair in pairs)
+        {
+            if (cleared.Contains(pair.Key))
+                continue;
+            cleared.Add(pair.Key);
+            var unset = Call(log, "config", "--local", "--unset-all", pair.Key);
+            if (!unset.Success && unset.ExitCode != 5)
+                return (GitClient.Describe(unset), written);
+        }
+        foreach (var pair in pairs)
+        {
+            var add = Call(log, "config", "--local", "--add", pair.Key, pair.Value);
+            if (!add.Success)
+                return (GitClient.Describe(add), written);
+            written.Add(pair);
+        }
+        var list = Call(log, "config", "--local", "--null", "--list");
+        if (!list.Success)
+            return (GitClient.Describe(list), written);
+        var back = new List<ConfigPair>();
+        foreach (var record in list.StdOut.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var cut = record.IndexOf('\n');
+            if (cut >= 0)
+                back.Add(new ConfigPair(record.Substring(0, cut), record.Substring(cut + 1)));
+        }
+        foreach (var pair in pairs)
+        {
+            if (!back.Contains(pair))
+                return ("the written settings did not read back as saved", written);
+        }
+        return (null, written);
     }
 
     /// <summary>

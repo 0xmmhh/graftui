@@ -37,6 +37,10 @@ public static class BranchRefusals
 
     public static string NotMergedNow(string name) => $"{name} has commits that the current branch doesn't have; nothing was deleted";
 
+    /// <summary>The branch is merged into HEAD, but its upstream is behind: -d refuses, Force (-D) is needed.</summary>
+    public static string NotMergedUpstream(string name) =>
+        $"{name} is merged into the current branch but ahead of its upstream: delete with Force to lose those commits";
+
     public static string TipMoved(string name) => $"{name} moved since you pressed the key; nothing changed";
 
     public static string UndoBranchGone(string name) => $"{name} no longer exists, so there is nothing to undo";

@@ -108,7 +108,14 @@ public sealed class SwitchOperation(GitClient git) : IGitOperation<SwitchRequest
             return Done(SwitchKind.Switched, check, $"switched to {target}", [], log, after.ChangedPaths);
         }
 
-        // 3. git refused or failed. Nothing may have moved.
+        // 3. git refused or failed. The switch may still have happened: a failing post-checkout hook exits non-zero
+        // after HEAD moved. Only a HEAD that did not move means git really refused.
+        if (SymbolicHead(git, log) == HeadsPrefix + target && RefOrEmpty(git, log, "HEAD") == check.TargetTip)
+        {
+            var after = StatusParser.Parse(Call(git, log, StatusArgs).StdOut);
+            return Done(SwitchKind.Switched, check,
+                $"switched to {target} (git exited {sw.ExitCode} after switching: a post-checkout hook?)", [], log, after.ChangedPaths);
+        }
         if (SymbolicHead(git, log) != fromRef || RefOrEmpty(git, log, "HEAD") != check.Head)
             return Done(SwitchKind.Failed, check, "git switch failed part-way; check git status", [], log);
 
