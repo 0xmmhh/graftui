@@ -49,6 +49,10 @@ public sealed class GitEnvAllowlistTests : IDisposable
     [InlineData("TMP")]
     [InlineData("USERNAME")]
     [InlineData("USERPROFILE")]
+    [InlineData("LANG")]
+    [InlineData("LC_ALL")]
+    [InlineData("LC_CTYPE")]
+    [InlineData("LC_TIME")]
     public void Allowed_names_pass_the_allowlist(string name)
     {
         Assert.True(GitClient.IsEnvAllowed(name));
@@ -69,8 +73,6 @@ public sealed class GitEnvAllowlistTests : IDisposable
     [InlineData("GIT_CONFIG_VALUE_0")]
     [InlineData("GIT_CONFIG_PARAMETERS")]
     [InlineData("GIT_CONFIG_FOO")]
-    [InlineData("LC_ALL")]
-    [InlineData("LANG")]
     [InlineData("GIT_CEILING_DIRECTORIES")]
     [InlineData("GIT_DISCOVERY_ACROSS_FILESYSTEM")]
     public void Dangerous_names_do_not_pass_the_allowlist(string name)
@@ -151,6 +153,27 @@ public sealed class GitEnvAllowlistTests : IDisposable
         };
         foreach (var prefix in dropped)
             Assert.DoesNotContain(env, line => line.StartsWith(prefix, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_users_locale_reaches_git_with_english_messages()
+    {
+        SetEnv("LANG", "pl_PL.UTF-8");
+        SetEnv("LC_CTYPE", "pl_PL.UTF-8");
+        SetEnv("LC_ALL", "");
+
+        using var repo = TempRepo.Create();
+        var result = repo.Git.Run("-c", "alias.showenv=!env", "showenv");
+
+        Assert.True(result.Success, result.StdErr);
+        var env = result.StdOut.Split('\n');
+        // The character set stays the user's, so hooks and signing helpers read and write UTF-8.
+        Assert.Contains("LANG=pl_PL.UTF-8", env);
+        Assert.Contains("LC_CTYPE=pl_PL.UTF-8", env);
+        // Only the message language is English.
+        Assert.Contains("LC_MESSAGES=C", env);
+        Assert.Contains("LANGUAGE=C", env);
+        Assert.DoesNotContain(env, line => line.StartsWith("LC_ALL=", StringComparison.Ordinal));
     }
 
     [Fact]
