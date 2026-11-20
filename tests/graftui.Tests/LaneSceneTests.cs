@@ -572,5 +572,38 @@ public sealed class LaneSceneTests
         Assert.Equal('●', g[p.GraphX, p.YOf(0)].Ch);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Hidden_unrelated_history_has_one_gap_and_a_continuous_line_in_both_glyph_sets(bool basic, bool selected)
+    {
+        var graph = Graph(Chain("a3", "a2", "a1"), Chain(Ids(11, "r")), Br("lone", "r11"));
+        var p = LaneFit.Fit(graph, selected ? "lone" : "main", GhostKind.None, 86, 10);
+        var grid = LaneScene.Render(p, basic ? Glyphs.Basic : Glyphs.Unicode);
+        var lane = graph.Lanes.Single(l => l.Name == "lone");
+        var y = p.YOf(lane.Index);
+        var gapX = p.XOf(lane.Gap);
+        var dotX = p.XOf(lane.Commits[0].Column);
+        var ink = selected ? BranchInks.Of(lane.ColorLane) : Ink.Faint;
+
+        Assert.True(lane.Hidden > 0);
+        Assert.Equal(-1, lane.Parent);
+        Assert.True(dotX > gapX + 1);
+        Assert.Equal(basic ? '.' : '┈', grid[gapX, y].Ch);
+        Assert.Equal(1, Enumerable.Range(p.GraphX, grid.Width - p.GraphX)
+            .Count(x => grid[x, y].Ch == (basic ? '.' : '┈')));
+        for (var x = gapX + 1; x < dotX; x++)
+        {
+            Assert.Equal('─', grid[x, y].Ch);
+            Assert.Equal(ink, grid[x, y].Style.Ink);
+        }
+        Assert.Equal(basic ? '*' : '●', grid[dotX, y].Ch);
+        Assert.Equal(ink, grid[dotX, y].Style.Ink);
+        Assert.False(RowHas(grid, y, '├'));
+        Assert.False(RowHas(grid, y, '╰'));
+    }
+
     private static Ink InkAt(ArtGrid grid, int x, int y) => grid[x, y].Style.Ink;
 }

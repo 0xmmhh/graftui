@@ -283,4 +283,62 @@ public sealed class PreviewTextTests
         Assert.True(PreviewText.IsCurrent(Diverged() with { Selected = "main" }));
         Assert.False(PreviewText.IsCurrent(Diverged() with { Selected = "main", Detached = true }));
     }
+    [Theory]
+    [InlineData(GraphKind.Same, "= same commit as main · nothing to merge")]
+    [InlineData(GraphKind.Unrelated, "✕ no common history · git refuses to merge unrelated histories")]
+    public void Layout_facts_take_precedence_over_pending_or_conflicting_forecasts(GraphKind kind, string expected)
+    {
+        var layout = Diverged() with { Kind = kind };
+
+        foreach (var forecast in new MergeForecast?[] { null, F(ForecastKind.Clean), Conflicted("app.txt") })
+        {
+            Assert.Equal(expected, Text(PreviewText.Forecast(layout, forecast, false)));
+            Assert.Equal(GhostKind.None, PreviewText.Ghost(layout, forecast));
+        }
+    }
+
+    [Fact]
+    public void Detached_head_takes_precedence_even_when_branch_names_match()
+    {
+        var layout = Diverged() with { Selected = "main", Detached = true, Kind = GraphKind.Same };
+
+        Assert.False(PreviewText.IsCurrent(layout));
+        Assert.Equal("HEAD is detached", PreviewText.Title(layout));
+        Assert.Equal("! HEAD is detached · switch to a branch first, then m merges into it",
+            Text(PreviewText.Forecast(layout, null, false)));
+        Assert.Empty(PreviewText.Command(layout));
+        Assert.Equal(GhostKind.None, PreviewText.Ghost(layout, F(ForecastKind.Conflict)));
+    }
+
+    [Theory]
+    [InlineData(0, "0 commits")]
+    [InlineData(2, "2 commits")]
+    public void Fast_forward_uses_the_layout_count(int ahead, string count)
+    {
+        var layout = Diverged() with { Ahead = ahead };
+
+        Assert.Equal("⇢ fast-forwards · " + count + ", no merge commit",
+            Text(PreviewText.Forecast(layout, F(ForecastKind.FastForward), true)));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Refusal_without_a_note_is_a_single_error_segment(bool clean)
+    {
+        var seg = Assert.Single(PreviewText.Forecast(Diverged(), F(ForecastKind.Refused), clean));
+
+        Assert.Equal("✕ can't merge", seg.Text);
+        Assert.Equal(Ink.Bad, seg.Style.Ink);
+    }
+
+    [Fact]
+    public void Conflict_lists_the_first_file_and_counts_the_others()
+    {
+        var segs = PreviewText.Forecast(Diverged(), Conflicted("first.txt", "second.txt", "third.txt"), true);
+
+        Assert.Equal("✕ would conflict in first.txt +2 more · the merge would be aborted, main unchanged", Text(segs));
+        Assert.Equal(Ink.Bad, segs[0].Style.Ink);
+    }
+
 }

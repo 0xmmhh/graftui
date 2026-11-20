@@ -305,4 +305,90 @@ public sealed class PreviewSheetTests
         Assert.Equal("✕ would conflict in app.txt · the merge would be aborted, main unchanged", string.Concat(sheet.Lines[0].Segs.Select(s => s.Text)));
         Assert.Contains(rows, row => row.StartsWith(" main") && row.EndsWith("✕ no commit"));
     }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void Incoming_respects_exact_row_boundaries(int rows)
+    {
+        var layout = MergeCommit() with
+        {
+            Ahead = 3,
+            SelectedNew = [Layouts.C("aaaaaaa000", subject: "newest"),
+                Layouts.C("bbbbbbb000", subject: "middle"), Layouts.C("ccccccc000", subject: "oldest")],
+        };
+
+        var lines = PreviewSheets.Incoming(layout, 7, rows);
+        var expected = rows switch
+        {
+            0 => Array.Empty<string>(),
+            1 => new[] { PreviewText.IncomingTitle },
+            2 => new[] { PreviewText.IncomingTitle, "+3 more" },
+            3 => new[] { PreviewText.IncomingTitle, "aaaaaaa  newest", "+2 more" },
+            _ => new[] { PreviewText.IncomingTitle, "aaaaaaa  newest", "bbbbbbb  middle", "ccccccc  oldest" },
+        };
+
+        Assert.Equal(expected, lines.Select(line => string.Concat(line.Segs.Select(seg => seg.Text))));
+        Assert.Equal(Enumerable.Range(7, rows), lines.Select(line => line.Row));
+    }
+
+    [Fact]
+    public void Incoming_keeps_all_loaded_commits_when_ahead_is_smaller()
+    {
+        var layout = MergeCommit() with
+        {
+            Ahead = 0,
+            SelectedNew = [Layouts.C("aaaaaaa000", subject: "newest"), Layouts.C("bbbbbbb000", subject: "oldest")],
+        };
+
+        var lines = PreviewSheets.Incoming(layout, 0, 10);
+
+        Assert.Equal(3, lines.Count);
+        Assert.Equal("bbbbbbb  oldest", string.Concat(lines[2].Segs.Select(seg => seg.Text)));
+    }
+
+    [Fact]
+    public void Incoming_truncates_long_hashes_and_preserves_subject_and_styles()
+    {
+        var layout = MergeCommit() with { SelectedNew = [new CommitInfo("abcdef012345", "abcdef012", 1, "修正 subject")] };
+
+        var line = PreviewSheets.Incoming(layout, 4, 2)[1];
+
+        Assert.Equal(5, line.Row);
+        Assert.Collection(line.Segs,
+            seg => { Assert.Equal("abcdef0", seg.Text); Assert.Equal(Ink.Hash, seg.Style.Ink); },
+            seg => { Assert.Equal("  ", seg.Text); Assert.Equal(Ink.Fg, seg.Style.Ink); },
+            seg => { Assert.Equal("修正 subject", seg.Text); Assert.Equal(Ink.Fg, seg.Style.Ink); });
+    }
+
+    [Fact]
+    public void Unavailable_forecast_keeps_command_on_row_one()
+    {
+        var sheet = Build(Input(MergeCommit(), new MergeForecast(ForecastKind.Unavailable, [], null, [])), 86, 3);
+
+        var line = Assert.Single(sheet.Lines);
+        Assert.Equal(1, line.Row);
+        Assert.Equal("$ git merge feature/merge-commit", string.Concat(line.Segs.Select(seg => seg.Text)));
+        Assert.Equal(0, sheet.Graph.Height);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(0, 1)]
+    [InlineData(0, 20)]
+    [InlineData(1, 2)]
+    [InlineData(10, 4)]
+    [InlineData(86, 1)]
+    [InlineData(86, 2)]
+    public void Tiny_sheets_keep_every_line_and_graph_within_the_row_budget(int width, int rows)
+    {
+        var sheet = Build(Input(MergeCommit(), Clean()), width, rows);
+
+        Assert.All(sheet.Lines, line => Assert.InRange(line.Row, 0, rows - 1));
+        Assert.True(sheet.Graph.Height == 0 || sheet.GraphRow + sheet.Graph.Height <= rows);
+        Assert.Equal(Math.Min(rows, 2), sheet.Lines.Count(line => line.Row < PreviewSheets.HeadRows));
+    }
+
 }
