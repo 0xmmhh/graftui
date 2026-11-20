@@ -243,6 +243,27 @@ public sealed class BranchMarksScreenTests : IDisposable
         Assert.Empty(app.BranchesTab.ListQueueNames);
     }
 
+    // 13. Starting an operation blanks every row at once. A check that ends with no write (EndWork) gives the marks back at once, since the
+    // snapshot is the same. The operation itself is not run: StartWork and EndWork are what every change calls first and last.
+    [Fact]
+    public void Starting_an_operation_blanks_every_row_and_ending_a_check_gives_the_marks_back()
+    {
+        var snapshot = ReadSnapshot();
+        var app = OpenApp(snapshot, newUi: true);
+        foreach (var name in OtherNames)
+            MarkBranch(app, snapshot, name);
+
+        app.BranchesTab.StartWork();
+
+        Assert.Empty(app.BranchesTab.Marks);
+        foreach (var name in OtherNames)
+            Assert.Equal("·", BranchMarks.Cell(name, false, false, new Style(Ink.Fg), app.BranchesTab.Marks, Glyphs.Unicode).Text);
+
+        app.BranchesTab.EndWork();
+
+        Assert.Equal(OtherNames.Length, app.BranchesTab.Marks.Count);
+    }
+
     private static readonly string[] OtherNames =
     [
         "feature/conflict",

@@ -341,6 +341,8 @@ internal sealed partial class ChangesTab
         _app.Busy = true;
         _app.Keys.Busy = true;
         _app.Keys.SetNeedsDraw();
+        // A commit, stash or other change may move the branch tips: the marks are blanked until the snapshot is read again.
+        _app.BranchesTab.MarksStale();
         _flash = null;
         _result = null;
         // Any read still in flight is stale now: its answer must not overwrite what the change shows.
@@ -356,6 +358,8 @@ internal sealed partial class ChangesTab
         _app.Keys.Busy = false;
         _app.Keys.SetNeedsDraw();
         _app.Art.SetNeedsDraw();
+        // Ends a check that changed nothing (a form opens, or a refusal): the marks come back. After a write the reload applies them.
+        _app.BranchesTab.EnsureListForecasts();
     }
 
     private void Flash(string text, Style style)

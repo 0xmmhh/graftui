@@ -34,8 +34,11 @@ internal sealed partial class BranchesTab
         public CommandHints? Hints { get; init; }
     }
 
-    /// <summary>Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now.</summary>
-    private void StartWork()
+    /// <summary>
+    /// Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now, and the branch marks are blanked
+    /// (a change may move the tips; a check that changes nothing gets them back in EndWork).
+    /// </summary>
+    internal void StartWork()
     {
         _app.ReleaseBranchWidth();
         _app.Busy = true;
@@ -43,14 +46,19 @@ internal sealed partial class BranchesTab
         _app.Keys.Busy = true;
         _app.Keys.SetNeedsDraw();
         _app.SnapshotSeq++;
+        MarksStale();
     }
 
-    /// <summary>Clears busy without drawing a result (a check that asked a question, or that failed before anything started).</summary>
-    private void EndWork()
+    /// <summary>
+    /// Clears busy without drawing a result (a check that asked a question, or that failed before anything started). The branch marks come
+    /// back here when the snapshot on screen is still the one they belong to: after a write, the new snapshot applies them instead.
+    /// </summary>
+    internal void EndWork()
     {
         _app.Busy = false;
         _app.Keys.Busy = false;
         _app.Keys.SetNeedsDraw();
+        EnsureListForecasts();
     }
 
     /// <summary>
