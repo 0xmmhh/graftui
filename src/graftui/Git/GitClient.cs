@@ -72,6 +72,47 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
         return result with { Command = $"GIT_INDEX_FILE={rel} " + result.Command };
     }
 
+    // Parent environment entries a git child inherits. Everything else is dropped: GIT_DIR, GIT_WORK_TREE,
+    // GIT_INDEX_FILE, GIT_ASKPASS, SSH_ASKPASS, EDITOR, VISUAL, GIT_CONFIG_COUNT/KEY_n/VALUE_n and
+    // GIT_CONFIG_PARAMETERS must never reach git. GIT_CONFIG_GLOBAL and GIT_CONFIG_NOSYSTEM pass through, so the
+    // tests' hermetic config (and the user's own global config choice) still applies. The caller's env is applied
+    // after this, so RunWithIndex (GIT_INDEX_FILE) and GIT_SEQUENCE_EDITOR keep working.
+    private static readonly HashSet<string> AllowedEnvNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "HOME", "PATH", "USER", "LOGNAME", "SHELL", "TMPDIR", "TERM",
+        "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GPG_AGENT_INFO", "GNUPGHOME",
+        "DISPLAY", "WAYLAND_DISPLAY",
+        "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
+        // Windows counterparts of the above: home, temp, identity, and what every child process needs to start.
+        "SYSTEMROOT", "SYSTEMDRIVE", "TEMP", "TMP", "PATHEXT",
+        "COMPUTERNAME", "USERNAME", "USERDOMAIN",
+        "HOMEDRIVE", "HOMEPATH", "USERPROFILE",
+        "APPDATA", "LOCALAPPDATA", "PROGRAMDATA",
+    };
+
+    /// <summary>
+    /// True when a parent environment entry passes through to a git child: one of the allowed names, or an XDG_* variable.
+    /// </summary>
+    internal static bool IsEnvAllowed(string name)
+    {
+        if (name.StartsWith("XDG_", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return AllowedEnvNames.Contains(name);
+    }
+
+    /// <summary>Rebuilds the child's environment from the allowlisted entries of the parent. Null values are dropped.</summary>
+    private static void ApplyEnvAllowlist(IDictionary<string, string?> child, IReadOnlyDictionary<string, string?> parent)
+    {
+        child.Clear();
+        foreach (var pair in parent)
+        {
+            if (pair.Value is null)
+                continue;
+            if (IsEnvAllowed(pair.Key))
+                child[pair.Key] = pair.Value;
+        }
+    }
+
     private static readonly IReadOnlyDictionary<string, string> LiteralPathspecs =
         new Dictionary<string, string> { ["GIT_LITERAL_PATHSPECS"] = "1" };
 
@@ -94,10 +135,15 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
         foreach (var arg in args)
             psi.ArgumentList.Add(arg);
 
-        // Don't let an inherited environment redirect git to a different repo.
-        psi.Environment.Remove("GIT_DIR");
-        psi.Environment.Remove("GIT_WORK_TREE");
-        psi.Environment.Remove("GIT_INDEX_FILE");
+        // git starts with a pristine environment: only the allowlisted parent entries pass through, so an inherited
+        // GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_ASKPASS, SSH_ASKPASS, EDITOR, VISUAL, GIT_CONFIG_COUNT and
+        // friends can never redirect git to another repo or stall the TUI waiting for input.
+        var parent = new Dictionary<string, string?>(psi.Environment, StringComparer.Ordinal);
+        ApplyEnvAllowlist(psi.Environment, parent);
+
+        // The message language still comes from the parent's LC_ALL, as before; LC_ALL itself never passes through.
+        if (parent.TryGetValue("LC_ALL", out var all) && !string.IsNullOrEmpty(all))
+            psi.Environment["LC_ALL"] = all;
 
         // Keep git from opening an editor or pager and blocking the TUI.
         psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
