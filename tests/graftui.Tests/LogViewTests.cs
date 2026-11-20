@@ -373,6 +373,23 @@ public class LogViewTests
         Assert.Equal(conflict, LogView.StripLine([Merge(failed: true), Abort(), conflict], 0));
     }
 
+    [Fact]
+    public void The_dock_shows_the_newest_lines_past_an_anchored_entry()
+    {
+        // A conflict: a 4-line entry (the merge) anchored, then 2 newer lines (the abort, the conflicting files). The dock at height 5 has 3 rows.
+        var entryOfLine = new[] { 0, 0, 0, 0, 1, 1 };
+
+        Assert.Equal(3, LogView.ListTop(entryOfLine, Ones(6), rows: 3, anchorEntry: 0, useAnchor: false));
+    }
+
+    [Fact]
+    public void The_open_list_starts_at_the_anchored_entry()
+    {
+        var entryOfLine = new[] { 0, 0, 0, 0, 1, 1 };
+
+        Assert.Equal(0, LogView.ListTop(entryOfLine, Ones(6), rows: 3, anchorEntry: 0, useAnchor: true));
+    }
+
     [Theory]
     [InlineData(1, false)]
     [InlineData(2, false)]

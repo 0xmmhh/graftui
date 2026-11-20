@@ -85,21 +85,31 @@ public sealed class KeyBarView : View
     }
 
     /// <summary>The (key, label, priority) items for the current mode. Labels start with a space.</summary>
-    internal IReadOnlyList<(string Key, string Label, int Priority)> Items() => Mode switch
+    internal IReadOnlyList<(string Key, string Label, int Priority)> Items()
     {
-        KeyBarMode.Changes => ChangesItems(ChangesState),
-        KeyBarMode.Input => InputItems(BodyFocused),
-        KeyBarMode.Message => MessageItems(MessageEnterLabel),
-        KeyBarMode.Confirm => ConfirmItems(),
-        KeyBarMode.Todo => TodoItems(),
-        KeyBarMode.Ask =>
-        [
-            (AskKey, AskYesLabel, 4),
-            ("n", AskNoLabel, 4),
-            ("Esc", CancelLabel, 5),
-        ],
-        _ => BranchesItems(BranchesState, NewLook),
-    };
+        switch (Mode)
+        {
+            case KeyBarMode.Changes:
+                return ChangesItems(ChangesState);
+            case KeyBarMode.Input:
+                return InputItems(BodyFocused);
+            case KeyBarMode.Message:
+                return MessageItems(MessageEnterLabel);
+            case KeyBarMode.Confirm:
+                return ConfirmItems();
+            case KeyBarMode.Todo:
+                return TodoItems();
+            case KeyBarMode.Ask:
+                return
+                [
+                    (AskKey, AskYesLabel, 4),
+                    ("n", AskNoLabel, 4),
+                    ("Esc", CancelLabel, 5),
+                ];
+            default:
+                return BranchesItems(BranchesState, NewLook);
+        }
+    }
 
     /// <summary>
     /// The Changes tab's main keys in the order they are listed: the rest (stage and unstage all, amend, discard,

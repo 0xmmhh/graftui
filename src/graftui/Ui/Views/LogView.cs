@@ -124,17 +124,11 @@ public sealed class LogView : PaneView
     /// </summary>
     internal static IReadOnlyList<Seg>? Footer(bool open, bool dock, bool exact)
     {
-        if (open)
-        {
-            var hint = exact ? " simplified" : " all commands";
-            return [new Seg(" ", Fg), new Seg("l", FgB), new Seg(" close · ", Dim), new Seg("v", FgB), new Seg(hint, Dim), new Seg(" ", Fg)];
-        }
-        if (dock)
-        {
-            var hint = exact ? " simplified" : " all commands";
-            return [new Seg(" ", Fg), new Seg("l", FgB), new Seg(" full list · ", Dim), new Seg("v", FgB), new Seg(hint, Dim), new Seg(" ", Fg)];
-        }
-        return null;
+        if (!open && !dock)
+            return null;
+        var words = open ? " close · " : " full list · ";
+        var hint = exact ? " simplified" : " all commands";
+        return [new Seg(" ", Fg), new Seg("l", FgB), new Seg(words, Dim), new Seg("v", FgB), new Seg(hint, Dim), new Seg(" ", Fg)];
     }
 
     protected override bool OnDrawingContent(DrawContext? context)
@@ -143,8 +137,11 @@ public sealed class LogView : PaneView
         // The closed dock is drawn as the open list is, at its own height. The footer is set here, so it always matches the look drawn.
         var dock = !Open && IsDock(Viewport.Height);
         FooterSegs = Footer(Open, dock, ShowExact);
-        if (Open || dock)
-            DrawOpenList();
+        // The open list starts at the anchor (the entry a merge or a step set); the dock always shows the newest lines, as the strip does.
+        if (Open)
+            DrawOpenList(useAnchor: true);
+        else if (dock)
+            DrawOpenList(useAnchor: false);
         else
             DrawStrip();
         return true;
@@ -301,8 +298,11 @@ public sealed class LogView : PaneView
         DrawSegs(1, 0, [new Seg(text, textStyle), new Seg(tail, tailStyle)], maxCols);
     }
 
-    /// <summary>The open list: the framed pane over the bottom rows of the top panes, with the anchor and the wrapping of the list.</summary>
-    private void DrawOpenList()
+    /// <summary>
+    /// The framed list: the open list over the bottom rows of the top panes, or the dock. With <paramref name="useAnchor"/> it starts at the
+    /// anchor; the dock passes false, so a conflict's abort and conflicting files stay in view. Wraps the lines as the list does.
+    /// </summary>
+    private void DrawOpenList(bool useAnchor)
     {
         DrawFrame();
 
@@ -321,8 +321,8 @@ public sealed class LogView : PaneView
         }
 
         var rowsOf = flat.Select(f => Rows(f.Line, maxCols)).ToList();
-        var anchorLine = AnchorLine(flat.Select(f => f.Entry).ToList(), _anchor);
-        var top = TopLine(rowsOf.Select(r => r.Count).ToList(), rows, anchorLine);
+        var entries = flat.Select(f => f.Entry).ToList();
+        var top = ListTop(entries, rowsOf.Select(r => r.Count).ToList(), rows, _anchor, useAnchor);
         var y = 0;
         for (var i = top; i < rowsOf.Count && y < rows; i++)
             foreach (var row in rowsOf[i])
@@ -341,6 +341,15 @@ public sealed class LogView : PaneView
             foreach (var line in ShowExact ? _entries[i].Exact : _entries[i].Simple)
                 flat.Add((line, i));
         return flat;
+    }
+
+    /// <summary>
+    /// The first visible line of a framed list: from the anchored entry when <paramref name="useAnchor"/>, else the newest lines that fit.
+    /// </summary>
+    internal static int ListTop(IReadOnlyList<int> entryOfLine, IReadOnlyList<int> heights, int rows, int anchorEntry, bool useAnchor)
+    {
+        var anchorLine = AnchorLine(entryOfLine, useAnchor ? anchorEntry : -1);
+        return TopLine(heights, rows, anchorLine);
     }
 
     /// <summary>
