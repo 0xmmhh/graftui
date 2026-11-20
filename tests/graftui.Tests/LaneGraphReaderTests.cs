@@ -39,17 +39,8 @@ public sealed class LaneGraphReaderTests : IDisposable
         var graph = _reader.LoadLaneGraph(snap, CancellationToken.None);
 
         Assert.Equal(
-            new[]
-            {
-                "main: 34e4a2e@0 8c5ceee@1 be0126e@2",
-                "feature/fast-forward: 8f0068a@3",
-                "feature/ff-to-merge: 2b99ab2@3 810cc55@5",
-                "side-for-ffm: df42801@4",
-                "feature/conflict: 30cc9f2@2",
-                "feature/merge-commit: acf4dee@2",
-                "feature/picks: 089eae5@2 52b7690@3 f6d6964@4",
-            },
-            graph.Lanes.Select(lane => Describe(lane)).ToArray());
+            SandboxLaneGraph.Rows,
+            graph.Lanes.Select(Describe).ToArray());
         Assert.Equal(LaneKind.Side, graph.Lanes[3].Kind);
         Assert.Equal(6, graph.Columns);
         Assert.False(graph.BaseMore);

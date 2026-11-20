@@ -152,7 +152,7 @@ public static class LaneFit
         var part = name;
         var slash = name.LastIndexOf('/');
         if (slash >= 0 && slash < name.Length - 1)
-            part = name[(slash + 1)..];
+            part = name.Substring(slash + 1);
 
         return TextFit.Fit(part, width);
     }
@@ -178,7 +178,9 @@ public static class LaneFit
     }
 
     private static LanePlacement EmptyPlacement(LaneGraph graph, string selected) =>
-        new(graph, selected, GhostKind.None, 0, 0, [], [], [], -1, -1, -1, 0, 0, 0, 0, 0, 0, "", 0, false);
+        new(graph, selected, GhostKind.None, Width: 0, Height: 0, Rows: [], RowY: [], OnRows: [],
+            SelectedLane: -1, TipLane: -1, TipColumn: -1, LabelWidth: 0, GraphX: 0, Step: 0, FirstColumn: 0,
+            RowGap: 0, HashWidth: 0, GhostLabel: "", More: 0, ShowMore: false);
 
     // The lanes drawn in colour: the base, the selected branch's incoming lanes, and its tip lane. A pointer branch (no lane of its
     // own) lights the lane its tip sits on, and what would come in with that lane.
@@ -265,7 +267,7 @@ public static class LaneFit
         }
 
         var limit = height >= 2 ? height - 1 : 1;
-        return new RowPlan(1, 0, ChooseLanes(graph, tipLane, onRows, limit));
+        return new RowPlan(1, 0, ChooseLanes(graph, tipLane, onRows, limit, height));
     }
 
     private static bool[] AllKept(int lanes)
@@ -277,8 +279,8 @@ public static class LaneFit
     }
 
     // Keeps up to limit lanes: the base, the tip lane and the lanes that light up come first; then the other lanes in row order.
-    // A side or stacked lane is kept only when the row it hangs under is kept.
-    private static bool[] ChooseLanes(LaneGraph graph, int tipLane, IReadOnlyList<int> onRows, int limit)
+    // A side or stacked lane is kept only when the row it hangs under is kept, except for a priority lane, see KeepPriorityLane.
+    private static bool[] ChooseLanes(LaneGraph graph, int tipLane, IReadOnlyList<int> onRows, int limit, int height)
     {
         var lanes = graph.Lanes.Count;
         var kept = new bool[lanes];
@@ -290,11 +292,8 @@ public static class LaneFit
         priority.AddRange(onRows);
         foreach (var lane in priority)
         {
-            if (count < limit && !kept[lane])
-            {
-                kept[lane] = true;
-                count++;
-            }
+            if (!kept[lane])
+                count = KeepPriorityLane(graph, lane, kept, count, limit, height);
         }
 
         for (var lane = 0; lane < lanes; lane++)
@@ -307,6 +306,53 @@ public static class LaneFit
         }
 
         return kept;
+    }
+
+    // A priority lane whose parent rows are all kept is kept while there is room under the limit. A priority lane with a parent row
+    // missing (a stacked branch) brings those rows with it when the lane and them fit under the limit. When they do not fit, the lane
+    // is kept anyway, as long as the rows still fit the height: its parent row is then not drawn, and 2b draws the lane with a lead-in
+    // from the left. Returns the new count of kept lanes.
+    private static int KeepPriorityLane(LaneGraph graph, int lane, bool[] kept, int count, int limit, int height)
+    {
+        var missing = MissingParents(graph, lane, kept);
+        if (missing.Count == 0)
+        {
+            if (count < limit)
+            {
+                kept[lane] = true;
+                return count + 1;
+            }
+            return count;
+        }
+
+        if (count + missing.Count + 1 <= limit)
+        {
+            foreach (var parent in missing)
+                kept[parent] = true;
+            kept[lane] = true;
+            return count + missing.Count + 1;
+        }
+
+        if (count < height)
+        {
+            kept[lane] = true;
+            return count + 1;
+        }
+        return count;
+    }
+
+    // The parent rows of a lane that are not kept yet, nearest first. Stops at the first kept parent, at the base and at the unrelated lanes.
+    private static List<int> MissingParents(LaneGraph graph, int lane, bool[] kept)
+    {
+        var missing = new List<int>();
+        var parent = graph.Lanes[lane].Parent;
+        while (parent > 0 && !kept[parent] && missing.Count < graph.Lanes.Count)
+        {
+            missing.Add(parent);
+            parent = graph.Lanes[parent].Parent;
+        }
+
+        return missing;
     }
 
     // A lane whose parent is a branch row (Parent > 0) needs that row kept. The base (0) and the unrelated lanes (-1) need nothing.

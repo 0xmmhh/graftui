@@ -8,17 +8,6 @@ public sealed class LaneFitTests
 {
     private static readonly LaneGraph G = SandboxLaneGraph.Build();
 
-    private static readonly string[] SandboxRows =
-    [
-        "main: 34e4a2e@0 8c5ceee@1 be0126e@2",
-        "feature/fast-forward: 8f0068a@3",
-        "feature/ff-to-merge: 2b99ab2@3 810cc55@5",
-        "side-for-ffm: df42801@4",
-        "feature/conflict: 30cc9f2@2",
-        "feature/merge-commit: acf4dee@2",
-        "feature/picks: 089eae5@2 52b7690@3 f6d6964@4",
-    ];
-
     // A commit whose subject is "s <id>".
     private static GraphCommit C(string id, params string[] parents) => new(id, id, parents, "s " + id);
 
@@ -49,7 +38,7 @@ public sealed class LaneFitTests
     [Fact]
     public void The_fixture_is_the_sandbox_graph()
     {
-        Assert.Equal(SandboxRows, G.Lanes.Select(lane => Describe(lane)).ToArray());
+        Assert.Equal(SandboxLaneGraph.Rows, G.Lanes.Select(Describe).ToArray());
         Assert.Equal(LaneKind.Side, G.Lanes[3].Kind);
         Assert.Equal(6, G.Columns);
         Assert.False(G.BaseMore);
@@ -298,6 +287,66 @@ public sealed class LaneFitTests
         Assert.Equal(7, p.HashWidth);
         Assert.Equal(new[] { 1 }, p.RowY);
         Assert.Equal(2, p.Height);
+    }
+
+    // main, a (on a2), b stacked on a, and three more branches on a2: six lanes, so a short pane has to drop some.
+    private static LaneGraph StackedGraph() => Graph(
+        Chain("a3", "a2", "a1"),
+        [C("x1", "a2"), C("y1", "x1"), C("z1", "a2"), C("w1", "a2"), C("v1", "a2")],
+        Br("a", "x1"), Br("b", "y1"), Br("c", "z1"), Br("d", "w1"), Br("e", "v1"));
+
+    // main, a, b stacked on a, c stacked on b: the deep stack for the case where a middle row is past the limit.
+    private static LaneGraph DeepStackGraph() => Graph(
+        Chain("a3", "a2", "a1"),
+        [C("x1", "a2"), C("y1", "x1"), C("w1", "y1"), C("z1", "a2"), C("v1", "a2")],
+        Br("a", "x1"), Br("b", "y1"), Br("c", "w1"), Br("d", "z1"), Br("e", "v1"));
+
+    [Fact]
+    public void A_stacked_branch_brings_its_parent_row_when_both_fit_under_the_limit()
+    {
+        var graph = StackedGraph();
+
+        // Height 4 gives a limit of 3: the branch and its parent fit with the base.
+        var p = LaneFit.Fit(graph, "b", GhostKind.Merge, 86, 4);
+
+        Assert.True(p.IsKept(graph.LaneOf("a")));
+        Assert.True(p.IsKept(graph.LaneOf("b")));
+        Assert.Equal(3, p.Rows.Count);
+        Assert.Equal(3, p.More);
+        Assert.True(p.ShowMore);
+        Assert.Equal(4, p.Height);
+    }
+
+    [Fact]
+    public void A_stacked_branch_is_kept_without_its_parent_when_there_is_no_room()
+    {
+        var graph = StackedGraph();
+
+        // Height 3 gives a limit of 2: the parent does not fit, so the branch is kept anyway (within the height) and its parent is not.
+        var p = LaneFit.Fit(graph, "b", GhostKind.Merge, 86, 3);
+
+        Assert.True(p.IsKept(graph.LaneOf("b")));
+        Assert.False(p.IsKept(graph.LaneOf("a")));
+        Assert.Equal(2, p.Rows.Count);
+        Assert.Equal(4, p.More);
+        Assert.True(p.ShowMore);
+        Assert.Equal(3, p.Height);
+    }
+
+    [Fact]
+    public void A_deep_stack_past_the_limit_keeps_the_selected_lane_and_drops_the_middle_row()
+    {
+        var graph = DeepStackGraph();
+
+        // Height 4 gives a limit of 3. The selected lane c needs b and a as well: no room, so c is kept anyway. Then a fills the
+        // last row under the limit and b, past it, is dropped. c is drawn with a lead-in from the left (2b).
+        var p = LaneFit.Fit(graph, "c", GhostKind.Merge, 86, 4);
+
+        Assert.True(p.IsKept(graph.LaneOf("c")));
+        Assert.True(p.IsKept(graph.LaneOf("a")));
+        Assert.False(p.IsKept(graph.LaneOf("b")));
+        Assert.Equal(3, p.Rows.Count);
+        Assert.True(p.Height <= 4);
     }
 
     [Theory]

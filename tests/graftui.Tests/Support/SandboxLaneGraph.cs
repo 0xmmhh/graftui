@@ -18,6 +18,21 @@ internal static class SandboxLaneGraph
         Br("main", "be0126e"),
     ];
 
+    /// <summary>
+    /// The sandbox graph's rows as text, "name: hash@column ...". LaneGraphReaderTests.The_sandbox_graph reads the real sandbox repo
+    /// and checks this same list, so the fixture and the repo cannot drift apart.
+    /// </summary>
+    public static string[] Rows { get; } =
+    [
+        "main: 34e4a2e@0 8c5ceee@1 be0126e@2",
+        "feature/fast-forward: 8f0068a@3",
+        "feature/ff-to-merge: 2b99ab2@3 810cc55@5",
+        "side-for-ffm: df42801@4",
+        "feature/conflict: 30cc9f2@2",
+        "feature/merge-commit: acf4dee@2",
+        "feature/picks: 089eae5@2 52b7690@3 f6d6964@4",
+    ];
+
     /// <summary>The sandbox graph: base main, six lanes.</summary>
     public static LaneGraph Build() =>
         LaneGraphBuilder.Build(new LaneGraphInput("main", BaseChain(), false, Branches, Others(), false));
