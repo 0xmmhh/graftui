@@ -51,6 +51,13 @@ public class CommandDisplayTests
         Assert.Equal(new DisplayLine(DisplayKind.Command, "git merge feature/fast-forward", Exact: false), line);
     }
 
+    [Fact]
+    public void Merge_drops_the_commit_and_no_squash_flags_graftui_always_adds()
+    {
+        var line = Simplify(L("merge --no-edit --commit --no-squash feature/fast-forward"));
+        Assert.Equal(new DisplayLine(DisplayKind.Command, "git merge feature/fast-forward", Exact: false), line);
+    }
+
     [Theory]
     [InlineData("merge --abort")]
     [InlineData("reset --merge")]
