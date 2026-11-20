@@ -217,6 +217,21 @@ public sealed class PreviewTextTests
     }
 
     [Fact]
+    public void The_lines_name_the_current_branch_and_never_main()
+    {
+        var onDevelop = Diverged() with { Current = "develop" };
+
+        Assert.Equal("If you press m: feature → develop", PreviewText.Title(onDevelop));
+        Assert.Equal("= same commit as develop · nothing to merge", Text(PreviewText.Forecast(onDevelop with { Kind = GraphKind.Same }, F(ForecastKind.Clean), true)));
+        Assert.Equal("✔ merges cleanly · creates a merge commit on develop", Text(PreviewText.Forecast(onDevelop, F(ForecastKind.Clean), true)));
+        Assert.Equal("✕ would conflict in app.txt · the merge would be aborted, develop unchanged", Text(PreviewText.Forecast(onDevelop, Conflicted("app.txt"), true)));
+
+        var checkedOut = onDevelop with { Selected = "develop", Kind = GraphKind.Same };
+        Assert.Equal("develop is checked out", PreviewText.Title(checkedOut));
+        Assert.Equal("develop is checked out: pick a branch on the left to preview its merge.", Text(PreviewText.Forecast(checkedOut, null, true)));
+    }
+
+    [Fact]
     public void Command_of_a_branch_is_the_simplified_merge()
     {
         var segs = PreviewText.Command(Diverged());

@@ -253,6 +253,23 @@ public sealed class PreviewSheetTests
     }
 
     [Fact]
+    public void A_capped_commit_list_says_how_many_are_not_shown_even_when_all_of_it_fits()
+    {
+        // git listed 50 of the 51 commits. A tall list has room for all 50, but the last row still says one more is left out.
+        var commits = new List<CommitInfo>();
+        for (var i = 0; i < 50; i++)
+            commits.Add(Layouts.C("c" + i.ToString("00000000"), subject: "commit " + i));
+        var layout = MergeCommit() with { Ahead = 51, SelectedNew = commits };
+
+        var lines = PreviewSheets.Incoming(layout, 0, 60);
+        var last = lines[lines.Count - 1];
+
+        Assert.Equal(52, lines.Count);
+        Assert.Equal(51, last.Row);
+        Assert.Equal("+1 more", string.Concat(last.Segs.Select(s => s.Text)));
+    }
+
+    [Fact]
     public void A_too_short_pane_has_no_graph_and_no_rows_for_the_rest()
     {
         var short3 = Build(Input(MergeCommit(), Clean()), 86, 3);

@@ -40,6 +40,9 @@ public static class PreviewSheets
     private static readonly Style Fg = new(Ink.Fg);
     private static readonly Style HashStyle = new(Ink.Hash);
 
+    // The gap between a commit's hash and its subject: SubjectX columns in all, less the hash's width.
+    private static readonly string HashGap = new string(' ', SubjectX - HashCut);
+
     /// <summary>
     /// The sheet for a text width and a number of rows (the pane's inner size). Never throws for any size of zero or more.
     /// </summary>
@@ -112,9 +115,9 @@ public static class PreviewSheets
         var total = Math.Max(L.Ahead, count);
         var shown = count;
         var more = 0;
-        if (total > slots)
+        if (total > slots || count < total)
         {
-            // One slot goes to the "+N more" line.
+            // One slot goes to the "+N more" line. It is also needed when git's list is capped (count < total) and everything fits.
             shown = Math.Min(count, slots - 1);
             more = total - shown;
         }
@@ -137,7 +140,7 @@ public static class PreviewSheets
         var segs = new List<Seg>
         {
             new Seg(hash, HashStyle),
-            new Seg("  ", Fg),
+            new Seg(HashGap, Fg),
             new Seg(commit.Subject, Fg),
         };
         return new SheetLine(row, segs);

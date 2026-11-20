@@ -130,10 +130,8 @@ public static class LaneScene
         else if (fork != null || baseHasOlder || firstCut)
         {
             // The fork is not drawn (its row is dropped, or it is cut off), or the base has older history: a lead-in from the left.
-            // A lane with hidden commits starts at its gap mark instead, so the line runs unbroken from the gap to the first dot.
-            if (gapInWindow)
-                start = p.XOf(info.Gap);
-            else
+            // A lane with hidden commits keeps the gap mark it started at (set above), so the line runs unbroken from the gap to the first dot.
+            if (!gapInWindow)
                 start = Math.Max(p.GraphX - 1, p.XOf(info.Commits[0].Column) - 1);
             leadIns.Add(new LeadIn(start, y, style));
         }

@@ -103,7 +103,7 @@ public static class PreviewText
         if (f.Kind == ForecastKind.Conflict)
         {
             segs.Add(new Seg(ConflictText(f), Bad));
-            segs.Add(new Seg(Tail(clean, "the merge would be aborted, main unchanged"), Dim));
+            segs.Add(new Seg(Tail(clean, "the merge would be aborted, " + L.Current + " unchanged"), Dim));
             return segs;
         }
 
