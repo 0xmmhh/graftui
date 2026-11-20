@@ -91,6 +91,9 @@ internal sealed partial class BranchesTab
         // The marks of the other branches are queued for the new snapshot (the new look only; a snapshot with the same tips keeps them).
         EnsureListForecasts();
 
+        // The block is set from the snapshot's marks key, so it is set after EnsureListForecasts (and before the early returns below).
+        UpdateDetail();
+
         Cancellation.CancelAndDispose(ref _previewCts);
         _previewSeq++;
 

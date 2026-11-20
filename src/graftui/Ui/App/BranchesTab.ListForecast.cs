@@ -115,6 +115,9 @@ internal sealed partial class BranchesTab
         Cancellation.CancelAndDispose(ref _forecastCts);
         _forecastGeneration++;
         _app.BranchList.SetNeedsDraw();
+
+        // The detail block goes blank with the marks: its files read is cancelled, and it says "reading…" until the marks come back.
+        UpdateDetail();
     }
 
     /// <summary>
@@ -178,6 +181,7 @@ internal sealed partial class BranchesTab
             return;
 
         EnsureListForecasts();
+        UpdateDetail();
         var shown = _shown;
         if (shown is not null && MayDrawPreview)
             RequestForecast(shown);

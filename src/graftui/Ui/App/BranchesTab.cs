@@ -63,6 +63,10 @@ internal sealed partial class BranchesTab
         // The running forecast answers for the old snapshot: its reads stop now, and its result is dropped by the generation check.
         Cancellation.CancelAndDispose(ref _forecastCts);
         _forecastGeneration++;
+
+        // The files of the detail block are for the old snapshot too (see BranchesTab.Detail).
+        _files.Clear();
+        CancelFiles();
     }
 
     /// <summary>The cached layout of a branch in the snapshot, or null. Reads the cache, so it is used on the UI thread only.</summary>
@@ -82,6 +86,7 @@ internal sealed partial class BranchesTab
         _app.BranchList.Selected = _selected;
         _app.BranchList.SetNeedsDraw();
         _app.SyncBranchKeys();
+        UpdateDetail();
     }
 
     /// <summary>Keeps the selection on the same branch name; if that branch is gone, keeps the index (clamped).</summary>
@@ -191,6 +196,9 @@ internal sealed partial class BranchesTab
 
     internal void RequestPreview()
     {
+        // The detail block is set first: a pause clears it. It is set again below, once the marks have their key.
+        UpdateDetail();
+
         // A paused rebase owns the art: its screen is shown whatever was selected.
         if (_app.IsPaused)
         {
@@ -205,6 +213,7 @@ internal sealed partial class BranchesTab
 
         // The marks of the other branches are queued too (the new look only; this covers the first preview, before any snapshot change).
         EnsureListForecasts();
+        UpdateDetail();
 
         // Any request still in flight is stale now, even when the answer is cached: its result must not overwrite this one.
         Cancellation.CancelAndDispose(ref _previewCts);
@@ -259,6 +268,7 @@ internal sealed partial class BranchesTab
         _cache[key] = layout;
         if (MayDrawPreview)
             ShowPreview(layout);
+        UpdateDetail();
     }
 
     /// <summary>
