@@ -109,10 +109,10 @@ public static class LaneScene
         var y = p.YOf(lane);
         var style = LaneStyle(p, lane);
         var fork = ForkInto(p.Graph, lane);
-        var start = p.XOf(info.Commits[0].Column);
 
-        // The lane's own gap (its hidden commits) is in the window, and its fork is not drawn: then the line starts at the gap mark.
-        var forkHidden = fork != null && info.Hidden > 0 && info.Gap >= p.FirstColumn;
+        // The lane's own gap (its hidden commits) is in the window: then the line starts at the gap mark, so it runs unbroken to the dot.
+        var gapInWindow = info.Hidden > 0 && info.Gap >= p.FirstColumn;
+        var start = gapInWindow ? p.XOf(info.Gap) : p.XOf(info.Commits[0].Column);
         var baseHasOlder = lane == 0 && p.Graph.BaseMore;
         var firstCut = info.Commits[0].Column < p.FirstColumn;
 
@@ -131,7 +131,7 @@ public static class LaneScene
         {
             // The fork is not drawn (its row is dropped, or it is cut off), or the base has older history: a lead-in from the left.
             // A lane with hidden commits starts at its gap mark instead, so the line runs unbroken from the gap to the first dot.
-            if (forkHidden)
+            if (gapInWindow)
                 start = p.XOf(info.Gap);
             else
                 start = Math.Max(p.GraphX - 1, p.XOf(info.Commits[0].Column) - 1);
