@@ -4,7 +4,7 @@ namespace graftui.Tests;
 
 public class GlyphsTests
 {
-    // The glyphs that Basic replaces: every field except the eight box-drawing lines.
+    // The glyphs that Basic replaces: every field except the nine box-drawing lines.
     private static char[] ReplacedFields(Glyphs g) =>
         [g.Dot, g.Pulse, g.GhostEmpty, g.GhostHalf, g.DashH, g.DashV, g.Gap, g.FastForward, g.Conflict, g.MergeMark];
 
@@ -67,5 +67,7 @@ public class GlyphsTests
         Assert.Equal(Glyphs.Unicode.MergeDown, Glyphs.Basic.MergeDown);
         Assert.Equal(Glyphs.Unicode.TeeUp, Glyphs.Basic.TeeUp);
         Assert.Equal(Glyphs.Unicode.TeeDown, Glyphs.Basic.TeeDown);
+        Assert.Equal('┤', Glyphs.Unicode.MergeMid);
+        Assert.Equal(Glyphs.Unicode.MergeMid, Glyphs.Basic.MergeMid);
     }
 }
