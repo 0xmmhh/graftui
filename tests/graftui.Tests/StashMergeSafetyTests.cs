@@ -37,7 +37,7 @@ public class StashMergeSafetyTests
 
         var commands = outcome.Commands.Select(c => c.Command).ToList();
         Assert.Contains(commands, c => c.StartsWith("git stash push -u -m \"graftui: before merging feature/ff into main\"", StringComparison.Ordinal));
-        Assert.Contains("git merge --no-edit feature/ff", commands);
+        Assert.Contains("git merge --no-edit --commit --no-squash feature/ff", commands);
         Assert.Contains("git stash pop --index", commands);
     }
 

@@ -42,7 +42,8 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
             return new MergeCheck(name, "a merge is already in progress", log);
 
         // Dirty only when git read the status and it lists changes: a failed status is not a known dirty tree.
-        var porcelain = Run("status", "--porcelain");
+        // --untracked-files=normal overrides status.showUntrackedFiles=no: an untracked file still refuses the merge.
+        var porcelain = Run("status", "--porcelain", "--untracked-files=normal");
         if (!porcelain.Success)
             return new MergeCheck(name, "working tree has uncommitted changes", log);
         if (!string.IsNullOrWhiteSpace(porcelain.StdOut))
@@ -105,13 +106,14 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
 
             // Re-check right before merging: if anything changed the tree since Check, don't merge, so a
             // later rollback can never be asked to clean up changes that weren't the merge's own.
-            var preflight = Run("status", "--porcelain");
+            var preflight = Run("status", "--porcelain", "--untracked-files=normal");
             if (!preflight.Success || !string.IsNullOrWhiteSpace(preflight.StdOut))
                 return Done(MergeKind.Failed, null, NoFiles,
                     "working tree changed before the merge started; nothing was merged");
 
             mergeRan = true;
-            var merge = Run("merge", "--no-edit", branch);
+            // The command line overrides branch.<name>.mergeoptions (--no-commit, --squash): graftui always runs a real merge.
+            var merge = Run("merge", "--no-edit", "--commit", "--no-squash", branch);
 
             // Classifies a merge that finished, by looking at HEAD and its parents (never at git's text).
             MergeOutcome Verify(string suffix)
@@ -123,7 +125,24 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
                 if (head is null)
                     return Done(MergeKind.Failed, null, NoFiles, "could not read HEAD after merge" + suffix);
                 if (head == oldHead)
-                    return Done(MergeKind.UpToDate, head, NoFiles, "already up to date" + suffix);
+                {
+                    // A merge that did not commit leaves MERGE_HEAD behind (--no-commit) or staged changes (--squash)
+                    // while HEAD stays where it began. Only a clean tree with no MERGE_HEAD is up to date.
+                    var mergeHead = Run(GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead).Success;
+                    var state = Run("status", "--porcelain", "--untracked-files=normal");
+                    // A failed status is an unknown state, so it is not up to date (as in Inspect).
+                    if (!mergeHead && state.Success && string.IsNullOrWhiteSpace(state.StdOut))
+                        return Done(MergeKind.UpToDate, head, NoFiles, "already up to date" + suffix);
+                    // Roll back only a merge git left in progress. Without MERGE_HEAD the changes are not provably the merge's
+                    // (another process may have staged a file), so they are reported and left alone: a reset could discard them.
+                    if (!mergeHead)
+                        return Done(MergeKind.Failed, null, NoFiles,
+                            "the working tree changed during the merge; nothing was rolled back, check git status" + suffix);
+                    var (leftover, _) = Rollback(Run, oldHead, true);
+                    if (leftover is not null)
+                        return Done(MergeKind.Failed, null, NoFiles, leftover + suffix);
+                    return Done(MergeKind.Failed, null, NoFiles, "git merge did not commit; rolled back" + suffix);
+                }
                 if (head == branchTip)
                     return Done(MergeKind.FastForward, head, NoFiles, "fast-forward" + suffix, Moved(head));
                 if (tokens.Length >= 3 && tokens[1] == oldHead)
@@ -134,8 +153,9 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
             if (merge.Success)
                 return Verify("");
 
-            var files = Run("diff", "--name-only", "--diff-filter=U").StdOut
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            // -z: file names come back raw (never C-quoted) and split on NUL, so odd names stay whole.
+            var files = Run("diff", "--name-only", "-z", "--diff-filter=U").StdOut
+                .Split('\0', StringSplitOptions.RemoveEmptyEntries)
                 .ToList();
 
             // Signals arrive as 128+N (130 = SIGINT); exactly 128 is git's own die(). A merge that timed out was killed, so it is
@@ -247,7 +267,7 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
     private static (bool Dirty, bool Merging) Inspect(Func<string[], GitResult> run)
     {
         // A failed status means the state is unknown, which is treated as dirty.
-        var status = run(["status", "--porcelain"]);
+        var status = run(["status", "--porcelain", "--untracked-files=normal"]);
         var dirty = !status.Success || !string.IsNullOrWhiteSpace(status.StdOut);
         var merging = run([GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead]).Success;
         return (dirty, merging);

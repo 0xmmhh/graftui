@@ -26,7 +26,7 @@ public class MergeSafetyTests
         Assert.False(repo.Merging);
         Assert.Null(outcome.Undo);
         var commands = outcome.Commands.Select(c => c.Command).ToList();
-        Assert.Contains("git merge --no-edit feature", commands);
+        Assert.Contains("git merge --no-edit --commit --no-squash feature", commands);
         Assert.Contains("git merge --abort", commands);
     }
 
@@ -78,7 +78,7 @@ public class MergeSafetyTests
         var outcome = op.Run(new MergeRequest("feature"), check);
 
         Assert.Equal(MergeKind.Failed, outcome.Kind);
-        var merge = Assert.Single(outcome.Commands, c => c.Command == "git merge --no-edit feature");
+        var merge = Assert.Single(outcome.Commands, c => c.Command == "git merge --no-edit --commit --no-squash feature");
         Assert.True(merge.ExitCode > 128, $"expected a signal exit, got {merge.ExitCode}");
         Assert.Contains(outcome.Commands, c => c.Command == "git reset --merge");
         Assert.Equal(head, repo.Head);

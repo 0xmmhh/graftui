@@ -396,7 +396,7 @@ public class SafetyAuditTests
 
     // ---- 7. user config and odd names ----
 
-    [Fact(Skip = "safety-audit: with status.showUntrackedFiles=no, merge does not see untracked files and does not refuse")]
+    [Fact]
     public void Merge_refuses_an_untracked_file_when_status_hides_untracked_files()
     {
         using var repo = TempRepo.Diverged(conflict: false);
@@ -409,7 +409,7 @@ public class SafetyAuditTests
         Assert.True(check.Dirty);
     }
 
-    [Fact(Skip = "safety-audit: merge conflict file names come back C-quoted (caf\\303\\251.txt) for non-ASCII names")]
+    [Fact]
     public void Merge_conflict_file_names_are_not_quoted()
     {
         using var repo = TempRepo.Create();
@@ -806,7 +806,7 @@ public class SafetyAuditTests
 
     // ---- 11. branch.<name>.mergeoptions ----
 
-    [Fact(Skip = "safety-audit: with --no-commit in branch.main.mergeoptions the merge is reported as 'already up to date' and the repo is left mid-merge")]
+    [Fact]
     public void Merge_with_no_commit_in_the_branchs_mergeoptions_is_not_left_mid_merge()
     {
         using var repo = TempRepo.Diverged(conflict: false);
@@ -821,7 +821,7 @@ public class SafetyAuditTests
         Assert.NotEqual(MergeKind.UpToDate, outcome.Kind);
     }
 
-    [Fact(Skip = "safety-audit: with --squash in branch.main.mergeoptions the merge is reported as 'already up to date' and its changes are left staged")]
+    [Fact]
     public void Merge_with_squash_in_the_branchs_mergeoptions_leaves_nothing_staged()
     {
         using var repo = TempRepo.FastForwardable();
@@ -834,7 +834,7 @@ public class SafetyAuditTests
         Assert.NotEqual(MergeKind.UpToDate, outcome.Kind);
     }
 
-    [Fact(Skip = "safety-audit: with --no-commit in branch.main.mergeoptions a stash-merge-pop fails and leaves the repo mid-merge")]
+    [Fact]
     public void Stash_merge_with_no_commit_in_the_branchs_mergeoptions_is_not_left_mid_merge()
     {
         using var repo = TempRepo.Diverged(conflict: false);
