@@ -130,7 +130,13 @@ internal sealed partial class BranchesTab
     /// and the waiting layout (if any) starts. It leaves the status bar alone: an error still shown stays until a preview loads.
     /// UI thread only.
     /// </summary>
-    internal void ForecastDone(GraphLayout L, MergeForecast f, int generation)
+    internal void ForecastDone(GraphLayout L, MergeForecast f, int generation) => ForecastFinished(L, f, generation, true);
+
+    /// <summary>
+    /// The shared end of a forecast. With <paramref name="cache"/> false (a list job whose layout could not be read) the result is not
+    /// cached and the preview is not drawn again: only the branch's mark is set, and selecting the branch forecasts it properly.
+    /// </summary>
+    private void ForecastFinished(GraphLayout L, MergeForecast f, int generation, bool cache)
     {
         _forecastRunning = false;
         _forecastName = null;
@@ -138,7 +144,8 @@ internal sealed partial class BranchesTab
         // A result from before the last ClearCache is dropped: its snapshot is gone. The waiting layout still runs below.
         if (generation == _forecastGeneration)
         {
-            _forecasts[ForecastKey(L)] = f;
+            if (cache)
+                _forecasts[ForecastKey(L)] = f;
 
             // The branch's mark (the new look only). The selected branch's own result comes here too, from the preview.
             if (_newUi)
@@ -148,7 +155,7 @@ internal sealed partial class BranchesTab
             }
 
             var shown = _shown;
-            if (shown is not null && ForecastKey(shown) == ForecastKey(L) && MayDrawPreview)
+            if (cache && shown is not null && ForecastKey(shown) == ForecastKey(L) && MayDrawPreview)
                 DrawPreview(shown);
         }
 

@@ -96,12 +96,12 @@ public static class BranchMarks
 
         for (var distance = 0; distance < n && result.Count < max; distance++)
         {
-            var upper = selected - distance;
-            var lower = selected + distance;
             if (distance == 0)
                 AddIfWanted(branches, selected, result, max);
             else
             {
+                var upper = selected - distance;
+                var lower = selected + distance;
                 AddIfWanted(branches, upper, result, max);
                 AddIfWanted(branches, lower, result, max);
             }

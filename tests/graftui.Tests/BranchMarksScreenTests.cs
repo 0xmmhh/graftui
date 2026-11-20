@@ -159,6 +159,78 @@ public sealed class BranchMarksScreenTests : IDisposable
         Assert.Null(app.BranchesTab.ForecastRunningName);
     }
 
+    // 9. A new key shows "·" on every row at once; going back to an earlier key shows its marks at once, with nothing queued.
+    [Fact]
+    public void A_new_key_shows_dots_at_once_and_going_back_shows_the_old_marks_without_a_queue()
+    {
+        var before = ReadSnapshot();
+        var app = OpenApp(before, newUi: true);
+        foreach (var name in OtherNames)
+            MarkBranch(app, before, name);
+        Assert.Equal(OtherNames.Length, app.BranchesTab.Marks.Count);
+        var picksHash = BranchNamed(before, "feature/picks").Hash;
+
+        _git.Run("branch", "-f", "feature/picks", "main");
+        app.ApplySnapshot(ReadSnapshot());
+
+        Assert.Empty(app.BranchesTab.Marks);
+        foreach (var name in OtherNames)
+            Assert.Equal("·", BranchMarks.Cell(name, false, false, new Style(Ink.Fg), app.BranchesTab.Marks, Glyphs.Unicode).Text);
+
+        _git.Run("branch", "-f", "feature/picks", picksHash);
+        app.ApplySnapshot(ReadSnapshot());
+
+        Assert.Equal(OtherNames.Length, app.BranchesTab.Marks.Count);
+        Assert.Equal(BranchMark.Merge, app.BranchesTab.Marks["feature/picks"]);
+        Assert.Empty(app.BranchesTab.ListQueueNames);
+    }
+
+    // 10. A "·" (Unknown) result is not a mark: the branch is queued again for the same tips.
+    [Fact]
+    public void An_unknown_mark_is_queued_again_for_the_same_tips()
+    {
+        var snapshot = ReadSnapshot();
+        var app = OpenApp(snapshot, newUi: true);
+        var layout = _reader.LoadForecastLayout(snapshot, BranchNamed(snapshot, "feature/conflict"), CancellationToken.None);
+
+        app.BranchesTab.ForecastDone(layout, MergeForecast.Unavailable([]), app.BranchesTab.ForecastGeneration);
+        Assert.Equal(BranchMark.Unknown, app.BranchesTab.Marks["feature/conflict"]);
+
+        app.ApplySnapshot(ReadSnapshot());
+
+        Assert.Contains("feature/conflict", app.BranchesTab.ListQueueNames);
+    }
+
+    // 11. A clear while a list job runs: the generation moves on, the queue is built again, and the job's late result is dropped.
+    [Fact]
+    public void A_clear_while_a_list_job_runs_rebuilds_the_queue_and_drops_the_late_result()
+    {
+        var snapshot = ReadSnapshot();
+        var app = OpenApp(snapshot, newUi: true);
+        var running = app.BranchesTab.ForecastGeneration;
+        Assert.Equal("feature/conflict", app.BranchesTab.ForecastRunningName);
+        var late = _reader.LoadForecastLayout(snapshot, BranchNamed(snapshot, "feature/conflict"), CancellationToken.None);
+        var lateForecast = new MergeForecaster(_git).Forecast(late);
+
+        app.ApplySnapshot(ReadSnapshot());
+
+        Assert.Equal(running + 1, app.BranchesTab.ForecastGeneration);
+        Assert.Contains("feature/conflict", app.BranchesTab.ListQueueNames);
+
+        app.BranchesTab.ForecastDone(late, lateForecast, running);
+
+        Assert.False(app.BranchesTab.Marks.ContainsKey("feature/conflict"));
+    }
+
+    private static readonly string[] OtherNames =
+    [
+        "feature/conflict",
+        "feature/fast-forward",
+        "feature/ff-to-merge",
+        "feature/merge-commit",
+        "feature/picks",
+    ];
+
     private RepoSnapshot ReadSnapshot() => _reader.LoadSnapshot(withCounts: true, CancellationToken.None);
 
     private static Branch BranchNamed(RepoSnapshot snapshot, string name) => snapshot.Branches.Single(b => b.Name == name);
