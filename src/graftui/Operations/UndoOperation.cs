@@ -252,6 +252,12 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     /// </summary>
     private string? StashGuard(UndoRecord s, WorkingStatus status, List<GitResult> log)
     {
+        // A hidden edit (assume-unchanged) is invisible to the status the caller read: putting the stash back would
+        // overwrite it without saving it.
+        var hidden = HiddenEdits.Find(git, log);
+        if (hidden.Count > 0)
+            return ChangeRefusals.HiddenEdit(hidden[0]);
+
         if (RevParse(log, StashRef) != s.StashCommit)
             return ChangeRefusals.UndoStashMoved;
 
@@ -269,6 +275,11 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     /// </summary>
     private string? PopGuard(UndoRecord s, string gitDir, List<GitResult> log)
     {
+        // A hidden edit (assume-unchanged) is invisible to the status: putting the state back would overwrite it.
+        var hidden = HiddenEdits.Find(git, log);
+        if (hidden.Count > 0)
+            return ChangeRefusals.HiddenEdit(hidden[0]);
+
         if (RevParse(log, StashRef) != s.StashBelow)
             return ChangeRefusals.UndoStashMoved;
 
@@ -353,6 +364,11 @@ public sealed class UndoOperation(GitClient git) : IGitOperation<UndoRequest, Un
     /// </summary>
     private string? StashMergeGuard(UndoRecord s, string gitDir, List<GitResult> log)
     {
+        // A hidden edit (assume-unchanged) is invisible to the status: putting the state back would overwrite it.
+        var hidden = HiddenEdits.Find(git, log);
+        if (hidden.Count > 0)
+            return ChangeRefusals.HiddenEdit(hidden[0]);
+
         var branchProblem = BranchGuard(s, log);
         if (branchProblem is not null)
             return branchProblem;

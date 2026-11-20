@@ -45,6 +45,12 @@ public static class ChangeRefusals
     public static string DiscardIsFolder(string path) =>
         $"{path} is a folder now, so bringing back the file would delete what is in it: move it away first";
 
+    public static string HiddenEdit(string path) =>
+        $"{path} has local edits that git is told to ignore (assume-unchanged): graftui won't stash, pop or undo over it";
+
+    public static string DeletedAndUntracked(string path) =>
+        $"{path} is staged as deleted and also kept as a file: commit or restore it first";
+
     public static string NestedRepoStash(string path) => $"{path} is a separate git repository: graftui won't stash or pop over it";
 
     /// <summary>A saved state that graftui keeps under a ref until the user deals with it. what says whose state it is.</summary>

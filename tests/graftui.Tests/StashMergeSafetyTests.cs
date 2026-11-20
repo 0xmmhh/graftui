@@ -236,6 +236,61 @@ public class StashMergeSafetyTests
         Assert.False(detached.Dirty);
     }
 
+    [Fact]
+    public void A_path_staged_as_deleted_and_untracked_after_the_check_is_refused_in_run()
+    {
+        using var repo = FastForward();
+        repo.Write("README.md", "readme\nunstaged\n");
+        var op = new StashMergeOperation(repo.Git);
+        var check = op.Check(new StashMergeRequest("feature/ff"));
+        Assert.True(check.CanRun, check.Refusal);
+        // The shape its pop could not bring back appears after the check: a.txt staged as deleted, kept untracked.
+        repo.Run("rm", "-q", "--cached", "a.txt");
+        var status = repo.Status();
+        var head = repo.Head;
+
+        var outcome = op.Run(new StashMergeRequest("feature/ff"), check);
+
+        Assert.Equal(StashMergeKind.Failed, outcome.Kind);
+        Assert.Contains(ChangeRefusals.DeletedAndUntracked("a.txt"), outcome.Message);
+        Assert.DoesNotContain(outcome.Commands, c => c.Command.StartsWith("git stash push", StringComparison.Ordinal));
+        Assert.Equal(status, repo.Status());
+        Assert.Equal(head, repo.Head);
+        Assert.Equal("", repo.Run("stash", "list"));
+        AssertNoRescue(repo);
+    }
+
+    [Fact]
+    public void A_failed_hidden_edit_rescan_drops_the_copy_when_the_tree_is_unchanged()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        using var repo = FastForward();
+        repo.Commit(".gitattributes", "a.txt filter=hidden\n", "Mark a filtered file");
+        repo.Run("update-index", "--assume-unchanged", "a.txt");
+        repo.Write("README.md", "readme\nunstaged\n");
+        // The rescan's hash-object fails once, after the safety copy exists: a.txt's clean filter exits 17 the
+        // first time the copy is there, and behaves (cat) again afterwards, so the cleanup can read the tree.
+        repo.Run("config", "filter.hidden.clean",
+            "if git rev-parse -q --verify refs/graftui/rescue/stash-merge >/dev/null && test ! -e .git/rescan-failed; "
+            + "then touch .git/rescan-failed; exit 17; fi\ncat");
+        repo.Run("config", "filter.hidden.required", "true");
+        var op = new StashMergeOperation(repo.Git);
+        var check = op.Check(new StashMergeRequest("feature/ff"));
+        Assert.True(check.CanRun, check.Refusal);
+        var head = repo.Head;
+
+        var outcome = op.Run(new StashMergeRequest("feature/ff"), check);
+
+        Assert.Equal(StashMergeKind.Failed, outcome.Kind);
+        Assert.Contains("clean filter 'hidden' failed", outcome.Message);
+        Assert.Contains("nothing was stashed", outcome.Message);
+        Assert.DoesNotContain(outcome.Commands, c => c.Command.StartsWith("git stash push", StringComparison.Ordinal));
+        Assert.Equal(head, repo.Head);
+        Assert.Equal("", repo.Run("stash", "list"));
+        AssertNoRescue(repo);
+    }
+
     /// <summary>The subject git gives the entry the temporary stash makes on main (see the stash message in StashMergeOperation).</summary>
     private const string StashLabel = "On main: graftui: before merging feature/touch into main";
 
