@@ -130,7 +130,8 @@ public sealed class MergeOperation(GitClient git) : IGitOperation<MergeRequest, 
                     // while HEAD stays where it began. Only a clean tree with no MERGE_HEAD is up to date.
                     var mergeHead = Run(GitArgs.RevParse, "-q", GitArgs.Verify, GitArgs.MergeHead).Success;
                     var state = Run("status", "--porcelain", "--untracked-files=normal");
-                    if (!mergeHead && string.IsNullOrWhiteSpace(state.StdOut))
+                    // A failed status is an unknown state, so it is not up to date (as in Inspect).
+                    if (!mergeHead && state.Success && string.IsNullOrWhiteSpace(state.StdOut))
                         return Done(MergeKind.UpToDate, head, NoFiles, "already up to date" + suffix);
                     var (leftover, _) = Rollback(Run, oldHead, true);
                     if (leftover is not null)
