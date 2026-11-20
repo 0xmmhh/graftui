@@ -43,6 +43,8 @@ public static class CommandDisplay
     private static readonly HashSet<string> DroppedFlags =
     [
         "-q", GitArgs.Quiet, GitArgs.NoGpgSign, "--no-show-signature", "--no-color", "--no-ext-diff", "--no-edit", "--no-guess",
+        // merge always runs with these so a branch's mergeoptions can't stop it before the commit; they are git's defaults.
+        "--commit", "--no-squash",
     ];
 
     /// <summary>
