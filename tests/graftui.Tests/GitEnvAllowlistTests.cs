@@ -37,6 +37,7 @@ public sealed class GitEnvAllowlistTests : IDisposable
     [InlineData("SSH_AGENT_PID")]
     [InlineData("GPG_AGENT_INFO")]
     [InlineData("GNUPGHOME")]
+    [InlineData("GPG_TTY")]
     [InlineData("DISPLAY")]
     [InlineData("WAYLAND_DISPLAY")]
     [InlineData("GIT_CONFIG_GLOBAL")]
@@ -105,7 +106,10 @@ public sealed class GitEnvAllowlistTests : IDisposable
     [Fact]
     public void Only_the_allowlist_reaches_git()
     {
+        using var repo = TempRepo.Create();
+
         SetEnv("SSH_AUTH_SOCK", "/tmp/graftui-test-agent.sock");
+        SetEnv("GPG_TTY", "/dev/graftui-test-tty");
         SetEnv("XDG_GRAFTUI_TEST", "xdg-test-value");
         SetEnv("GIT_ASKPASS", "/tmp/graftui-test-askpass");
         SetEnv("SSH_ASKPASS", "/tmp/graftui-test-ssh-askpass");
@@ -118,7 +122,9 @@ public sealed class GitEnvAllowlistTests : IDisposable
         SetEnv("GIT_WORK_TREE", "/tmp/graftui-test-no-such-tree");
         SetEnv("GIT_INDEX_FILE", "/tmp/graftui-test-index");
 
-        using var repo = TempRepo.Create();
+        Assert.Equal("1", Environment.GetEnvironmentVariable("GIT_CONFIG_COUNT"));
+        Assert.Equal("user.name", Environment.GetEnvironmentVariable("GIT_CONFIG_KEY_0"));
+        Assert.Equal("impostor", Environment.GetEnvironmentVariable("GIT_CONFIG_VALUE_0"));
 
         // An alias starting with ! runs in a shell with git's environment, as a hook does.
         var result = repo.Git.Run("-c", "alias.showenv=!env", "showenv");
@@ -126,6 +132,7 @@ public sealed class GitEnvAllowlistTests : IDisposable
         var env = result.StdOut.Split('\n');
 
         Assert.Contains("SSH_AUTH_SOCK=/tmp/graftui-test-agent.sock", env);
+        Assert.Contains("GPG_TTY=/dev/graftui-test-tty", env);
         Assert.Contains("XDG_GRAFTUI_TEST=xdg-test-value", env);
 
         // The tests' hermetic config still reaches git.

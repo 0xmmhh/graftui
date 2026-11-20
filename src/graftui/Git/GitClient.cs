@@ -82,7 +82,7 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     private static readonly HashSet<string> AllowedEnvNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "HOME", "PATH", "USER", "LOGNAME", "SHELL", "TMPDIR", "TERM",
-        "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GPG_AGENT_INFO", "GNUPGHOME",
+        "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GPG_AGENT_INFO", "GNUPGHOME", "GPG_TTY",
         "DISPLAY", "WAYLAND_DISPLAY",
         "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
         "LANG",
