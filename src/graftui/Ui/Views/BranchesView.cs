@@ -40,6 +40,12 @@ public sealed class BranchesView : PaneView
     /// <summary>The mark of each branch by name. Read only when the new look is on.</summary>
     public IReadOnlyDictionary<string, BranchMark> Marks { get; set; } = new Dictionary<string, BranchMark>();
 
+    /// <summary>
+    /// The detail block under the list (the new look): the selected branch's commits and files. Null: no block, and the list uses every row.
+    /// Drawn only with the new look on and a pane wide enough for it.
+    /// </summary>
+    public BranchDetailInput? Detail { get; set; }
+
     protected override bool OnDrawingContent(DrawContext? context)
     {
         ClearAll();
@@ -67,6 +73,16 @@ public sealed class BranchesView : PaneView
         var showHeader = showAb && innerH >= 2 && HasCounts(Branches, Counts);
         var firstRow = showHeader ? 2 : 1;
         var listH = showHeader ? innerH - 1 : innerH;
+
+        // The detail block takes the rows under the list; the list keeps the rest (see BranchDetail.Split).
+        var detail = NewLook && innerW - 1 >= BranchDetail.MinWidth ? Detail : null;
+        var detailRows = 0;
+        if (detail is not null)
+        {
+            var split = BranchDetail.Split(listH, Branches.Count);
+            listH = split.ListRows;
+            detailRows = split.DetailRows;
+        }
 
         var sel = Math.Clamp(Selected, 0, Branches.Count - 1);
         _top = ScrollTop(sel, _top, Branches.Count, listH);
@@ -115,7 +131,24 @@ public sealed class BranchesView : PaneView
             var cols = TextFit.Columns(header);
             DrawText(HeaderX(innerW, cols), 1, header, cols, Dim);
         }
+
+        // The block's first row is its blank separator, which is left empty; its lines come under it.
+        if (detail is not null && detailRows > 0)
+            DrawDetail(detail, firstRow + listH + 1, innerW - 1, detailRows - 1);
         return true;
+    }
+
+    // The block's lines from row y: the summary or path at x 2, the counts ending on the last column of the pane.
+    private void DrawDetail(BranchDetailInput detail, int y, int width, int rows)
+    {
+        var lines = BranchDetail.Lines(detail, width, rows);
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            Paint.Segs(this, 2, y + i, line.Left, width);
+            var rightCols = BranchDetail.SegColumns(line.Right);
+            Paint.Segs(this, 2 + width - rightCols, y + i, line.Right, rightCols);
+        }
     }
 
     /// <summary>

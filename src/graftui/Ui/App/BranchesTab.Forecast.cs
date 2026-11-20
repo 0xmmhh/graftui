@@ -91,11 +91,21 @@ internal sealed partial class BranchesTab
         // The marks of the other branches are queued for the new snapshot (the new look only; a snapshot with the same tips keeps them).
         EnsureListForecasts();
 
+        // The block is set from the snapshot's marks key, so it is set after EnsureListForecasts (and before the early returns below).
+        UpdateDetail();
+
         Cancellation.CancelAndDispose(ref _previewCts);
         _previewSeq++;
 
         if (!MayDrawPreview)
+        {
+            // A result or a question owns the art, so nothing is drawn. The new look still reads the selected layout (RequestPreview draws
+            // only when it may), so the detail block gets its data: PreviewLoaded caches the layout and sets the block without drawing.
+            // Not while paused: the pause screen would replace the art.
+            if (_newUi && !_app.IsPaused && _app.Snapshot.Branches.Count > 0)
+                RequestPreview();
             return;
+        }
 
         var shown = _shown;
         if (shown is null || !ShowsSnapshot(shown, _app.Snapshot))

@@ -63,6 +63,10 @@ internal sealed partial class BranchesTab
         // The running forecast answers for the old snapshot: its reads stop now, and its result is dropped by the generation check.
         Cancellation.CancelAndDispose(ref _forecastCts);
         _forecastGeneration++;
+
+        // A files read that is running is for the old selection and snapshot: it is cancelled. The files already read are kept (see
+        // BranchesTab.Detail): their key is two commits, and a commit does not change.
+        CancelFiles();
     }
 
     /// <summary>The cached layout of a branch in the snapshot, or null. Reads the cache, so it is used on the UI thread only.</summary>
@@ -82,6 +86,7 @@ internal sealed partial class BranchesTab
         _app.BranchList.Selected = _selected;
         _app.BranchList.SetNeedsDraw();
         _app.SyncBranchKeys();
+        UpdateDetail();
     }
 
     /// <summary>Keeps the selection on the same branch name; if that branch is gone, keeps the index (clamped).</summary>
@@ -191,20 +196,27 @@ internal sealed partial class BranchesTab
 
     internal void RequestPreview()
     {
-        // A paused rebase owns the art: its screen is shown whatever was selected.
+        // A paused rebase owns the art: its screen is shown whatever was selected. The detail block is cleared with it.
         if (_app.IsPaused)
         {
+            UpdateDetail();
             ShowPause();
             return;
         }
         if (_app.Snapshot.Branches.Count == 0)
+        {
+            UpdateDetail();
             return;
+        }
 
         // The lane graph is read alongside the layout; the sheet waits for both.
         EnsureLaneGraph();
 
         // The marks of the other branches are queued too (the new look only; this covers the first preview, before any snapshot change).
         EnsureListForecasts();
+
+        // The block is set once the marks have their key, before the cache check below may return early.
+        UpdateDetail();
 
         // Any request still in flight is stale now, even when the answer is cached: its result must not overwrite this one.
         Cancellation.CancelAndDispose(ref _previewCts);
@@ -259,6 +271,7 @@ internal sealed partial class BranchesTab
         _cache[key] = layout;
         if (MayDrawPreview)
             ShowPreview(layout);
+        UpdateDetail();
     }
 
     /// <summary>

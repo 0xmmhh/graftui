@@ -12,6 +12,13 @@ public sealed class RepoReader(GitClient git)
     // The top-level client: a paused sequence's paths are relative to the top level, so it reads the pause from there.
     private GitClient? _root;
 
+    // git's version, read by the first files read and kept once known. Null while it is not known (a failed `git version`).
+    // Two files reads on two workers may both ask git for it before either keeps it: the answer is the same, so the race is harmless.
+    private Version? _gitVersion;
+
+    /// <summary>The first git whose `diff --no-relative` the files read uses. Older git gives the summary only.</summary>
+    internal static readonly Version NoRelativeSince = new(2, 28);
+
     private const int ListCount = 3;
     private const int ListFetch = ListCount + 1; // one extra row tells whether the list was cut short
     private const int NewListMax = 50; // the commit list shows up to this many of the commits the counts count
@@ -76,6 +83,36 @@ public sealed class RepoReader(GitClient git)
         ct.ThrowIfCancellationRequested();
         var minimal = GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, sel.Name, curTip, sel.Hash);
         return minimal with { MergeBase = baseHash, Kind = KindOf(curTip, sel.Hash, baseHash) };
+    }
+
+    /// <summary>
+    /// The files the selected branch's new commits change: `git diff --numstat` from the merge base to the tip. Never logged. Null when git is
+    /// older than 2.28, the command fails or times out, or its output cannot be read: the detail then gives the summary only. Throws
+    /// OperationCanceledException when ct is cancelled.
+    /// </summary>
+    public IncomingFiles? LoadIncomingFiles(string mergeBase, string tip, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!SupportsNumstatRead(GitVersion(ct)))
+            return null;
+
+        // --no-relative: paths from the top level even with diff.relative set. --no-textconv and --no-ext-diff: no user command runs.
+        var r = git.RunRead(ct, "diff", "--numstat", "-z", "-M", "--no-relative", "--no-color", "--no-ext-diff", "--no-textconv",
+            mergeBase, tip, "--");
+        // A read cancelled by the UI must not turn into a failed result: this throws first.
+        ct.ThrowIfCancellationRequested();
+        return r.Success ? NumstatParser.Parse(r.StdOut) : null;
+    }
+
+    /// <summary>True when git is new enough for the files read: 2.28 or later. An unknown version (null) is not.</summary>
+    internal static bool SupportsNumstatRead(Version? version) => version is not null && version >= NoRelativeSince;
+
+    // git's version, asked once it is known. A failed `git version` is asked again next time.
+    private Version? GitVersion(CancellationToken ct)
+    {
+        if (_gitVersion is null)
+            _gitVersion = git.GetVersion(ct);
+        return _gitVersion;
     }
 
     /// <summary>
