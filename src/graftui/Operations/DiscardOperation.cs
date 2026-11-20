@@ -78,6 +78,14 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
         var (refusal, row) = Judge(request.File, StatusParser.Parse(st.StdOut));
         if (refusal is not null)
             return Refused(refusal, log);
+        // A tracked row is put back with git restore, which deletes whatever sits in the path's way. An untracked row is
+        // removed with git clean instead, so the swap cannot affect it.
+        if (row!.Kind != ChangeKind.Untracked)
+        {
+            var swap = InTheWay(row.Path);
+            if (swap is not null)
+                return Refused(swap, log);
+        }
 
         return new DiscardCheck(null, row, head.StdOut.Trim(), branch, gitDir, log);
     }
@@ -154,6 +162,21 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
                 $"{path} changed while it was being saved; nothing was discarded{kept}", null, log);
         }
 
+        // The swap check from CheckCore, again: whatever is in the way may have appeared since. Refusing here drops the
+        // copy exactly as step 6 does, so the stash is as it was.
+        if (!untracked)
+        {
+            var swap = InTheWay(path);
+            if (swap is not null)
+            {
+                if (RevParse(log, StashRef) == w)
+                    Call(log, GitArgs.Stash, "drop", "-q", GitArgs.StashTop);
+                var kept = RevParse(log, StashRef) == w ? "; a copy is in stash@{0}" : "";
+                return Done(DiscardKind.Failed, path, kept.Length > 0 ? CopyRef : null,
+                    $"{swap}; nothing was discarded{kept}", null, log);
+            }
+        }
+
         // 7. Put the file back, or remove it. From here on a failure keeps the stash entry.
         var put = untracked
             ? CallLiteral(log, "clean", "-f", "-q", "--", path)
@@ -176,6 +199,26 @@ public sealed class DiscardOperation(GitClient git) : IGitOperation<DiscardReque
             ? Done(DiscardKind.Discarded, path, CopyRef, saved, after, log, undo)
             : Done(DiscardKind.Discarded, path, CopyRef,
                 $"{saved}; could not save the undo step ({undoProblem}): u can't bring it back automatically; it is in stash@{{0}}", after, log);
+    }
+
+    /// <summary>
+    /// What would stop putting a tracked path back, or null when nothing does: a parent folder that is now a file or a
+    /// link (git would delete it to make the folder), or the path itself being a plain folder (git would delete its
+    /// files). No git call, so a refusal costs nothing.
+    /// </summary>
+    private string? InTheWay(string path)
+    {
+        var parts = path.Split('/');
+        var folder = git.RepoPath;
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            folder = Path.Combine(folder, parts[i]);
+            if (SequenceGit.InWorkTree(folder) && !SequenceGit.IsFolder(folder))
+                return ChangeRefusals.DiscardParentIsFile(path, string.Join('/', parts[..(i + 1)]));
+        }
+        if (SequenceGit.IsFolder(Path.Combine(git.RepoPath, path)))
+            return ChangeRefusals.DiscardIsFolder(path);
+        return null;
     }
 
     /// <summary>

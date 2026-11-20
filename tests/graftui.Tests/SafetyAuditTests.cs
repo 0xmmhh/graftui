@@ -512,7 +512,7 @@ public class SafetyAuditTests
 
     // ---- 8. a file and a folder that swap places ----
 
-    [Fact(Skip = "safety-audit: discarding a deleted file destroys an untracked file that now sits where the file's folder was")]
+    [Fact]
     public void Discard_of_a_deleted_file_keeps_an_untracked_file_that_took_its_folders_place()
     {
         using var repo = TempRepo.Create();
@@ -531,7 +531,7 @@ public class SafetyAuditTests
         Assert.Equal("MY NEW FILE NAMED docs\n", Text(repo.Dir, "docs"));
     }
 
-    [Fact(Skip = "safety-audit: discarding a deleted file also removes the untracked files in the folder that now has its name")]
+    [Fact]
     public void Discard_of_a_deleted_file_leaves_the_untracked_files_in_a_folder_at_its_path()
     {
         using var repo = TempRepo.Create();
@@ -548,6 +548,85 @@ public class SafetyAuditTests
 
         // notes/draft.txt is another row of the list. The discard of "notes" removes it too (it is in the stash, and u brings it back).
         Assert.Equal("MY DRAFT\n", Text(repo.Dir, "notes/draft.txt"));
+    }
+
+    [Fact]
+    public void Discard_refusing_a_file_that_took_a_folders_place_leaves_the_repo_unchanged()
+    {
+        using var repo = TempRepo.Create();
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "docs"));
+        repo.Commit("docs/a.txt", "tracked a\n", "Add docs/a");
+        Directory.Delete(Path.Combine(repo.Dir, "docs"), recursive: true);
+        repo.Write("docs", "MY NEW FILE NAMED docs\n");
+        var row = UnstagedRow(repo.Git, "docs/a.txt");
+        var before = repo.Status();
+        var stashList = repo.Run("stash", "list");
+        var head = repo.Run("rev-parse", "HEAD");
+
+        var check = new DiscardOperation(repo.Git).Check(new DiscardRequest(row));
+
+        Assert.False(check.CanRun, "the discard ran although a file is in the way");
+        Assert.Contains("docs", check.Refusal);
+        Assert.Equal(before, repo.Status());
+        Assert.Equal(stashList, repo.Run("stash", "list"));
+        Assert.Equal(head, repo.Run("rev-parse", "HEAD"));
+        Assert.Equal("MY NEW FILE NAMED docs\n", Text(repo.Dir, "docs"));
+    }
+
+    [Fact]
+    public void Discard_refusing_a_folder_at_a_files_path_leaves_the_repo_unchanged()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("notes", "tracked notes\n", "Add notes");
+        File.Delete(Path.Combine(repo.Dir, "notes"));
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "notes"));
+        repo.Write("notes/draft.txt", "MY DRAFT\n");
+        var row = UnstagedRow(repo.Git, "notes");
+        var before = repo.Status();
+        var stashList = repo.Run("stash", "list");
+        var head = repo.Run("rev-parse", "HEAD");
+
+        var check = new DiscardOperation(repo.Git).Check(new DiscardRequest(row));
+
+        Assert.False(check.CanRun, "the discard ran although a folder is in the way");
+        Assert.Contains("notes", check.Refusal);
+        Assert.Equal(before, repo.Status());
+        Assert.Equal(stashList, repo.Run("stash", "list"));
+        Assert.Equal(head, repo.Run("rev-parse", "HEAD"));
+        Assert.Equal("MY DRAFT\n", Text(repo.Dir, "notes/draft.txt"));
+    }
+
+    [Fact]
+    public void Discard_of_a_deleted_file_in_a_folder_that_still_exists_discards_it()
+    {
+        using var repo = TempRepo.Create();
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "docs"));
+        repo.Commit("docs/a.txt", "tracked a\n", "Add docs/a");
+        File.Delete(Path.Combine(repo.Dir, "docs", "a.txt"));
+        var row = UnstagedRow(repo.Git, "docs/a.txt");
+
+        var outcome = Discard(repo.Git, row);
+
+        Assert.Equal(DiscardKind.Discarded, outcome.Kind);
+        Assert.Equal("tracked a\n", Text(repo.Dir, "docs/a.txt"));
+    }
+
+    [Fact]
+    public void Discard_refuses_when_a_parent_is_a_symlink()
+    {
+        using var repo = TempRepo.Create();
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "docs"));
+        repo.Commit("docs/a.txt", "tracked a\n", "Add docs/a");
+        Directory.Delete(Path.Combine(repo.Dir, "docs"), recursive: true);
+        Directory.CreateDirectory(Path.Combine(repo.Dir, "real"));
+        Directory.CreateSymbolicLink(Path.Combine(repo.Dir, "docs"), "real");
+        var row = UnstagedRow(repo.Git, "docs/a.txt");
+        var before = repo.Status();
+
+        var check = new DiscardOperation(repo.Git).Check(new DiscardRequest(row));
+
+        Assert.False(check.CanRun, "the discard ran although a symlink is in the way");
+        Assert.Equal(before, repo.Status());
     }
 
     [Fact(Skip = "safety-audit: undo of a pop fails when a tracked folder was replaced by an untracked file; the tree is left at HEAD")]
