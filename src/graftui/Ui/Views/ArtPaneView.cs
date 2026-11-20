@@ -326,6 +326,8 @@ public sealed class ArtPaneView : PaneView
                 break;
             for (var x = 0; x < grid.Width; x++)
             {
+                if (1 + x > Viewport.Width - 2)
+                    break;
                 var cell = grid[x, y];
                 Paint.Put(this, 1 + x, row, cell.Ch, Palette.Get(cell.Style, cell.Bg));
             }
