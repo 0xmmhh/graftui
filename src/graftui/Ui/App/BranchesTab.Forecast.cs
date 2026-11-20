@@ -62,6 +62,7 @@ internal sealed partial class BranchesTab
         }
 
         _forecastRunning = true;
+        _forecastName = L.Selected;
         var forecaster = _app.Forecaster;
         var generation = _forecastGeneration;
 
@@ -86,6 +87,9 @@ internal sealed partial class BranchesTab
     {
         // The graph of the new snapshot is read even while a result or a question is on screen: git log is read-only and takes no lock.
         EnsureLaneGraph();
+
+        // The marks of the other branches are queued for the new snapshot (the new look only; a snapshot with the same tips keeps them).
+        EnsureListForecasts();
 
         Cancellation.CancelAndDispose(ref _previewCts);
         _previewSeq++;
@@ -126,23 +130,42 @@ internal sealed partial class BranchesTab
     /// and the waiting layout (if any) starts. It leaves the status bar alone: an error still shown stays until a preview loads.
     /// UI thread only.
     /// </summary>
-    internal void ForecastDone(GraphLayout L, MergeForecast f, int generation)
+    internal void ForecastDone(GraphLayout L, MergeForecast f, int generation) => ForecastFinished(L, f, generation, cache: true);
+
+    /// <summary>
+    /// The shared end of a forecast. A null <paramref name="f"/> means the job gave no answer (it was cancelled, or its layout could not be
+    /// read): nothing is cached, no mark is set, and the branch stays queueable. With <paramref name="cache"/> false the result is not
+    /// cached and the preview is not drawn again.
+    /// </summary>
+    private void ForecastFinished(GraphLayout L, MergeForecast? f, int generation, bool cache)
     {
         _forecastRunning = false;
+        _forecastName = null;
 
         // A result from before the last ClearCache is dropped: its snapshot is gone. The waiting layout still runs below.
-        if (generation == _forecastGeneration)
+        if (generation == _forecastGeneration && f is not null)
         {
-            _forecasts[ForecastKey(L)] = f;
+            if (cache)
+                _forecasts[ForecastKey(L)] = f;
+
+            // The branch's mark (the new look only). The selected branch's own result comes here too, from the preview. No key set means
+            // the list is blank (MarksStale), so no mark is written until the next snapshot is applied.
+            if (_newUi && _marksKey is not null)
+            {
+                _marks[L.Selected] = BranchMarks.Of(L, f);
+                _app.BranchList.SetNeedsDraw();
+            }
 
             var shown = _shown;
-            if (shown is not null && ForecastKey(shown) == ForecastKey(L) && MayDrawPreview)
+            if (cache && shown is not null && ForecastKey(shown) == ForecastKey(L) && MayDrawPreview)
                 DrawPreview(shown);
         }
 
+        // The selected branch goes before the queue; the queue then fills the slot if nothing took it.
         var next = _forecastNext;
         _forecastNext = null;
         if (next is not null)
             RequestForecast(next);
+        PumpListForecasts();
     }
 }

@@ -63,6 +63,22 @@ public sealed class RepoReader(GitClient git)
     }
 
     /// <summary>
+    /// The layout a forecast needs for one branch: names, tips and how they relate (one merge-base read; none when the tip is HEAD).
+    /// Lists are empty and counts 0 (GraphLayout.Minimal). Throws when HEAD has no commits, a read fails, or ct is cancelled.
+    /// Its ForecastKey equals the full layout's, so both share the forecast cache.
+    /// </summary>
+    public GraphLayout LoadForecastLayout(RepoSnapshot snap, Branch sel, CancellationToken ct)
+    {
+        var curTip = snap.HeadHash ?? throw new InvalidOperationException("HEAD has no commits yet");
+        ct.ThrowIfCancellationRequested();
+        var baseHash = sel.Hash == curTip ? curTip : git.GetMergeBase(curTip, sel.Hash, ct);
+
+        ct.ThrowIfCancellationRequested();
+        var minimal = GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, sel.Name, curTip, sel.Hash);
+        return minimal with { MergeBase = baseHash, Kind = KindOf(curTip, sel.Hash, baseHash) };
+    }
+
+    /// <summary>
     /// The lane graph of every local branch against the current branch (the trunk when HEAD is detached). Never logged.
     /// LaneGraph.Empty when there are no commits or no branches. Throws OperationCanceledException when ct is cancelled.
     /// </summary>

@@ -132,4 +132,72 @@ public sealed class RepoReaderSandboxTests : IClassFixture<ReadOnlySandbox>
 
         Assert.Equal(GraphKind.Unrelated, layout.Kind);
     }
+
+    [Theory]
+    [InlineData("feature/conflict", ForecastKind.Conflict)]
+    [InlineData("feature/fast-forward", ForecastKind.FastForward)]
+    [InlineData("feature/ff-to-merge", ForecastKind.FastForward)]
+    [InlineData("feature/merge-commit", ForecastKind.Clean)]
+    [InlineData("feature/picks", ForecastKind.Clean)]
+    public void The_forecast_layout_gives_the_same_kind_and_forecast_as_the_full_layout(string branch, ForecastKind expected)
+    {
+        var snap = _reader.LoadSnapshot(withCounts: true, CancellationToken.None);
+        var sel = snap.Branches.Single(b => b.Name == branch);
+        var forecaster = new MergeForecaster(_git);
+
+        var full = _reader.LoadLayout(snap, sel, CancellationToken.None);
+        var light = _reader.LoadForecastLayout(snap, sel, CancellationToken.None);
+
+        Assert.Equal(full.Kind, light.Kind);
+        Assert.Equal(full.MergeBase, light.MergeBase);
+        Assert.Equal(full.CurrentTip, light.CurrentTip);
+        Assert.Equal(full.SelectedTip, light.SelectedTip);
+        Assert.Equal(expected, forecaster.Forecast(light).Kind);
+        Assert.Equal(expected, forecaster.Forecast(full).Kind);
+        Assert.Equal("", _git.RunRead(CancellationToken.None, "status", "--porcelain").StdOut.Trim());
+    }
+
+    [Fact]
+    public void The_forecast_layout_of_the_current_branch_is_the_same_commit_with_no_lists()
+    {
+        var snap = _reader.LoadSnapshot(withCounts: true, CancellationToken.None);
+        var main = snap.Branches.Single(b => b.Name == "main");
+
+        var layout = _reader.LoadForecastLayout(snap, main, CancellationToken.None);
+
+        Assert.Equal(GraphKind.Same, layout.Kind);
+        Assert.Equal(snap.HeadHash, layout.MergeBase);
+        Assert.Empty(layout.SelectedOwn);
+        Assert.Empty(layout.SelectedNew);
+    }
+
+    [Fact]
+    public void A_branch_behind_main_forecasts_as_up_to_date()
+    {
+        _git.Run("branch", "old", "main~1");
+        var snap = _reader.LoadSnapshot(withCounts: true, CancellationToken.None);
+        var old = snap.Branches.Single(b => b.Name == "old");
+
+        var layout = _reader.LoadForecastLayout(snap, old, CancellationToken.None);
+
+        Assert.Equal(GraphKind.UpToDate, layout.Kind);
+    }
+
+    [Fact]
+    public void A_branch_with_no_common_history_forecasts_as_unrelated_with_no_merge_base()
+    {
+        using var repo = TempRepo.Create();
+        repo.Commit("a.txt", "a\n", "Main commit");
+        repo.Run("switch", "-q", "--orphan", "lone");
+        repo.Commit("lone.txt", "x\n", "Lone commit");
+        repo.Run("switch", "-q", "main");
+        var reader = new RepoReader(repo.Git);
+        var snap = reader.LoadSnapshot(withCounts: true, CancellationToken.None);
+        var lone = snap.Branches.Single(b => b.Name == "lone");
+
+        var layout = reader.LoadForecastLayout(snap, lone, CancellationToken.None);
+
+        Assert.Equal(GraphKind.Unrelated, layout.Kind);
+        Assert.Null(layout.MergeBase);
+    }
 }

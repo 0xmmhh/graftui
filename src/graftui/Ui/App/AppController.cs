@@ -34,6 +34,7 @@ public sealed class AppController
     public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay, bool newUi = false)
     {
         App = app;
+        NewUi = newUi;
         Git = git;
         Reader = new RepoReader(git);
         RootGit = rootGit;
@@ -114,6 +115,10 @@ public sealed class AppController
     public void MarkQuitting() => Gate.MarkQuitting();
 
     internal IApplication App { get; }
+
+    /// <summary>True when the new look is on (--new-ui). Off: the screen is main's, and no new git read runs.</summary>
+    internal bool NewUi { get; }
+
     internal GitClient Git { get; }
     internal RepoReader Reader { get; }
     internal MergeOperation MergeOp { get; }
@@ -244,6 +249,9 @@ public sealed class AppController
         BranchList.Counts = Snapshot.Counts;
         BranchList.Selected = BranchesTab.Selected;
         BranchList.PausedBranch = SequenceStatus.PausedBranch(Snapshot);
+        // The new look's marks (--new-ui). Off: the list draws the star as before, and BranchesTab queues no forecast.
+        BranchList.NewLook = NewUi;
+        BranchList.Marks = BranchesTab.Marks;
         _tooSmall.Cols = App.Screen.Width;
         _tooSmall.Rows = App.Screen.Height;
         Art.ScreenCols = App.Screen.Width;
@@ -273,7 +281,7 @@ public sealed class AppController
         App.Keyboard.KeyDown += OnKeyDown;
 
         BranchesTab.RequestPreview();
-        ReloadCountsAsync();
+        ReloadCountsAsync(blankMarks: false);
         return window;
     }
 
@@ -854,9 +862,15 @@ public sealed class AppController
     /// since the read started. <paramref name="then"/> runs there afterwards, once the read is applied or dropped: a screen that depends on
     /// the snapshot (the pause screen) is then drawn from a fresh read.
     /// </summary>
-    internal void ReloadCountsAsync(Action? then = null)
+    internal void ReloadCountsAsync(Action? then = null, bool blankMarks = true)
     {
         var seq = SnapshotSeq;
+
+        // The snapshot on screen may be out of date (a change or a refusal ended, and the counts are read again): the branch marks are
+        // blanked until the read is applied. A caller that has just applied the snapshot, or a startup read, passes blankMarks false.
+        // The new look only (see MarksStale).
+        if (blankMarks)
+            BranchesTab.MarksStale();
         Task.Run(() =>
         {
             RepoSnapshot? s = null;
@@ -881,8 +895,14 @@ public sealed class AppController
     {
         if (failed is not null)
             ShowGitError(failed);
-        else if (s is not null && !Busy && seq == SnapshotSeq)
+        if (failed is null && s is not null && !Busy && seq == SnapshotSeq)
             ApplySnapshot(s);
+        else if (!Busy)
+        {
+            // The read was not applied (it failed, or a newer snapshot came first): the marks blanked for it come back now, and the
+            // preview's forecast is asked for again. While an operation is still busy, its end does that instead.
+            BranchesTab.MarksBack();
+        }
         then?.Invoke();
     }
 

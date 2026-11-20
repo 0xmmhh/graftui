@@ -34,8 +34,11 @@ internal sealed partial class BranchesTab
         public CommandHints? Hints { get; init; }
     }
 
-    /// <summary>Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now.</summary>
-    private void StartWork()
+    /// <summary>
+    /// Marks the tab busy for a change or a check that reads git. Any preview still loading is stale now, and the branch marks are blanked
+    /// (a change may move the tips; a check that changes nothing gets them back in EndWork).
+    /// </summary>
+    internal void StartWork()
     {
         _app.ReleaseBranchWidth();
         _app.Busy = true;
@@ -43,14 +46,19 @@ internal sealed partial class BranchesTab
         _app.Keys.Busy = true;
         _app.Keys.SetNeedsDraw();
         _app.SnapshotSeq++;
+        MarksStale();
     }
 
-    /// <summary>Clears busy without drawing a result (a check that asked a question, or that failed before anything started).</summary>
-    private void EndWork()
+    /// <summary>
+    /// Clears busy without drawing a result (a check that asked a question, or that failed before anything started). The branch marks come
+    /// back here when the snapshot on screen is still the one they belong to: after a write, the new snapshot applies them instead.
+    /// </summary>
+    internal void EndWork()
     {
         _app.Busy = false;
         _app.Keys.Busy = false;
         _app.Keys.SetNeedsDraw();
+        MarksBack();
     }
 
     /// <summary>
@@ -112,7 +120,8 @@ internal sealed partial class BranchesTab
         if (f.Select is { } name)
             SelectName(name);
         _app.Result = SelectedName();
-        _app.ReloadCountsAsync(() => ShowPauseAfter(f.Result));
+        // The snapshot was applied just above (when there was one): the marks are not blanked again here.
+        _app.ReloadCountsAsync(() => ShowPauseAfter(f.Result), blankMarks: f.After is null);
     }
 
     /// <summary>
@@ -164,7 +173,7 @@ internal sealed partial class BranchesTab
         _app.ShowGitError(ex);
         _app.MarkChangeOutcomeShown();
         RestoreAfterError();
-        _app.ReloadCountsAsync();
+        _app.ReloadCountsAsync(blankMarks: false);
     }
 
     /// <summary>Gives the keys back after a check failed before anything started: the preview of the selection comes back.</summary>
@@ -203,7 +212,7 @@ internal sealed partial class BranchesTab
 
         _app.Result = SelectedName();
         EndWork();
-        _app.ReloadCountsAsync();
+        _app.ReloadCountsAsync(blankMarks: false);
     }
 
     /// <summary>The result of a change that git refused after its animation had started: the refusal over the art, as a refusal screen.</summary>

@@ -31,6 +31,7 @@ internal sealed partial class BranchesTab
         _app.Keys.Busy = true;
         _app.Keys.SetNeedsDraw();
         _app.SnapshotSeq++;
+        MarksStale();
         _app.BeginChangeOutcome();
 
         var snapshot = _app.Snapshot;

@@ -34,6 +34,12 @@ public sealed class BranchesView : PaneView
     /// <summary>The branch of a paused rebase: it keeps its mark while HEAD is detached. "" when nothing is paused.</summary>
     public string PausedBranch { get; set; } = "";
 
+    /// <summary>The new look (--new-ui): column 2 shows each branch's mark (see BranchMarks). False: the star, drawn exactly as before.</summary>
+    public bool NewLook { get; set; }
+
+    /// <summary>The mark of each branch by name. Read only when the new look is on.</summary>
+    public IReadOnlyDictionary<string, BranchMark> Marks { get; set; } = new Dictionary<string, BranchMark>();
+
     protected override bool OnDrawingContent(DrawContext? context)
     {
         ClearAll();
@@ -65,6 +71,7 @@ public sealed class BranchesView : PaneView
         var sel = Math.Clamp(Selected, 0, Branches.Count - 1);
         _top = ScrollTop(sel, _top, Branches.Count, listH);
         var lanes = BranchLanes.Assign(Branches);
+        var detached = CurrentName(Branches) == "HEAD";
 
         for (var i = _top; i < Branches.Count && i < _top + listH; i++)
         {
@@ -75,10 +82,17 @@ public sealed class BranchesView : PaneView
 
             Paint.Fill(this, 1, row, innerW, Palette.Get(Fg, isSel));
 
-            // mark: the selection arrow, then the current branch's star
-            var (arrow, star) = MarkCells(isSel, b.IsCurrent || b.Name == PausedBranch);
+            // mark: the selection arrow, then the current branch's star (or, on the new look, the branch's mark)
+            var current = b.IsCurrent || b.Name == PausedBranch;
+            var (arrow, star) = MarkCells(isSel, current);
             DrawText(1, row, arrow, 1, FgB, isSel);
-            DrawText(2, row, star, 1, style, isSel);
+            if (NewLook)
+            {
+                var (mark, markStyle) = BranchMarks.Cell(b.Name, current, detached, style, Marks, Glyphs.Unicode);
+                DrawText(2, row, mark, 1, markStyle, isSel);
+            }
+            else
+                DrawText(2, row, star, 1, style, isSel);
 
             // name
             DrawText(NameX, row, b.Name, nameW, style, isSel);
