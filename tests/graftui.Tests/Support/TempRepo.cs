@@ -71,12 +71,12 @@ internal sealed class TempRepo : IDisposable
         Directory.CreateDirectory(dir);
         var repo = new TempRepo(dir);
         repo.Run("init", "-q", "-b", "main");
-        repo.Run("config", "user.name", "t");
-        repo.Run("config", "user.email", "t@example.invalid");
-        repo.Run("config", "commit.gpgsign", "false");
-        repo.Run("config", "core.hooksPath", ".git/hooks");
-        repo.Run("config", "core.autocrlf", "false");
-        repo.Run("config", "merge.ff", "true");
+        // These known fixture settings do not need six more git processes for every test repository.
+        File.AppendAllText(Path.Combine(dir, ".git", "config"),
+            "\n[user]\n\tname = t\n\temail = t@example.invalid\n" +
+            "[commit]\n\tgpgsign = false\n" +
+            "[core]\n\thooksPath = .git/hooks\n\tautocrlf = false\n" +
+            "[merge]\n\tff = true\n");
         return repo;
     }
 

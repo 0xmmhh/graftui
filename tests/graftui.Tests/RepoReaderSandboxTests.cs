@@ -4,29 +4,14 @@ using graftui.Model;
 namespace graftui.Tests;
 
 /// <summary>What the screen reads from the sandbox: branch counts and preview layouts.</summary>
-public sealed class RepoReaderSandboxTests : IDisposable
+public sealed class RepoReaderSandboxTests : IClassFixture<ReadOnlySandbox>
 {
-    private readonly string _dir = TempRepo.NewSandboxDir();
-    private readonly GitClient _git;
     private readonly RepoReader _reader;
 
-    public RepoReaderSandboxTests()
+    public RepoReaderSandboxTests(ReadOnlySandbox sandbox)
     {
-        try
-        {
-            Sandbox.RebuildAt(_dir, TextWriter.Null);
-        }
-        catch
-        {
-            // Dispose never runs when the constructor throws, so clean up the temp root here.
-            TempRepo.DeleteSandboxRoot(_dir);
-            throw;
-        }
-        _git = new GitClient(_dir);
-        _reader = new RepoReader(_git);
+        _reader = sandbox.Reader;
     }
-
-    public void Dispose() => TempRepo.DeleteSandboxRoot(_dir);
 
     [Fact]
     public void The_snapshot_has_main_as_current_and_a_clean_tree()
@@ -120,11 +105,13 @@ public sealed class RepoReaderSandboxTests : IDisposable
     [Fact]
     public void A_branch_behind_main_previews_as_up_to_date()
     {
-        _git.Run("branch", "old", "main~1");
-        var snap = _reader.LoadSnapshot(withCounts: true, CancellationToken.None);
+        using var repo = TempRepo.Diverged(conflict: false);
+        repo.Run("branch", "old", "main~1");
+        var reader = new RepoReader(repo.Git);
+        var snap = reader.LoadSnapshot(withCounts: true, CancellationToken.None);
         var old = snap.Branches.Single(b => b.Name == "old");
 
-        var layout = _reader.LoadLayout(snap, old, CancellationToken.None);
+        var layout = reader.LoadLayout(snap, old, CancellationToken.None);
 
         Assert.Equal(GraphKind.UpToDate, layout.Kind);
     }
