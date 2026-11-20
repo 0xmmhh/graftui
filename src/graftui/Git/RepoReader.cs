@@ -17,6 +17,7 @@ public sealed class RepoReader(GitClient git)
     private const int NewListMax = 50; // the commit list shows up to this many of the commits the counts count
     private const int HeadCount = 4;
     private const int HeadFetch = HeadCount + 1; // one extra commit tells whether history was cut short
+    private const int MaxTips = 500; // branch tips on one git command line: each is a 40-character hash
     private const long MaxPreviewBytes = 1_000_000;
 
     public RepoSnapshot LoadSnapshot(bool withCounts, CancellationToken ct)
@@ -59,6 +60,80 @@ public sealed class RepoReader(GitClient git)
     {
         var curTip = snap.HeadHash ?? throw new InvalidOperationException("HEAD has no commits yet");
         return ReadPair(snap.CurrentBranch, snap.CurrentBranch.Length == 0, curTip, sel, snap.Branches, ct);
+    }
+
+    /// <summary>
+    /// The lane graph of every local branch against the current branch (the trunk when HEAD is detached). Never logged.
+    /// LaneGraph.Empty when there are no commits or no branches. Throws OperationCanceledException when ct is cancelled.
+    /// </summary>
+    public LaneGraph LoadLaneGraph(RepoSnapshot snap, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var head = snap.HeadHash;
+        if (head is null || snap.Branches.Count == 0)
+            return LaneGraph.Empty;
+
+        var branches = snap.Branches;
+        var onBranch = snap.CurrentBranch.Length > 0;
+        var baseName = onBranch ? snap.CurrentBranch : (BranchLanes.TrunkName(branches) ?? branches[0].Name);
+        // The base tip comes from the base's own entry in this branch list. HEAD and the list are read at different moments, so a
+        // commit made in between would move the base in the list but not in HeadHash, and TipsOf leaves the base out by name. A
+        // detached HEAD is not the base (the trunk is), so HeadHash is used only when the current branch is missing from the list.
+        var entry = branches.FirstOrDefault(b => b.Name == baseName);
+        string baseTip;
+        if (entry is not null)
+            baseTip = entry.Hash;
+        else if (onBranch)
+            baseTip = head;
+        else
+            throw new InvalidOperationException($"{baseName} is not listed");
+
+        ct.ThrowIfCancellationRequested();
+        var baseRead = git.GetGraphCommits([baseTip], null, LaneGraphBuilder.BaseMax + 1, firstParent: true, ct);
+        var baseChainMore = baseRead.Count > LaneGraphBuilder.BaseMax;
+        var baseChain = baseRead.Take(LaneGraphBuilder.BaseMax).ToList();
+
+        var tips = TipsOf(branches, baseName, baseTip, MaxTips, out var tipsCut);
+        IReadOnlyList<GraphCommit> others = [];
+        var othersCut = tipsCut;
+        if (tips.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            var othersRead = git.GetGraphCommits(tips, baseTip, LaneGraphBuilder.OthersMax + 1, firstParent: false, ct);
+            // Past OthersMax the newest commits are kept. A branch whose commits are all cut shows as a pointer at column -1, and
+            // OthersCut tells the screen that history was left out.
+            othersCut = othersCut || othersRead.Count > LaneGraphBuilder.OthersMax;
+            others = othersRead.Take(LaneGraphBuilder.OthersMax).ToList();
+        }
+
+        ct.ThrowIfCancellationRequested();
+        return LaneGraphBuilder.Build(new LaneGraphInput(baseName, baseChain, baseChainMore, branches, others, othersCut));
+    }
+
+    /// <summary>
+    /// The tips of the other branches for the lane graph read: one per distinct commit, in the branch list's order, and none for
+    /// the base or for a branch on the base tip. At most <paramref name="max"/> are kept; <paramref name="cut"/> says whether any
+    /// were left out. The cap keeps the command line well under Windows' limit (one hash per tip).
+    /// </summary>
+    internal static IReadOnlyList<string> TipsOf(IReadOnlyList<Branch> branches, string baseName, string baseTip, int max, out bool cut)
+    {
+        var tips = new List<string>();
+        var seen = new HashSet<string>();
+        cut = false;
+        foreach (var branch in branches)
+        {
+            if (branch.Name == baseName || branch.Hash == baseTip || !seen.Add(branch.Hash))
+                continue;
+            if (tips.Count == max)
+            {
+                cut = true;
+                break;
+            }
+
+            tips.Add(branch.Hash);
+        }
+
+        return tips;
     }
 
     /// <summary>

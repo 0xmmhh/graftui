@@ -415,6 +415,36 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
         return ParseCommits(result.StdOut);
     }
 
+    /// <summary>
+    /// The commits for the lane graph, newest first, in topological order (a parent never comes before its child). With
+    /// <paramref name="firstParent"/> only the first-parent chain is read, from the one tip given (the base's tip, with
+    /// <paramref name="notTip"/> null). Without it, the history reachable from all the tips but not from
+    /// <paramref name="notTip"/>: the branches' own commits.
+    /// Throws InvalidOperationException when git fails.
+    /// </summary>
+    public IReadOnlyList<GraphCommit> GetGraphCommits(IReadOnlyList<string> tips, string? notTip, int max, bool firstParent,
+        CancellationToken ct = default)
+    {
+        if (tips.Count == 0)
+            return [];
+
+        var args = new List<string>
+        {
+            "log", "--no-show-signature", firstParent ? "--first-parent" : "--topo-order",
+            "-n", max.ToString(CultureInfo.InvariantCulture), CommitFormat,
+        };
+        args.AddRange(tips);
+        if (notTip is not null)
+            args.AddRange(["--not", notTip]);
+        args.Add("--");
+
+        var result = Query(ct, [.. args]);
+        if (!result.Success)
+            throw new InvalidOperationException(Describe(result));
+
+        return ParseGraphCommits(result.StdOut);
+    }
+
     /// <summary>One commit by hash, or null if git cannot read it.</summary>
     public CommitInfo? GetCommit(string hash, CancellationToken ct = default)
     {
@@ -437,6 +467,29 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
             return null;
         var parents = fields[2].Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
         return new CommitInfo(fields[0], fields[1], parents, fields[4], ParseDate(fields[3]));
+    }
+
+    // One commit per line for the lane graph. The parents are the space-separated %P field, so a root commit has none.
+    private static List<GraphCommit> ParseGraphCommits(string stdout)
+    {
+        var commits = new List<GraphCommit>();
+        foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var commit = ParseGraphCommit(line);
+            if (commit is not null)
+                commits.Add(commit);
+        }
+
+        return commits;
+    }
+
+    internal static GraphCommit? ParseGraphCommit(string line)
+    {
+        var fields = line.Split('\x1f', 5);
+        if (fields.Length != 5)
+            return null;
+        var parents = fields[2].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return new GraphCommit(fields[0], fields[1], parents, fields[4]);
     }
 
     // The committer date from %ct (Unix seconds). Null when the field is not a number.
