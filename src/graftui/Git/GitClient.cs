@@ -570,7 +570,7 @@ public sealed class GitClient(string repoPath, GitTimeouts? timeouts = null)
     /// <summary>True when there are no staged, unstaged or untracked changes.</summary>
     public bool IsWorkingTreeClean(CancellationToken ct = default)
     {
-        var result = Query(ct, "status", "--porcelain");
+        var result = Query(ct, "status", "--porcelain", "--untracked-files=normal");
         return result.Success && string.IsNullOrWhiteSpace(result.StdOut);
     }
 

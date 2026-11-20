@@ -312,7 +312,7 @@ public class GitTimeoutTests
 
         AssertReturnedQuickly(clock);
         Assert.Equal(MergeKind.Failed, outcome.Kind);
-        Assert.Contains(outcome.Commands, c => c.Command == "git merge --no-edit feature" && c.TimedOut && c.ExitCode == 124);
+        Assert.Contains(outcome.Commands, c => c.Command == "git merge --no-edit --commit --no-squash feature" && c.TimedOut && c.ExitCode == 124);
         Assert.Contains(outcome.Commands, c => c.Command == "git reset --merge");
         Assert.StartsWith("git timed out", outcome.Message, StringComparison.Ordinal);
         Assert.EndsWith("nothing was merged", outcome.Message, StringComparison.Ordinal);
