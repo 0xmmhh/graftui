@@ -147,6 +147,23 @@ public sealed class DigestTextTests
         Assert.Equal("! not verified: check git status", Text(DigestText.Detail(Failed("boom", verified: false))));
     }
 
+    // g plays a merge, a fast-forward and a stop; an up-to-date merge and a failure have nothing to play, so no hint and no g.
+    [Fact]
+    public void FromOutcome_lets_g_play_only_the_kinds_that_animate()
+    {
+        Assert.True(DigestText.FromOutcome(new MergeOutcome(MergeKind.MergeCommit, "feature", "main", NewHead, [], "", []), true, Before, 1).CanPlay);
+        Assert.True(DigestText.FromOutcome(new MergeOutcome(MergeKind.FastForward, "feature", "main", NewHead, [], "", []), true, Before, 1).CanPlay);
+        Assert.True(DigestText.FromOutcome(new MergeOutcome(MergeKind.Conflict, "feature", "main", null, ["app.txt"], "", []), true, Before, 1).CanPlay);
+
+        var upToDate = DigestText.FromOutcome(new MergeOutcome(MergeKind.UpToDate, "feature", "main", null, [], "", []), true, Before, 0);
+        Assert.False(upToDate.CanPlay);
+        Assert.Equal("", DigestText.Hint(upToDate));
+
+        var failed = DigestText.FromOutcome(new MergeOutcome(MergeKind.Failed, "feature", "main", null, [], "boom", []), true, Before, 0);
+        Assert.False(failed.CanPlay);
+        Assert.Equal("", DigestText.Hint(failed));
+    }
+
     [Fact]
     public void A_refusal_says_nothing_was_changed()
     {

@@ -11,11 +11,11 @@ internal sealed record MergeStart(GraphLayout Layout, LaneGraph Graph, MergeFore
 
 /// <summary>
 /// The new look's merge screens (--new-ui, calm mode): the running line, the card after git answers, the refusal card, and g's replay of
-/// the old merge animation. No animation plays by itself. UI thread only. The old look never calls it.
+/// the merge on the lane graph. No animation plays by itself. UI thread only. The old look never calls it.
 /// </summary>
 internal sealed class MergeDigest
 {
-    /// <summary>How long the replay holds its last frame before the card comes back.</summary>
+    /// <summary>How long the replay holds its last frame (the card) before the card stays on screen as it is.</summary>
     internal const long ReplayHoldMs = 1200;
 
     private static readonly Style WarnB = new(Ink.Warn, true);
@@ -26,10 +26,9 @@ internal sealed class MergeDigest
     // The card on screen and what it was made from. Null when no card is shown.
     private Shown? _shown;
 
-    // The replay of the old animation, while g plays it: its clock, and the time its last frame was reached (-1 while it runs).
-    private MergeAnimation? _anim;
+    // The play of the merge, while g plays it, and its clock.
+    private LaneMergeAnimation? _play;
     private Stopwatch? _clock;
-    private long _doneAt = -1;
 
     // The number of the newest replay timer. A timer whose number is older has been stopped and does nothing.
     private int _replaySeq;
@@ -46,7 +45,7 @@ internal sealed class MergeDigest
     internal MergeCard? Card => _shown?.Card;
 
     /// <summary>True while g plays the replay.</summary>
-    internal bool Replaying => _anim is not null;
+    internal bool Replaying => _play is not null;
 
     /// <summary>The merge is running: its running line, and the commands it has run so far.</summary>
     internal void ShowRunning(MergeCheck check, MergeStart start)
@@ -116,30 +115,21 @@ internal sealed class MergeDigest
         _app.ReloadCountsAsync();
     }
 
-    /// <summary>g: plays the old merge animation from the pre-merge layout, with the outcome known from the start. No git runs.</summary>
+    /// <summary>
+    /// g: plays the merge on the lane graph, from the pre-merge graph to the card's own. The outcome is known from the start, so no git runs.
+    /// A card that has no play (up to date, failed, refused) does nothing.
+    /// </summary>
     internal void Replay()
     {
         var shown = _shown;
-        if (shown is null || shown.Outcome is null || _app.Busy || Replaying)
+        if (shown is null || shown.Outcome is null || _app.Busy || Replaying || !LaneMergeAnimation.CanPlay(shown.Card))
             return;
 
-        var layout = shown.Start.Layout;
-        var anim = new MergeAnimation(layout);
-        anim.SetOutcome(shown.Outcome, 0);
-        var clock = Stopwatch.StartNew();
-        _anim = anim;
-        _clock = clock;
-        _doneAt = -1;
-
-        // The same screen the old animation starts with (Animator.BeginAnimation).
-        var detached = layout.Detached;
-        var selInk = BranchInks.Selected(layout);
-        var curInk = BranchInks.Current(layout);
-        _app.Art.Title = anim.Title(0);
-        _app.Art.Direction = cols => DirectionLine.Merge(layout.Selected, selInk, layout.Current, curInk, detached, cols);
-        _app.Art.Panel = CommitLists.Idle(layout);
-        _app.Art.FallbackCaption = null;
-        _app.Art.Scene = geo => anim.Render(geo, clock.ElapsedMilliseconds);
+        var input = new DigestSheetInput(shown.Start.Layout, shown.Start.Graph, shown.Card);
+        _play = new LaneMergeAnimation(input);
+        _clock = Stopwatch.StartNew();
+        _app.Art.Title = ReplayText.Title(shown.Card);
+        _app.Art.ShowSheet(PlaySheet);
         _app.Art.SetNeedsDraw();
 
         var seq = ++_replaySeq;
@@ -153,22 +143,20 @@ internal sealed class MergeDigest
             return;
 
         _replaySeq++;
-        _anim = null;
+        _play = null;
         _clock = null;
-        _doneAt = -1;
         Show();
     }
 
     /// <summary>The card is gone: a replay stops, the card is forgotten, and the list and the key bar lose their merge marks.</summary>
     internal void Dismiss()
     {
-        if (_shown is null && _anim is null)
+        if (_shown is null && _play is null)
             return;
 
         _replaySeq++;
-        _anim = null;
+        _play = null;
         _clock = null;
-        _doneAt = -1;
         _shown = null;
         _app.BranchList.MergedName = null;
         _app.Keys.CanPlay = false;
@@ -176,35 +164,49 @@ internal sealed class MergeDigest
         _app.Keys.SetNeedsDraw();
     }
 
-    // One step of the replay, every 50 ms. Returns false when the timer should stop: it was superseded, or the hold is over.
+    // One step of the replay, every 50 ms, from the stopwatch. Returns false when the timer should stop: it was superseded, or the replay has ended.
     private bool ReplayTick(int seq)
     {
-        var shown = _shown;
-        if (seq != _replaySeq || shown is null || _anim is null || _clock is null)
+        if (seq != _replaySeq || _play is null || _clock is null)
             return false;
 
-        var anim = _anim;
-        var e = _clock.ElapsedMilliseconds;
-        if (_doneAt < 0 && anim.IsDone(e))
-            FreezeReplay(anim, shown, e);
+        return Advance(_clock.ElapsedMilliseconds);
+    }
 
-        if (_doneAt >= 0 && e - _doneAt >= ReplayHoldMs)
+    /// <summary>
+    /// One step of the replay at elapsedMs since g. It runs to the play's Total, holds the card for ReplayHoldMs, then ends (the card stays).
+    /// Returns false when the replay has ended. ReplayTick calls it; the tests step it.
+    /// </summary>
+    internal bool Advance(long elapsedMs)
+    {
+        var play = _play;
+        if (play is null)
+            return false;
+
+        if (elapsedMs >= play.Total + ReplayHoldMs)
         {
             StopReplay();
             return false;
         }
 
-        _app.Art.Title = anim.Title(_doneAt >= 0 ? _doneAt : e);
+        // From the end on the sheet is the card, so its title is too.
+        var card = play.Input.Card;
+        _app.Art.Title = elapsedMs >= play.Total ? DigestText.Title(card) : ReplayText.Title(card);
         _app.Art.SetNeedsDraw();
         return true;
     }
 
-    // The last frame, at its own time, with the commit panel the old result screen shows. The scene stops moving here.
-    private void FreezeReplay(MergeAnimation anim, Shown shown, long at)
+    // The play's sheet at the clock's time. After the replay has ended (only a tab change can leave the old sheet up) it is the card, or nothing.
+    private PreviewSheet PlaySheet(int w, int h)
     {
-        _doneAt = at;
-        _app.Art.Scene = geo => anim.Render(geo, at);
-        _app.Art.Panel = CommitLists.After(anim.Layout, shown.Outcome!, shown.MergeCommit);
+        var play = _play;
+        if (play is not null && _clock is not null)
+            return play.Sheet(_clock.ElapsedMilliseconds, w, h, Glyphs.Unicode);
+
+        var shown = _shown;
+        if (shown is not null)
+            return PreviewSheets.BuildDigest(new DigestSheetInput(shown.Start.Layout, shown.Start.Graph, shown.Card), w, h, Glyphs.Unicode);
+        return new PreviewSheet(new List<SheetLine>(), new ArtGrid(w + 1, 0), PreviewSheets.HeadRows);
     }
 
     // The card's sheet, drawn from the pre-merge layout and graph with the card's ghost. The list and the key bar follow the card.
