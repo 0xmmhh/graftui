@@ -13,8 +13,11 @@ public static class LaneScene
     // A point where a line comes in from the left (or from a gap), with the style of the lane it belongs to.
     private readonly record struct LeadIn(int X, int Y, Style Style);
 
-    /// <summary>Draws the placement into a new grid of p.Width × p.Height. An empty placement gives a grid with no rows.</summary>
-    public static ArtGrid Render(LanePlacement p, Glyphs glyphs)
+    /// <summary>
+    /// Draws the placement into a new grid of p.Width × p.Height. An empty placement gives a grid with no rows. <paramref name="ghostHash"/>
+    /// is the merge commit's hash for the Merged ghost (the hash drawn above its dot); "" for the other kinds.
+    /// </summary>
+    public static ArtGrid Render(LanePlacement p, Glyphs glyphs, string ghostHash = "")
     {
         var grid = new ArtGrid(p.Width, p.Height);
 
@@ -27,14 +30,17 @@ public static class LaneScene
         DrawMerges(grid, p, glyphs);
         DrawGapMarks(grid, p, glyphs, leadIns);
         DrawDots(grid, p, glyphs);
-        DrawGhost(grid, p, glyphs);
+        DrawGhost(grid, p, glyphs, ghostHash);
         DrawMore(grid, p);
         return grid;
     }
 
-    // The ink of a lane's line, dots and corners: its branch colour when it is on, else the faint ink.
+    // The ink of a lane's line, dots and corners: its branch colour when it is on, else the faint ink. The lifted lane (after a
+    // fast-forward) takes the base's colour, since it is drawn on the base row.
     private static Style LaneStyle(LanePlacement p, int lane)
     {
+        if (lane == p.LiftedLane)
+            return LaneStyle(p, 0);
         if (p.IsOn(lane))
             return new Style(BranchInks.Of(p.Graph.Lanes[lane].ColorLane));
         return new Style(Ink.Faint);
@@ -51,7 +57,7 @@ public static class LaneScene
             var info = p.Graph.Lanes[lane];
             var y = p.YOf(lane);
             var ink = Ink.Dim;
-            if (p.IsOn(lane) && info.Kind != LaneKind.Side)
+            if (p.IsOn(lane) && info.Kind != LaneKind.Side && lane != p.LiftedLane)
                 ink = BranchInks.Of(info.ColorLane);
 
             grid.Text(LaneFit.LabelX, y, LaneFit.Label(info.Name, p.LabelWidth), new Style(ink));
@@ -81,7 +87,7 @@ public static class LaneScene
                     continue;
 
                 var x = p.XOf(commit.Column) - p.HashWidth / 2;
-                grid.Text(x, p.YOf(lane) - 1, Shorten(commit.ShortHash, p.HashWidth), style);
+                grid.Text(x, p.LineYOf(lane) - 1, Shorten(commit.ShortHash, p.HashWidth), style);
             }
         }
     }
@@ -106,9 +112,19 @@ public static class LaneScene
     private static void DrawLane(ArtGrid grid, LanePlacement p, Glyphs glyphs, int lane, List<LeadIn> leadIns)
     {
         var info = p.Graph.Lanes[lane];
-        var y = p.YOf(lane);
+        var y = p.LineYOf(lane);
         var style = LaneStyle(p, lane);
         var fork = ForkInto(p.Graph, lane);
+
+        // The lifted lane (after a fast-forward) runs on the base row from its fork commit to its tip. The fork is on that row, so
+        // there is no connector.
+        if (fork != null && lane == p.LiftedLane)
+        {
+            var liftStart = p.XOf(fork.FromColumn) + 1;
+            for (var x = liftStart; x <= LastX(p, info); x++)
+                grid.PutIfBlank(x, y, glyphs.Line, style);
+            return;
+        }
 
         // The lane's own gap (its hidden commits) is in the window: then the line starts at the gap mark, so it runs unbroken to the dot.
         var gapInWindow = info.Hidden > 0 && info.Gap >= p.FirstColumn;
@@ -155,13 +171,13 @@ public static class LaneScene
 
     // A fork is drawn when its commit is in the window, its row is kept and that row is above the lane.
     private static bool IsDrawnFork(LanePlacement p, LaneLink fork) =>
-        fork.FromColumn >= p.FirstColumn && p.IsKept(fork.FromLane) && p.YOf(fork.FromLane) < p.YOf(fork.ToLane);
+        fork.FromColumn >= p.FirstColumn && p.IsKept(fork.FromLane) && p.LineYOf(fork.FromLane) < p.LineYOf(fork.ToLane);
 
     // The connector of a fork: a vertical line down from the parent row, then a corner into this lane's row.
     private static void DrawForkConnector(ArtGrid grid, LanePlacement p, Glyphs glyphs, LaneLink fork, int y, Style style)
     {
         var px = p.XOf(fork.FromColumn);
-        var py = p.YOf(fork.FromLane);
+        var py = p.LineYOf(fork.FromLane);
         for (var v = py + 1; v < y; v++)
             grid.PutIfBlank(px, v, glyphs.VLine, style);
 
@@ -181,7 +197,7 @@ public static class LaneScene
                 continue;
             if (other.FromLane != fork.FromLane || other.FromColumn != fork.FromColumn)
                 continue;
-            if (p.IsKept(other.ToLane) && p.YOf(other.ToLane) > y)
+            if (p.IsKept(other.ToLane) && p.LineYOf(other.ToLane) > y)
                 return true;
         }
 
@@ -218,8 +234,8 @@ public static class LaneScene
 
     private static void DrawMerge(ArtGrid grid, LanePlacement p, Glyphs glyphs, LaneLink link)
     {
-        var fy = p.YOf(link.FromLane);
-        var ty = p.YOf(link.ToLane);
+        var fy = p.LineYOf(link.FromLane);
+        var ty = p.LineYOf(link.ToLane);
         var mx = p.XOf(link.ToColumn);
         var fromX = Math.Max(p.XOf(link.FromColumn), p.GraphX - 1);
         var style = LaneStyle(p, link.FromLane);
@@ -266,7 +282,7 @@ public static class LaneScene
         {
             var info = p.Graph.Lanes[lane];
             if (p.IsKept(lane) && info.Hidden > 0 && info.Gap >= p.FirstColumn)
-                grid.Put(p.XOf(info.Gap), p.YOf(lane), glyphs.Gap, LaneStyle(p, lane));
+                grid.Put(p.XOf(info.Gap), p.LineYOf(lane), glyphs.Gap, LaneStyle(p, lane));
         }
     }
 
@@ -279,7 +295,7 @@ public static class LaneScene
                 continue;
 
             var style = LaneStyle(p, lane);
-            var y = p.YOf(lane);
+            var y = p.LineYOf(lane);
             foreach (var commit in p.Graph.Lanes[lane].Commits)
             {
                 if (commit.Column >= p.FirstColumn)
@@ -288,13 +304,30 @@ public static class LaneScene
         }
     }
 
-    // Pass 7: the ghost at the right end. Its dashed trail runs from the base's newest commit, and from the selected branch's tip
-    // when that tip is drawn; then the glyph, and the label after it.
-    private static void DrawGhost(ArtGrid grid, LanePlacement p, Glyphs glyphs)
+    // Pass 7: the ghost at the right end. The dashed previews (Merge, FastForward, Conflict, Stopped) and the done states (Merged,
+    // FastForwarded) are drawn by their own methods.
+    private static void DrawGhost(ArtGrid grid, LanePlacement p, Glyphs glyphs, string ghostHash)
     {
         if (p.Ghost == GhostKind.None)
             return;
+        if (p.Ghost == GhostKind.Merged)
+        {
+            DrawMerged(grid, p, glyphs, ghostHash);
+            return;
+        }
+        if (p.Ghost == GhostKind.FastForwarded)
+        {
+            DrawFastForwarded(grid, p);
+            return;
+        }
 
+        DrawDashedGhost(grid, p, glyphs);
+    }
+
+    // The dashed ghost: its trail runs from the base's newest commit, and from the selected branch's tip when that tip is drawn; then
+    // the glyph, and the label after it.
+    private static void DrawDashedGhost(ArtGrid grid, LanePlacement p, Glyphs glyphs)
+    {
         var style = new Style(GhostInk(p.Ghost));
         var gx = p.GhostX;
         var my = p.YOf(0);
@@ -322,6 +355,69 @@ public static class LaneScene
             grid.PutIfBlank(gx, v, glyphs.DashV, style);
         grid.Put(gx, ty, glyphs.MergeUp, style);
     }
+
+    // The done merge (Merged): the base's line runs on to the ghost, the selected branch's line comes up into the merge commit, which is a
+    // solid dot. The hash sits above the dot, and the base's name as a chip below it when the rows are apart enough for it.
+    private static void DrawMerged(ArtGrid grid, LanePlacement p, Glyphs glyphs, string hash)
+    {
+        var my = p.YOf(0);
+        var gx = p.GhostX;
+
+        var bx = LastX(p, p.Graph.Lanes[0]);
+        for (var x = bx + 1; x < gx; x++)
+            grid.PutIfBlank(x, my, glyphs.Line, LaneStyle(p, 0));
+
+        if (p.TipLane > 0 && p.IsKept(p.TipLane) && p.TipColumn >= 0)
+            DrawMergedTip(grid, p, glyphs, my, gx);
+
+        grid.Put(gx, my, glyphs.Dot, new Style(Ink.Mrg));
+        if (p.GhostLabel != "")
+            grid.Text(gx + 2, my, p.GhostLabel, new Style(Ink.Fg));
+
+        if (p.HashWidth > 0 && hash.Length > 0)
+            grid.Text(gx - p.HashWidth / 2, my - 1, Shorten(hash, p.HashWidth), new Style(Ink.Hash));
+
+        if (p.RowGap >= 2 && gx + 2 + ChipWidth(p) <= p.Width)
+            DrawChip(grid, p, gx + 2, my + 1);
+    }
+
+    // The selected branch's tip, joined up to the merge commit: a line along its row, and a line up to the base row with a corner.
+    private static void DrawMergedTip(ArtGrid grid, LanePlacement p, Glyphs glyphs, int my, int gx)
+    {
+        var ty = p.YOf(p.TipLane);
+        var tx = p.TipColumn >= p.FirstColumn ? p.XOf(p.TipColumn) : p.GraphX - 1;
+        var style = LaneStyle(p, p.TipLane);
+        for (var x = tx + 1; x < gx; x++)
+            grid.PutIfBlank(x, ty, glyphs.Line, style);
+        for (var v = my + 1; v < ty; v++)
+            grid.PutIfBlank(gx, v, glyphs.VLine, style);
+        grid.Put(gx, ty, glyphs.MergeUp, style);
+    }
+
+    // The fast-forward (FastForwarded): the branch's own lane is drawn on the base row (DrawLane and DrawDots do that), so only the base's
+    // name as a chip after the branch's tip is left to draw.
+    private static void DrawFastForwarded(ArtGrid grid, LanePlacement p)
+    {
+        if (p.LiftedLane <= 0 || p.TipColumn < p.FirstColumn)
+            return;
+
+        var x = p.XOf(p.TipColumn) + 2;
+        if (x + ChipWidth(p) <= p.Width)
+            DrawChip(grid, p, x, p.YOf(0));
+    }
+
+    // The base's name as a chip: " name " in the base's ink, with the chip background on each of its cells.
+    private static void DrawChip(ArtGrid grid, LanePlacement p, int x, int y)
+    {
+        var chip = " " + p.Graph.BaseName + " ";
+        grid.Text(x, y, chip, LaneStyle(p, 0));
+        var cells = TextFit.Columns(chip);
+        for (var i = 0; i < cells; i++)
+            grid.SetBg(x + i, y, CellBg.Chip);
+    }
+
+    // The width of the base's chip in columns.
+    private static int ChipWidth(LanePlacement p) => TextFit.Columns(" " + p.Graph.BaseName + " ");
 
     private static Ink GhostInk(GhostKind kind)
     {

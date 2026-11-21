@@ -3,8 +3,12 @@ using graftui.Ui.Text;
 
 namespace graftui.Ui.Scenes;
 
-/// <summary>What the dashed ghost at the right end shows: nothing, a new merge commit (◌), the base moving forward (⇢) or a conflict (✕).</summary>
-public enum GhostKind { None, Merge, FastForward, Conflict }
+/// <summary>
+/// What the ghost at the right end shows. None: nothing. Merge (◌), FastForward (⇢) and Conflict (✕): the dashed previews of what m
+/// would do. Merged, FastForwarded and Stopped: the done states after m, the merge commit drawn solid, the branch's lane drawn on the
+/// base row, and the conflict's ✕ with "stopped".
+/// </summary>
+public enum GhostKind { None, Merge, FastForward, Conflict, Merged, FastForwarded, Stopped }
 
 /// <summary>
 /// Where everything of a lane graph goes in a grid. Made by <see cref="LaneFit.Fit"/>, drawn by the lane scene.
@@ -44,6 +48,39 @@ public sealed record LanePlacement(
 
     /// <summary>The x of the ghost, which sits in the column after the newest commit.</summary>
     public int GhostX => XOf(Graph.Columns);
+
+    /// <summary>
+    /// The lane drawn on the base row after a fast-forward (FastForwarded): the selected branch's own lane, when it forks from the base
+    /// inside the window. -1 when there is none: another ghost kind, a branch with no lane of its own (a pointer), a tip that is not on
+    /// its lane, a lane that is not kept, hidden commits, or a fork from older history or from another lane.
+    /// </summary>
+    public int LiftedLane
+    {
+        get
+        {
+            if (Ghost != GhostKind.FastForwarded || SelectedLane <= 0 || TipLane != SelectedLane || !IsKept(SelectedLane))
+                return -1;
+            if (Graph.Lanes[SelectedLane].Hidden > 0)
+                return -1;
+
+            foreach (var link in Graph.Links)
+            {
+                if (link.Kind == LinkKind.Fork && link.ToLane == SelectedLane)
+                    return link.FromLane == 0 && link.FromColumn >= FirstColumn ? SelectedLane : -1;
+            }
+
+            return -1;
+        }
+    }
+
+    /// <summary>The y a lane's line, dots and hashes are drawn on: the base row for the lifted lane, else the lane's own row (YOf).</summary>
+    public int LineYOf(int lane)
+    {
+        var lifted = LiftedLane;
+        if (lane >= 0 && lane == lifted)
+            return YOf(0);
+        return YOf(lane);
+    }
 }
 
 /// <summary>
@@ -81,9 +118,10 @@ public static class LaneFit
 
     /// <summary>
     /// The placement of the graph for a grid of width × height, with <paramref name="selected"/> highlighted and the ghost of kind
-    /// <paramref name="ghost"/>. An empty placement (no lanes, too narrow, or no height) has no rows.
+    /// <paramref name="ghost"/>. <paramref name="ghostHash"/> is the merge commit's hash for the Merged ghost ("" when there is none).
+    /// An empty placement (no lanes, too narrow, or no height) has no rows.
     /// </summary>
-    public static LanePlacement Fit(LaneGraph graph, string selected, GhostKind ghost, int width, int height)
+    public static LanePlacement Fit(LaneGraph graph, string selected, GhostKind ghost, int width, int height, string ghostHash = "")
     {
         if (graph.Lanes.Count == 0 || width < MinWidth || height < 1)
             return EmptyPlacement(graph, selected);
@@ -142,7 +180,7 @@ public static class LaneFit
             "", more, showMore);
 
         // The ghost label goes last: it depends on where the ghost sits.
-        var ghostLabel = GhostLabelFor(graph, shownGhost, width, placement.GhostX);
+        var ghostLabel = GhostLabelFor(graph, shownGhost, width, placement.GhostX, ghostHash);
         return placement with { GhostLabel = ghostLabel };
     }
 
@@ -157,8 +195,11 @@ public static class LaneFit
         return TextFit.Fit(part, width);
     }
 
-    /// <summary>The text after the ghost glyph: "new merge commit", "&lt;base&gt; moves here", "no commit", or "" for no ghost.</summary>
-    internal static string GhostText(GhostKind kind, string baseName)
+    /// <summary>
+    /// The text after the ghost glyph: "new merge commit", "&lt;base&gt; moves here", "no commit", "merge commit &lt;hash7&gt;" (Merged),
+    /// "stopped · &lt;base&gt; unchanged" (Stopped), or "" for no ghost and for a fast-forward (its lane has no text).
+    /// </summary>
+    internal static string GhostText(GhostKind kind, string baseName, string hash = "")
     {
         if (kind == GhostKind.Merge)
             return "new merge commit";
@@ -166,7 +207,33 @@ public static class LaneFit
             return baseName + " moves here";
         if (kind == GhostKind.Conflict)
             return "no commit";
+        if (kind == GhostKind.Merged)
+            return MergedText(hash);
+        if (kind == GhostKind.Stopped)
+            return "stopped · " + baseName + " unchanged";
         return "";
+    }
+
+    /// <summary>
+    /// The shorter text for a narrow pane: "merge commit" (Merged) and "stopped" (Stopped). Every other kind has the same text as
+    /// <see cref="GhostText"/>.
+    /// </summary>
+    internal static string GhostShortText(GhostKind kind, string baseName)
+    {
+        if (kind == GhostKind.Merged)
+            return "merge commit";
+        if (kind == GhostKind.Stopped)
+            return "stopped";
+        return GhostText(kind, baseName);
+    }
+
+    // "merge commit" and the hash cut to seven characters after it. Without a hash, the words alone.
+    private static string MergedText(string hash)
+    {
+        if (hash.Length == 0)
+            return "merge commit";
+        var seven = hash.Length > 7 ? hash.Substring(0, 7) : hash;
+        return "merge commit " + seven;
     }
 
     /// <summary>"+1 more branch", or "+N more branches".</summary>
@@ -375,18 +442,23 @@ public static class LaneFit
         return more;
     }
 
-    // The ghost's label: whole when it fits to the right of the ghost, cut when at least GhostLabelMin columns are left, else none.
-    private static string GhostLabelFor(LaneGraph graph, GhostKind kind, int width, int ghostX)
+    // The ghost's label: the whole text when it fits to the right of the ghost, else the short text when that fits, else the short
+    // text cut when at least GhostLabelMin columns are left, else none.
+    private static string GhostLabelFor(LaneGraph graph, GhostKind kind, int width, int ghostX, string hash)
     {
         if (kind == GhostKind.None)
             return "";
 
-        var text = GhostText(kind, graph.BaseName);
         var avail = width - (ghostX + 2);
+        var text = GhostText(kind, graph.BaseName, hash);
         if (TextFit.Columns(text) <= avail)
             return text;
+
+        var shortText = GhostShortText(kind, graph.BaseName);
+        if (TextFit.Columns(shortText) <= avail)
+            return shortText;
         if (avail >= GhostLabelMin)
-            return TextFit.Fit(text, avail);
+            return TextFit.Fit(shortText, avail);
         return "";
     }
 }

@@ -15,6 +15,9 @@ public sealed record PreviewSheet(IReadOnlyList<SheetLine> Lines, ArtGrid Graph,
 /// <summary>Everything the sheet is made from: the layout, the forecast (null while it is read), the lane graph, and the clean flag.</summary>
 public sealed record PreviewSheetInput(GraphLayout Layout, MergeForecast? Forecast, LaneGraph Graph, bool Clean);
 
+/// <summary>What the merge card's sheet is made from: the pre-merge layout, the pre-merge lane graph, and the card.</summary>
+public sealed record DigestSheetInput(GraphLayout Layout, LaneGraph Graph, MergeCard Card);
+
 /// <summary>
 /// Makes the browse sheet of the Branches preview: the head lines, the lane graph and the incoming commits. Pure: no git, no views.
 /// Sheet rows: 0 the forecast, 1 the command, 2 blank, then the graph, a blank row, and the incoming list.
@@ -53,28 +56,72 @@ public static class PreviewSheets
         AddHeadLine(lines, 0, PreviewText.Forecast(L, input.Forecast, input.Clean), rows);
         AddHeadLine(lines, 1, PreviewText.Command(L), rows);
 
+        var ghost = PreviewText.Ghost(L, input.Forecast);
+        return Compose(lines, L, input.Graph, ghost, "", !PreviewText.IsCurrent(L), PreviewText.IncomingTitle, textWidth, rows, glyphs);
+    }
+
+    /// <summary>
+    /// The card's sheet after m: row 0 the headline with the key hint at its right edge, row 1 the detail, then the pre-merge graph with the
+    /// done ghost, and the commits that came in (or the usual incoming list, for a refusal or a conflict).
+    /// </summary>
+    public static PreviewSheet BuildDigest(DigestSheetInput input, int textWidth, int rows, Glyphs glyphs)
+    {
+        var card = input.Card;
+        var L = input.Layout;
+        var lines = new List<SheetLine>();
+        AddHeadLine(lines, 0, DigestText.WithHint(DigestText.Headline(card), DigestText.Hint(card), textWidth), rows);
+        AddHeadLine(lines, 1, DigestText.Detail(card), rows);
+
+        // A merge that did nothing has no list; the others list the commits the branch brought (or would bring).
+        var listShown = card.Kind != DigestKind.UpToDate && !PreviewText.IsCurrent(L);
+        var hash = card.Hash ?? "";
+        return Compose(lines, L, input.Graph, DigestText.Ghost(card), hash, listShown, DigestText.ListTitle(card), textWidth, rows, glyphs);
+    }
+
+    /// <summary>
+    /// The sheet while git runs: the browse sheet, with row 0 replaced by the running line. Row 1 stays "$ git merge X" and the ghost
+    /// stays the preview's.
+    /// </summary>
+    public static PreviewSheet BuildRunning(PreviewSheetInput input, int textWidth, int rows, Glyphs glyphs)
+    {
+        var L = input.Layout;
+        var lines = new List<SheetLine>();
+        var into = L.Detached ? "" : L.Current;
+        AddHeadLine(lines, 0, DigestText.Running(L.Selected, into), rows);
+        AddHeadLine(lines, 1, PreviewText.Command(L), rows);
+
+        var ghost = PreviewText.Ghost(L, input.Forecast);
+        return Compose(lines, L, input.Graph, ghost, "", !PreviewText.IsCurrent(L), PreviewText.IncomingTitle, textWidth, rows, glyphs);
+    }
+
+    /// <summary>
+    /// Adds the graph and the list below the head lines. The graph takes the rows left after the head; the list is shown when it is
+    /// listShown, the branch has commits to list, and there is room for its blank row, title and one commit.
+    /// </summary>
+    private static PreviewSheet Compose(List<SheetLine> lines, GraphLayout L, LaneGraph graph, GhostKind ghost, string ghostHash,
+        bool listShown, string listTitle, int textWidth, int rows, Glyphs glyphs)
+    {
         // The grid is one column wider than the text: its column 0 is the pad column.
         var gridWidth = textWidth + 1;
         var budget = rows - HeadRows;
         if (budget < 1)
             return new PreviewSheet(lines, new ArtGrid(gridWidth, 0), HeadRows);
 
-        var ghost = PreviewText.Ghost(L, input.Forecast);
-        var placement = FitGraph(input.Graph, L.Selected, ghost, gridWidth, budget);
-        var graph = LaneScene.Render(placement, glyphs);
+        var placement = FitGraph(graph, L.Selected, ghost, gridWidth, budget, ghostHash);
+        var grid = LaneScene.Render(placement, glyphs, ghostHash);
 
         // The incoming list: not for the current branch, and only when there is room for its blank row, title and one commit.
-        if (!PreviewText.IsCurrent(L) && L.SelectedNew.Count > 0)
+        if (listShown && L.SelectedNew.Count > 0)
         {
             var free = budget - placement.Height;
             if (free >= ListMin)
             {
                 var firstRow = HeadRows + placement.Height + 1;
-                lines.AddRange(Incoming(L, firstRow, rows - firstRow));
+                lines.AddRange(Incoming(L, firstRow, rows - firstRow, listTitle));
             }
         }
 
-        return new PreviewSheet(lines, graph, HeadRows);
+        return new PreviewSheet(lines, grid, HeadRows);
     }
 
     /// <summary>
@@ -82,29 +129,35 @@ public static class PreviewSheets
     /// otherwise it takes the closer spacing that keeps the same rows. The spacing does not depend on the selection, so the graph
     /// does not move while the branches are browsed.
     /// </summary>
-    internal static LanePlacement FitGraph(LaneGraph g, string selected, GhostKind ghost, int gridWidth, int budget)
+    internal static LanePlacement FitGraph(LaneGraph g, string selected, GhostKind ghost, int gridWidth, int budget, string ghostHash = "")
     {
-        var full = LaneFit.Fit(g, selected, ghost, gridWidth, budget);
+        var full = LaneFit.Fit(g, selected, ghost, gridWidth, budget, ghostHash);
         if (budget - full.Height >= ListReserve)
             return full;
 
-        var close = LaneFit.Fit(g, selected, ghost, gridWidth, budget - ListReserve);
+        var close = LaneFit.Fit(g, selected, ghost, gridWidth, budget - ListReserve, ghostHash);
         if (close.Height > 0 && close.Rows.Count == full.Rows.Count)
             return close;
         return full;
     }
 
     /// <summary>
+    /// The incoming list with the usual title: see <see cref="Incoming(GraphLayout, int, int, string)"/>.
+    /// </summary>
+    internal static IReadOnlyList<SheetLine> Incoming(GraphLayout L, int firstRow, int rows) =>
+        Incoming(L, firstRow, rows, PreviewText.IncomingTitle);
+
+    /// <summary>
     /// The incoming list: a title at firstRow, then the selected branch's new commits, newest first, all within rows rows. When
     /// there are more commits than fit, the last row (or the title in a two-row list) says how many are left out.
     /// </summary>
-    internal static IReadOnlyList<SheetLine> Incoming(GraphLayout L, int firstRow, int rows)
+    internal static IReadOnlyList<SheetLine> Incoming(GraphLayout L, int firstRow, int rows, string title)
     {
         var lines = new List<SheetLine>();
         if (rows < 1)
             return lines;
 
-        lines.Add(new SheetLine(firstRow, new List<Seg> { new Seg(PreviewText.IncomingTitle, Dim) }));
+        lines.Add(new SheetLine(firstRow, new List<Seg> { new Seg(title, Dim) }));
 
         // The title takes one row; the rest are commit slots.
         var slots = rows - 1;
@@ -128,7 +181,7 @@ public static class PreviewSheets
         if (more > 0 && slots == 1 && count > 0)
         {
             // Keep a commit visible; put the count first so narrow panes retain it when the title is clipped.
-            lines[0] = new SheetLine(firstRow, new List<Seg> { new Seg("+" + more + " more · " + PreviewText.IncomingTitle, Dim) });
+            lines[0] = new SheetLine(firstRow, new List<Seg> { new Seg("+" + more + " more · " + title, Dim) });
         }
         else if (more > 0)
             lines.Add(new SheetLine(firstRow + 1 + shown, new List<Seg> { new Seg("+" + more + " more", Dim) }));

@@ -23,7 +23,7 @@ public sealed record LaneLink(LinkKind Kind, int FromLane, int FromColumn, int T
 
 /// <summary>
 /// One row. Index is its row (0 = the base). Name is the branch's name, or for a Side lane the name read from the merge subject
-/// ("" when there is none). ColorLane is the BranchLanes lane; a Side lane takes its parent's. Parent is the row it hangs under
+/// (the whole subject when it names no branch, so the lane is still labelled). ColorLane is the BranchLanes lane; a Side lane takes its parent's. Parent is the row it hangs under
 /// (-1 for the base and for unrelated lanes). Hidden counts the older commits left out (the per-lane cap). Gap is the column of
 /// the dashed gap drawn for those commits or for a fork from the left, else -1.
 /// </summary>

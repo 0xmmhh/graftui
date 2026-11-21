@@ -65,6 +65,18 @@ public static class LaneGraphBuilder
         return "";
     }
 
+    /// <summary>
+    /// The name of a side lane: the branch the merge subject names (<see cref="SideName"/>), else the merge subject itself, so an unnamed
+    /// side lane is labelled from its merge (decided 2026-11-21). "" only when the subject is empty.
+    /// </summary>
+    internal static string SideLabel(string subject)
+    {
+        var name = SideName(subject);
+        if (name.Length > 0)
+            return name;
+        return subject;
+    }
+
     // The text from start up to the next quote mark, or "" when there is no closing quote.
     private static string QuotedName(string subject, int start)
     {
@@ -285,7 +297,7 @@ public static class LaneGraphBuilder
 
             var laneId = _drafts.Count;
             var walk = WalkFrom(parent, laneId);
-            var side = AddLane(LaneKind.Side, SideName(merge.Subject), _drafts[mergeLane].ColorLane, walk);
+            var side = AddLane(LaneKind.Side, SideLabel(merge.Subject), _drafts[mergeLane].ColorLane, walk);
             side.Parent = mergeLane;
             side.MergeHash = merge.Hash;
             _merges.Add(new MergeSpec(laneId, parent, mergeLane, merge.Hash));
