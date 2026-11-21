@@ -25,6 +25,12 @@ public sealed record LanePlacement(
     int LabelWidth, int GraphX, int Step, int FirstColumn, int RowGap, int HashWidth,
     string GhostLabel, int More, bool ShowMore)
 {
+    /// <summary>During g's fast-forward: the lane whose line, dots and hashes are drawn at ShiftY instead of its row. -1 = none.</summary>
+    public int ShiftLane { get; init; } = -1;
+
+    /// <summary>The y that the shifted lane is drawn on, when ShiftLane is set. -1 = none.</summary>
+    public int ShiftY { get; init; } = -1;
+
     /// <summary>The x of a column: GraphX + (column - FirstColumn) * Step.</summary>
     public int XOf(int column) => GraphX + (column - FirstColumn) * Step;
 
@@ -76,6 +82,9 @@ public sealed record LanePlacement(
     /// <summary>The y a lane's line, dots and hashes are drawn on: the base row for the lifted lane, else the lane's own row (YOf).</summary>
     public int LineYOf(int lane)
     {
+        if (lane >= 0 && lane == ShiftLane && ShiftY >= 0)
+            return ShiftY;
+
         var lifted = LiftedLane;
         if (lane >= 0 && lane == lifted)
             return YOf(0);
@@ -467,11 +476,20 @@ public static class LaneFit
         if (TextFit.Columns(text) <= avail)
             return text;
 
-        var shortText = GhostShortText(kind, graph.BaseName);
-        if (TextFit.Columns(shortText) <= avail)
-            return shortText;
+        return FitGhostLabel(GhostShortText(kind, graph.BaseName), width, ghostX);
+    }
+
+    /// <summary>
+    /// A ghost label for a text: the text when it fits right of the ghost, else cut with … when at least GhostLabelMin columns are left,
+    /// else "". The ghost sits at ghostX; its label starts two columns right of it and must end inside width.
+    /// </summary>
+    internal static string FitGhostLabel(string text, int width, int ghostX)
+    {
+        var avail = width - (ghostX + 2);
+        if (TextFit.Columns(text) <= avail)
+            return text;
         if (avail >= GhostLabelMin)
-            return TextFit.Fit(shortText, avail);
+            return TextFit.Fit(text, avail);
         return "";
     }
 }

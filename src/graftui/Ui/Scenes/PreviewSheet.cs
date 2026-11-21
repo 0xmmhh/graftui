@@ -110,19 +110,22 @@ public static class PreviewSheets
 
         var placement = FitGraph(graph, L.Selected, ghost, gridWidth, budget, ghostHash, ghostVerified);
         var grid = LaneScene.Render(placement, glyphs, ghostHash);
-
-        // The incoming list: not for the current branch, and only when there is room for its blank row, title and one commit.
-        if (listShown && L.SelectedNew.Count > 0)
-        {
-            var free = budget - placement.Height;
-            if (free >= ListMin)
-            {
-                var firstRow = HeadRows + placement.Height + 1;
-                lines.AddRange(Incoming(L, firstRow, rows - firstRow, listTitle));
-            }
-        }
-
+        AddIncoming(lines, L, placement.Height, budget, rows, listShown, listTitle);
         return new PreviewSheet(lines, grid, HeadRows);
+    }
+
+    /// <summary>Adds the incoming list under a graph of graphHeight rows when listShown, the branch has commits and the list's three rows fit.</summary>
+    internal static void AddIncoming(List<SheetLine> lines, GraphLayout L, int graphHeight, int budget, int rows, bool listShown, string listTitle)
+    {
+        if (!listShown || L.SelectedNew.Count == 0)
+            return;
+
+        var free = budget - graphHeight;
+        if (free < ListMin)
+            return;
+
+        var firstRow = HeadRows + graphHeight + 1;
+        lines.AddRange(Incoming(L, firstRow, rows - firstRow, listTitle));
     }
 
     /// <summary>

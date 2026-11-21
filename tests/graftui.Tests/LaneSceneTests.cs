@@ -735,5 +735,33 @@ public sealed class LaneSceneTests
         Assert.Equal('╯', g[p.XOf(5), p.YOf(3)].Ch);
     }
 
+    // g's fast-forward: feature/fast-forward's lane drawn at row 3 while its own row is 4. Its line, dot and hash move with it, the
+    // label stays on its row, and nothing is dashed (there is no ghost).
+    [Fact]
+    public void A_shifted_lane_is_drawn_at_its_shift_y()
+    {
+        var lane = G.LaneOf("feature/fast-forward");
+        var p = LaneFit.Fit(G, "feature/fast-forward", GhostKind.None, 86, 20) with { ShiftLane = lane, ShiftY = 3 };
+        var dump = Dump(LaneScene.Render(p, Glyphs.Unicode));
+        var rows = dump.Split('\n');
+
+        Assert.Equal(Sp(23) + "│" + Sp(7) + "├───────●", rows[3]);
+        Assert.Equal("8f0068a", rows[2].Substring(36, 7));
+        Assert.Equal(" fast-forward          │       │", rows[4]);
+        Assert.DoesNotContain("┄", dump);
+        Assert.DoesNotContain("⇢", dump);
+        Assert.Equal(L(lane), InkAt(LaneScene.Render(p, Glyphs.Unicode), 39, 3));
+    }
+
+    // Right under the base's row (ShiftY 2), the lane's hashes would land on the base row's line, so they are left out.
+    [Fact]
+    public void A_shifted_lane_next_to_the_base_hides_its_hashes()
+    {
+        var lane = G.LaneOf("feature/fast-forward");
+        var p = LaneFit.Fit(G, "feature/fast-forward", GhostKind.None, 86, 20) with { ShiftLane = lane, ShiftY = 2 };
+
+        Assert.DoesNotContain("8f0068a", Dump(LaneScene.Render(p, Glyphs.Unicode)));
+    }
+
     private static Ink InkAt(ArtGrid grid, int x, int y) => grid[x, y].Style.Ink;
 }
