@@ -9,7 +9,7 @@ using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
 // Every error exit prints its message and returns at once, so awaiting the write never moves code below it onto another thread.
-var parsed = CliArgs.Parse(args, Environment.GetEnvironmentVariable("GRAFTUI_GLYPHS"));
+var parsed = CliArgs.Parse(args, Environment.GetEnvironmentVariable("GRAFTUI_GLYPHS"), Environment.GetEnvironmentVariable("GRAFTUI_MOTION"));
 if (parsed.Options is not { } options)
 {
     await Console.Error.WriteLineAsync(parsed.Error);
@@ -94,7 +94,8 @@ try
     var root = git.GetTopLevel() ?? git.RepoPath;
     // The new look stays hidden until the redesign is complete: --new-ui or GRAFTUI_UI=new turns it on. It is set once, here.
     var newUi = CliArgs.NewUiOn(options.NewUi, Environment.GetEnvironmentVariable("GRAFTUI_UI"));
-    gui = new AppController(app, git, new GitClient(root), snapshot, repoDisplay, newUi);
+    // Autoplay is on unless --calm or GRAFTUI_MOTION=calm asked for calm (both are read into options.Calm by CliArgs).
+    gui = new AppController(app, git, new GitClient(root), snapshot, repoDisplay, newUi, autoPlay: !options.Calm);
     var window = gui.BuildWindow();
     windowHandle = window;
     app.Run(window);

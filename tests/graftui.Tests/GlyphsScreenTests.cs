@@ -131,7 +131,8 @@ public sealed class GlyphsScreenTests : IDisposable
     private AppController Open(TempRepo repo, int cols, int rows)
     {
         _ui.Driver!.SetScreenSize(cols, rows);
-        var app = new AppController(_ui, repo.Git, repo.Git, Snapshot(repo), "repo", newUi: true);
+        // Autoplay is off here: the merge test presses g to start the play, as the calm look does.
+        var app = new AppController(_ui, repo.Git, repo.Git, Snapshot(repo), "repo", newUi: true, autoPlay: false);
         var window = app.BuildWindow();
         _ui.Begin(window);
         _ui.LayoutAndDraw(true);

@@ -61,6 +61,62 @@ public class CliArgsTests
         Assert.Contains("--new-ui", CliArgs.HelpText);
     }
 
+    private static CliOptions OkMotion(string? motion, params string[] args)
+    {
+        var parsed = CliArgs.Parse(args, null, motion);
+        Assert.Null(parsed.Error);
+        return parsed.Options!;
+    }
+
+    [Fact]
+    public void Calm_is_off_by_default_and_the_flag_turns_it_on()
+    {
+        Assert.False(Ok().Calm);
+        Assert.True(Ok("--calm").Calm);
+    }
+
+    [Fact]
+    public void GRAFTUI_MOTION_calm_turns_Calm_on_with_no_flag()
+    {
+        Assert.True(OkMotion("calm").Calm);
+        Assert.True(OkMotion("CALM", "path").Calm);
+    }
+
+    [Theory]
+    [InlineData("calm ")]
+    [InlineData("  CALM  ")]
+    public void Spaces_around_the_calm_value_are_ignored(string value)
+    {
+        Assert.True(OkMotion(value).Calm);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("on")]
+    [InlineData("full")]
+    [InlineData("calmer")]
+    public void Other_GRAFTUI_MOTION_values_leave_Calm_off(string value)
+    {
+        Assert.False(OkMotion(value).Calm);
+        Assert.False(OkMotion(value, "path").Calm);
+    }
+
+    [Fact]
+    public void The_calm_flag_works_with_the_variable_empty_or_unset()
+    {
+        Assert.True(OkMotion("", "--calm").Calm);
+        Assert.True(OkMotion(null, "--calm").Calm);
+        Assert.True(OkMotion("on", "--calm").Calm);
+    }
+
+    [Fact]
+    public void Help_lists_the_calm_flag()
+    {
+        Assert.Contains("--calm", CliArgs.HelpText);
+        Assert.Contains("new look only", CliArgs.HelpText);
+        Assert.Contains("GRAFTUI_MOTION=calm", CliArgs.HelpText);
+    }
+
     [Fact]
     public void Make_edits_is_a_flag_that_sets_MakeEdits()
     {

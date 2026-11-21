@@ -10,8 +10,9 @@ namespace graftui.Ui.App;
 internal sealed record MergeStart(GraphLayout Layout, LaneGraph Graph, MergeForecast? Forecast, string? Before);
 
 /// <summary>
-/// The new look's merge screens (--new-ui, calm mode): the running line, the card after git answers, the refusal card, and g's replay of
-/// the merge on the lane graph. No animation plays by itself. UI thread only. The old look never calls it.
+/// The new look's merge screens (--new-ui): the running line, the card after git answers, the refusal card, and the replay of the merge on
+/// the lane graph. The replay plays by itself after a merge that has one (AppController.AutoPlay; --calm turns that off), and g replays it
+/// at any time. A refusal never plays. UI thread only. The old look never calls it.
 /// </summary>
 internal sealed class MergeDigest
 {
@@ -26,7 +27,7 @@ internal sealed class MergeDigest
     // The card on screen and what it was made from. Null when no card is shown.
     private Shown? _shown;
 
-    // The play of the merge, while g plays it, and its clock.
+    // The play of the merge, while the replay plays (autoplay or g), and its clock.
     private LaneMergeAnimation? _play;
     private Stopwatch? _clock;
 
@@ -44,7 +45,7 @@ internal sealed class MergeDigest
     /// <summary>The card on screen, or null.</summary>
     internal MergeCard? Card => _shown?.Card;
 
-    /// <summary>True while g plays the replay.</summary>
+    /// <summary>True while the replay plays (autoplay or g).</summary>
     internal bool Replaying => _play is not null;
 
     /// <summary>The merge is running: its running line, and the commands it has run so far.</summary>
@@ -94,6 +95,11 @@ internal sealed class MergeDigest
         // The merge ran but there is no snapshot after it: the counts are read again.
         if (after is null)
             _app.ReloadCountsAsync();
+
+        // The play starts now, with the card's outcome, unless autoplay is off. Replay does nothing for a card with no play (up to date,
+        // failed), and it is not Busy any more, so it runs.
+        if (_app.AutoPlay)
+            Replay();
     }
 
     /// <summary>A merge that git refused before it ran: nothing changed, so the card says so and nothing can play.</summary>
@@ -116,8 +122,8 @@ internal sealed class MergeDigest
     }
 
     /// <summary>
-    /// g: plays the merge on the lane graph, from the pre-merge graph to the card's own. The outcome is known from the start, so no git runs.
-    /// A card that has no play (up to date, failed, refused) does nothing.
+    /// Plays the merge on the lane graph, from the pre-merge graph to the card's own, for g and for the autoplay after a merge. The outcome is
+    /// known from the start, so no git runs. A card that has no play (up to date, failed, refused) does nothing.
     /// </summary>
     internal void Replay()
     {
@@ -174,7 +180,7 @@ internal sealed class MergeDigest
     }
 
     /// <summary>
-    /// One step of the replay at elapsedMs since g. It runs to the play's Total, holds the card for ReplayHoldMs, then ends (the card stays).
+    /// One step of the replay at elapsedMs since the play started. It runs to the play's Total, holds the card for ReplayHoldMs, then ends (the card stays).
     /// Returns false when the replay has ended. ReplayTick calls it; the tests step it.
     /// </summary>
     internal bool Advance(long elapsedMs)

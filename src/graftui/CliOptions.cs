@@ -22,4 +22,6 @@ internal sealed record CliOptions
     public bool NewUi { get; init; }
 
     public bool BasicGlyphs { get; init; }
+
+    public bool Calm { get; init; }
 }

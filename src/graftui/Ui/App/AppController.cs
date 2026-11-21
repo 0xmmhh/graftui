@@ -31,10 +31,12 @@ public sealed class AppController
     private Window? _window;
 
     /// <param name="newUi">True when the new look is on (see <see cref="CliArgs.NewUiOn"/>). Off by default: the screen is main's.</param>
-    public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay, bool newUi = false)
+    /// <param name="autoPlay">True (the default) when a merge's card plays by itself in the new look. False for --calm (see <see cref="CliOptions.Calm"/>).</param>
+    public AppController(IApplication app, GitClient git, GitClient rootGit, RepoSnapshot initial, string repoDisplay, bool newUi = false, bool autoPlay = true)
     {
         App = app;
         NewUi = newUi;
+        AutoPlay = autoPlay;
         Git = git;
         Reader = new RepoReader(git);
         RootGit = rootGit;
@@ -119,6 +121,9 @@ public sealed class AppController
 
     /// <summary>True when the new look is on (--new-ui). Off: the screen is main's, and no new git read runs.</summary>
     internal bool NewUi { get; }
+
+    /// <summary>True when the merge's card plays by itself after the merge (the new look only). False with --calm or GRAFTUI_MOTION=calm: g plays it.</summary>
+    internal bool AutoPlay { get; }
 
     internal GitClient Git { get; }
     internal RepoReader Reader { get; }
@@ -629,7 +634,7 @@ public sealed class AppController
             return;
         }
 
-        // g's replay only draws: Space, Esc and g end it and show the card again; any other key ends it and is then handled as usual.
+        // The replay (autoplay or g) only draws: Space, Esc and g end it and show the card again; any other key ends it and is then handled as usual.
         if (Digest.Replaying)
         {
             var skip = e == Key.Space || e == Key.Esc || e == Key.G;
