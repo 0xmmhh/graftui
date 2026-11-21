@@ -13,7 +13,7 @@ namespace graftui.Tests;
 
 /// <summary>
 /// The new look's merge card on screen: m leaves a card with what happened, the card's title, sheet and list mark, the keys that keep
-/// or drop it, g's replay of the old animation, and the help popup over it. The app has no terminal session here and the UI queue
+/// or drop it, g's replay of the merge on the lane graph, and the help popup over it. The app has no terminal session here and the UI queue
 /// never runs, so the merge's worker is run step by step in the test, and each result is handed to the screen as the UI thread would
 /// receive it. TempRepo only: never the sandbox or the graftui repo.
 /// </summary>
@@ -153,7 +153,7 @@ public sealed class MergeDigestScreenTests : IDisposable
         Assert.False(app.Digest.Replaying);
     }
 
-    // g plays the old animation with no git run; Space ends it and the card comes back at once.
+    // g plays the merge on the lane graph with no git run; Space ends it and the card comes back at once.
     [Fact]
     public void G_replays_without_git_and_space_brings_the_card_back()
     {
@@ -167,8 +167,14 @@ public sealed class MergeDigestScreenTests : IDisposable
         _ui.Keyboard.RaiseKeyDownEvent(Key.G);
 
         Assert.True(app.Digest.Replaying);
-        Assert.NotNull(app.Art.Scene);
-        Assert.Null(app.Art.Sheet);
+        Assert.Null(app.Art.Scene);
+        Assert.NotNull(app.Art.Sheet);
+        Assert.Equal("Merging feature → main", app.Art.Title);
+
+        // Row 0 is a spinner, a space and the step; the step depends on the clock, so only the shape is checked.
+        var running = RowText(app.Art.Sheet!(85, 30), 0);
+        Assert.Contains(running[0], "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏");
+        Assert.Equal(' ', running[1]);
         Assert.Equal(logged, app.Log.Position);
         Assert.Equal(head, repo.Head);
 
@@ -178,6 +184,70 @@ public sealed class MergeDigestScreenTests : IDisposable
         Assert.NotNull(app.Art.Sheet);
         Assert.Equal("Merged feature → main", app.Art.Title);
         Assert.Equal(logged, app.Log.Position);
+    }
+
+    // The play runs to its total, holds the card for the hold, then ends. From the total on the title is the card's.
+    [Fact]
+    public void The_play_ends_on_the_card_after_its_hold()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        Merge(app, repo, snapshot, "feature");
+        app.Digest.Replay();
+
+        Assert.True(app.Digest.Advance(2599));
+        Assert.Equal("Merging feature → main", app.Art.Title);
+
+        Assert.True(app.Digest.Advance(2600));
+        Assert.True(app.Digest.Replaying);
+        Assert.Equal("Merged feature → main", app.Art.Title);
+
+        Assert.True(app.Digest.Advance(2600 + MergeDigest.ReplayHoldMs - 1));
+        Assert.False(app.Digest.Advance(2600 + MergeDigest.ReplayHoldMs));
+
+        Assert.False(app.Digest.Replaying);
+        Assert.Equal("Merged feature → main", app.Art.Title);
+        Assert.Equal("feature", app.BranchList.MergedName);
+        Assert.True(app.Keys.CanPlay);
+        Assert.EndsWith("g play · u undo", RowText(app.Art.Sheet!(85, 30), 0));
+    }
+
+    // A conflict plays too: row 0 is in the red ink, and the play ends on the stopped card.
+    [Fact]
+    public void A_conflict_plays_in_red_and_ends_on_the_stopped_card()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        Merge(app, repo, snapshot, "feature");
+
+        app.Digest.Replay();
+
+        Assert.True(app.Digest.Replaying);
+        Assert.Equal(Ink.Bad, app.Art.Sheet!(85, 30).Lines[0].Segs[0].Style.Ink);
+
+        Assert.False(app.Digest.Advance(2800 + MergeDigest.ReplayHoldMs));
+        Assert.False(app.Digest.Replaying);
+        Assert.Equal("Tried feature → main", app.Art.Title);
+        Assert.True(repo.IsClean);
+    }
+
+    // Merging again finds the branch up to date: the card has no play, the key bar has no g, and g does nothing.
+    [Fact]
+    public void Up_to_date_has_no_play()
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        Merge(app, repo, snapshot, "feature");
+
+        Merge(app, repo, ReadSnapshot(repo), "feature");
+
+        Assert.Equal(DigestKind.UpToDate, app.Digest.Card!.Kind);
+        Assert.False(app.Keys.CanPlay);
+        _ui.Keyboard.RaiseKeyDownEvent(Key.G);
+        Assert.False(app.Digest.Replaying);
     }
 
     // ? over the card and its close: the card is drawn again, with its title.

@@ -47,7 +47,13 @@ public static class DigestText
         var kind = KindOf(o.Kind);
         var canUndo = (kind == DigestKind.Merged || kind == DigestKind.FastForwarded) && o.Undo is not null;
         return new MergeCard(kind, o.Branch, o.Into, o.NewHead, before, ahead, o.ConflictFiles, o.Message,
-            RollbackCommand(o.Commands), verified, CanPlay: true, CanUndo: canUndo);
+            RollbackCommand(o.Commands), verified, CanPlay: PlaysKind(kind), CanUndo: canUndo);
+    }
+
+    /// <summary>Whether g has a play for the kind: a merge, a fast-forward or a stop. An up-to-date merge or a failure has none.</summary>
+    internal static bool PlaysKind(DigestKind kind)
+    {
+        return kind == DigestKind.Merged || kind == DigestKind.FastForwarded || kind == DigestKind.Stopped;
     }
 
     /// <summary>The card for a merge that was refused before git ran: nothing was changed, so nothing is verified and nothing can play.</summary>
@@ -285,10 +291,10 @@ public static class DigestText
     }
 
     // The current branch's name for the words: "HEAD" when HEAD is detached.
-    private static string Cur(MergeCard c) => c.Into.Length == 0 ? "HEAD" : c.Into;
+    internal static string Cur(MergeCard c) => c.Into.Length == 0 ? "HEAD" : c.Into;
 
     // A hash cut to seven characters; "" when there is none.
-    private static string Seven(string? hash)
+    internal static string Seven(string? hash)
     {
         if (string.IsNullOrEmpty(hash))
             return "";

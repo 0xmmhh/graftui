@@ -19,6 +19,10 @@ public sealed class LaneMergeAnimationTests
 
     private static GraphLayout Layout(string selected) => Layouts.Diverged() with { Selected = selected };
 
+    // The same layout with one commit that the branch brings, so the sheet has an incoming list.
+    private static GraphLayout WithIncoming(string selected) =>
+        Layout(selected) with { SelectedNew = new List<CommitInfo> { Layouts.C("acf4dee000", subject: "Add other file") } };
+
     private static MergeCard MergedCard() =>
         new(DigestKind.Merged, Merge, "main", Hash, "be0126eabcdef0123456789", 1, [], "merge commit created", null, true,
             CanPlay: true, CanUndo: true);
@@ -382,6 +386,124 @@ public sealed class LaneMergeAnimationTests
                 }
             }
         }
+    }
+
+    // At 1500 the trail is still full, so the frame is the same as at 1499; the ghost starts to fill only from 1501 on.
+    [Fact]
+    public void Merge_at_1500_is_still_the_full_trail()
+    {
+        var anim = Anim(MergedCard(), Merge);
+        Assert.Empty(Differences(F(anim, 1499), F(anim, 1500)));
+        Assert.NotEmpty(Differences(F(anim, 1500), F(anim, 1501)));
+    }
+
+    // A failed or refused card has no play: no kind, no total.
+    [Fact]
+    public void A_failed_or_refused_card_has_no_play()
+    {
+        var failed = new MergeCard(DigestKind.Failed, Merge, "main", null, null, 0, [], "boom", null, true, CanPlay: false, CanUndo: false);
+        var refused = DigestText.Refused(Merge, "main", "HEAD is detached");
+
+        Assert.False(LaneMergeAnimation.CanPlay(failed));
+        Assert.False(LaneMergeAnimation.CanPlay(refused));
+        Assert.Equal(0L, Anim(failed, Merge).Total);
+        Assert.Equal(0L, Anim(refused, Merge).Total);
+    }
+
+    // The play's sheet from its total on is the card's own sheet, line for line and cell for cell, for each kind.
+    [Fact]
+    public void Sheet_ends_on_the_card()
+    {
+        var plays = new[] { (MergedCard(), Merge), (FastForwardCard(), FastForward), (ConflictCard(), Conflict) };
+        foreach (var play in plays)
+        {
+            var input = new DigestSheetInput(WithIncoming(play.Item2), G, play.Item1);
+            var anim = new LaneMergeAnimation(input);
+            AssertSameSheet(PreviewSheets.BuildDigest(input, 85, 30, Glyphs.Unicode), anim.Sheet(anim.Total, 85, 30, Glyphs.Unicode));
+        }
+    }
+
+    // At 0 the play's row 0 is the spinner and the first step, row 1 is the command, and the list keeps its usual title.
+    [Fact]
+    public void Sheet_at_0_has_the_running_line_the_command_and_the_list()
+    {
+        var anim = new LaneMergeAnimation(new DigestSheetInput(WithIncoming(Merge), G, MergedCard()));
+        var sheet = anim.Sheet(0, 85, 30, Glyphs.Unicode);
+
+        Assert.Equal("⠋ reading 1 commit from feature/merge-commit", SheetRow(sheet, 0));
+        Assert.Equal("$ git merge feature/merge-commit", SheetRow(sheet, 1));
+        Assert.Contains(sheet.Lines, line => LineText(line) == PreviewText.IncomingTitle);
+    }
+
+    // With three rows only the head lines are drawn: no graph and no list.
+    [Fact]
+    public void A_sheet_of_three_rows_has_only_the_head()
+    {
+        var sheet = Anim(MergedCard(), Merge).Sheet(0, 85, 3, Glyphs.Unicode);
+
+        Assert.All(sheet.Lines, line => Assert.True(line.Row <= 2));
+        Assert.Equal(0, sheet.Graph.Height);
+    }
+
+    // Every size and time gives a sheet, for the three kinds; the graph is always one column wider than the text.
+    [Fact]
+    public void Every_sheet_draws()
+    {
+        var anims = new[]
+        {
+            Anim(MergedCard(), Merge),
+            Anim(FastForwardCard(), FastForward),
+            Anim(ConflictCard(), Conflict),
+        };
+        var sizes = new[] { (85, 30), (46, 7), (12, 4), (85, 3) };
+        foreach (var anim in anims)
+        {
+            for (var t = 0L; t <= anim.Total + 100; t += 50)
+            {
+                foreach (var size in sizes)
+                {
+                    var sheet = anim.Sheet(t, size.Item1, size.Item2, Glyphs.Unicode);
+                    Assert.Equal(size.Item1 + 1, sheet.Graph.Width);
+                }
+            }
+        }
+    }
+
+    // Two sheets are the same: the same lines with the same segments, and the same grid cell for cell.
+    private static void AssertSameSheet(PreviewSheet expected, PreviewSheet actual)
+    {
+        Assert.Equal(expected.GraphRow, actual.GraphRow);
+        Assert.Equal(expected.Lines.Count, actual.Lines.Count);
+        for (var i = 0; i < expected.Lines.Count; i++)
+        {
+            Assert.Equal(expected.Lines[i].Row, actual.Lines[i].Row);
+            Assert.Equal(expected.Lines[i].Segs, actual.Lines[i].Segs);
+        }
+
+        Assert.Equal(expected.Graph.Width, actual.Graph.Width);
+        Assert.Equal(expected.Graph.Height, actual.Graph.Height);
+        Assert.Empty(Differences(expected.Graph, actual.Graph));
+    }
+
+    // The text of one row of a sheet, its segments joined.
+    private static string SheetRow(PreviewSheet sheet, int row)
+    {
+        foreach (var line in sheet.Lines)
+        {
+            if (line.Row == row)
+                return LineText(line);
+        }
+
+        return "";
+    }
+
+    // The text of a sheet line, its segments joined.
+    private static string LineText(SheetLine line)
+    {
+        var text = "";
+        foreach (var seg in line.Segs)
+            text += seg.Text;
+        return text;
     }
 
     // The spaces before a label or a graph, so a golden row can say how wide a gap is.

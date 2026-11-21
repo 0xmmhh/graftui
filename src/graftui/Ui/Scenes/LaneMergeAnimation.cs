@@ -17,15 +17,13 @@ public sealed class LaneMergeAnimation
     public const long ConflictTotal = 2800, ConflictPulseEnd = 500, ConflictTrailEnd = 1300, ConflictFlashEnd = 2000, ConflictRetreatEnd = 2600;
     public const long FlashMs = 140, SpinMs = 80;
 
-    private readonly DigestSheetInput _input;
-
     public LaneMergeAnimation(DigestSheetInput input)
     {
-        _input = input;
+        Input = input;
         Total = TotalFor(input.Card);
     }
 
-    public DigestSheetInput Input => _input;
+    public DigestSheetInput Input { get; }
 
     /// <summary>Merged, FastForwarded and Stopped play; every other card has no animation.</summary>
     public static bool CanPlay(MergeCard card)
@@ -42,16 +40,42 @@ public sealed class LaneMergeAnimation
     /// </summary>
     public LaneFrame GraphAt(long t, int gridWidth, int budget, Glyphs glyphs)
     {
-        var preview = Fit(PreviewGhost(_input.Card), gridWidth, budget);
-        var done = Fit(DigestText.Ghost(_input.Card), gridWidth, budget);
+        var preview = Fit(PreviewGhost(Input.Card), gridWidth, budget);
+        var done = Fit(DigestText.Ghost(Input.Card), gridWidth, budget);
         if (t >= Total || preview.Rows.Count == 0)
             return DoneFrame(done, glyphs);
 
-        if (_input.Card.Kind == DigestKind.Merged)
+        if (Input.Card.Kind == DigestKind.Merged)
             return MergeFrame(t, preview, done, glyphs);
-        if (_input.Card.Kind == DigestKind.FastForwarded)
+        if (Input.Card.Kind == DigestKind.FastForwarded)
             return FastForwardFrame(t, preview, done, gridWidth, budget, glyphs);
         return ConflictFrame(t, preview, glyphs);
+    }
+
+    /// <summary>
+    /// The card's sheet at time t (ms) while g plays: row 0 the spinner and the step's words, row 1 the command, then the graph at
+    /// GraphAt(t) and the usual incoming list. From Total on it is the card's own sheet (BuildDigest), so the play ends on the card.
+    /// </summary>
+    public PreviewSheet Sheet(long t, int textWidth, int rows, Glyphs glyphs)
+    {
+        if (t >= Total)
+            return PreviewSheets.BuildDigest(Input, textWidth, rows, glyphs);
+
+        var lines = new List<SheetLine>();
+        if (rows > 0)
+            lines.Add(new SheetLine(0, ReplayText.Line(Input.Card, t, glyphs)));
+        if (rows > 1)
+            lines.Add(new SheetLine(1, PreviewText.Command(Input.Layout)));
+
+        // The grid is one column wider than the text, as in PreviewSheets.Compose.
+        var budget = rows - PreviewSheets.HeadRows;
+        if (budget < 1)
+            return new PreviewSheet(lines, new ArtGrid(textWidth + 1, 0), PreviewSheets.HeadRows);
+
+        var frame = GraphAt(t, textWidth + 1, budget, glyphs);
+        var listShown = !PreviewText.IsCurrent(Input.Layout);
+        PreviewSheets.AddIncoming(lines, Input.Layout, frame.Placement.Height, budget, rows, listShown, PreviewText.IncomingTitle);
+        return new PreviewSheet(lines, frame.Grid, PreviewSheets.HeadRows);
     }
 
     /// <summary>The ease in and out of a move: 0 at p = 0, 1 at p = 1, flat at both ends.</summary>
@@ -114,12 +138,12 @@ public sealed class LaneMergeAnimation
     // The card's own spacing rule, so no frame moves the graph or the list.
     private LanePlacement Fit(GhostKind kind, int gridWidth, int budget)
     {
-        return PreviewSheets.FitGraph(_input.Graph, _input.Layout.Selected, kind, gridWidth, budget, Hash(), _input.Card.Verified);
+        return PreviewSheets.FitGraph(Input.Graph, Input.Layout.Selected, kind, gridWidth, budget, Hash(), Input.Card.Verified);
     }
 
     private string Hash()
     {
-        return _input.Card.Hash ?? "";
+        return Input.Card.Hash ?? "";
     }
 
     private LaneFrame DoneFrame(LanePlacement done, Glyphs glyphs)
@@ -136,7 +160,7 @@ public sealed class LaneMergeAnimation
             return new LaneFrame(preview, pulse);
         }
 
-        if (t < MergeTrailEnd)
+        if (t <= MergeTrailEnd)
         {
             var trail = LaneScene.Render(preview, glyphs, Hash());
             var q = Ease(Phase(t, MergePulseEnd, MergeTrailEnd));
@@ -245,7 +269,7 @@ public sealed class LaneMergeAnimation
             var glyph = ' ';
             if (on)
                 glyph = glyphs.Conflict;
-            var phrase = DigestText.ConflictPhrase(_input.Card.ConflictFiles);
+            var phrase = DigestText.ConflictPhrase(Input.Card.ConflictFiles);
             SetGhost(grid, preview, glyph, new Style(Ink.Bad, true), phrase, bad);
             return new LaneFrame(preview, grid);
         }
@@ -260,9 +284,9 @@ public sealed class LaneMergeAnimation
     // The command that put the repo back, or "no commit" when none ran.
     private string RollbackText()
     {
-        if (_input.Card.Rollback is null)
+        if (Input.Card.Rollback is null)
             return "no commit";
-        return _input.Card.Rollback;
+        return Input.Card.Rollback;
     }
 
     // The travelling trail: the tip's route to the ghost (along its row, then up the ghost's column). Empty when the tip is not drawn.

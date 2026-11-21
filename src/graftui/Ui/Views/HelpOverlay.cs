@@ -34,7 +34,7 @@ public static class HelpOverlay
             return ("Keys — Todo", TodoRows());
         if (bar.BranchesState.Pause is not null)
             return ("Keys — Branches", PauseRows(bar.BranchesState.Pause.Value));
-        return ("Keys — Branches", BranchesRows(bar.NewLook));
+        return ("Keys — Branches", BranchesRows(bar.NewLook && bar.CanPlay));
     }
 
     /// <summary>The caption legend for the key bar's mode: only the Branches browse popup sits over the dim shared-history dots.</summary>
