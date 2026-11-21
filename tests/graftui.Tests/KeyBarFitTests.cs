@@ -415,4 +415,36 @@ public class KeyBarFitTests
 
         Assert.Equal(Bar(KeyBarView.PauseItems(PauseKind.Conflict)), Bar(KeyBarView.BranchesItems(state, withRebase: true)));
     }
+
+    // ----- the new look's g play -----
+
+    [Fact]
+    public void With_a_merge_card_the_new_look_lists_g_play_between_r_rebase_and_u_undo()
+    {
+        var state = new BranchesKeyState(BranchCount: 2, CanMerge: true, HasUndo: true, CanSwitch: true, CanRebase: true);
+
+        Assert.Equal("Tab changes  m merge  s switch  r rebase  g play  u undo  ? help  Esc quit",
+            Bar(KeyBarView.BranchesItems(state, withRebase: true, withPlay: true)));
+    }
+
+    [Fact]
+    public void Without_a_merge_card_there_is_no_g_play()
+    {
+        var state = new BranchesKeyState(BranchCount: 2, CanMerge: true, HasUndo: true, CanSwitch: true, CanRebase: true);
+
+        Assert.DoesNotContain("g", Names(KeyBarView.BranchesItems(state, withRebase: true)));
+    }
+
+    // At 76 columns the whole bar is one space too wide with g, so g alone is dropped and r rebase stays.
+    [Fact]
+    public void At_76_columns_g_play_is_the_item_dropped_and_r_rebase_stays()
+    {
+        var state = new BranchesKeyState(BranchCount: 2, CanMerge: true, HasUndo: true, CanSwitch: true, CanRebase: true);
+
+        var kept = Keys(KeyBarView.FitItems(KeyBarView.BranchesItems(state, withRebase: true, withPlay: true), 76, out _));
+
+        Assert.DoesNotContain("g", kept);
+        Assert.Contains("r", kept);
+        Assert.Contains("u", kept);
+    }
 }

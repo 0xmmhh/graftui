@@ -8,7 +8,11 @@ namespace graftui.Ui.Views;
 public sealed class BranchesView : PaneView
 {
     private static readonly Style Fg = new(Ink.Fg), FgB = new(Ink.Fg, true), Dim = new(Ink.Dim);
-    private static readonly Style Inc = new(Ink.Inc), Warn = new(Ink.Warn);
+    private static readonly Style Inc = new(Ink.Inc), Warn = new(Ink.Warn), Ok = new(Ink.Ok);
+
+    // The "merged" marker that takes the place of the ↑↓ column on the branch a merge just merged (the new look).
+    internal const string MergedText = "merged";
+    private const int MergedCols = 6;
 
     // The narrowest header worth drawing: "vs" and one name letter, with the "…" that cuts it.
     private const int MinHeaderCols = 4;
@@ -39,6 +43,11 @@ public sealed class BranchesView : PaneView
 
     /// <summary>The mark of each branch by name. Read only when the new look is on.</summary>
     public IReadOnlyDictionary<string, BranchMark> Marks { get; set; } = new Dictionary<string, BranchMark>();
+
+    /// <summary>
+    /// The branch the last merge merged (the new look only): its row shows "merged" in place of the ↑↓ column. Null: no row does.
+    /// </summary>
+    public string? MergedName { get; set; }
 
     /// <summary>
     /// The detail block under the list (the new look): the selected branch's commits and files. Null: no block, and the list uses every row.
@@ -110,10 +119,16 @@ public sealed class BranchesView : PaneView
             else
                 DrawText(2, row, star, 1, style, isSel);
 
-            // name
-            DrawText(NameX, row, b.Name, nameW, style, isSel);
+            // name: on the merged row the name gives up the room of the "merged" marker, which sits where the ↑↓ column is.
+            var merged = NewLook && showAb && b.Name == MergedName;
+            var rowNameW = merged ? NameWidth(innerW, Math.Max(abW, MergedCols)) : nameW;
+            DrawText(NameX, row, b.Name, rowNameW, style, isSel);
 
-            if (showAb && !b.IsCurrent && Counts.TryGetValue(b.Name, out var c))
+            if (merged)
+            {
+                DrawText(AbX(rowNameW), row, MergedText, MergedCols, Ok, isSel);
+            }
+            else if (showAb && !b.IsCurrent && Counts.TryGetValue(b.Name, out var c))
             {
                 var segs = new List<Seg>
                 {

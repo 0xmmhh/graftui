@@ -54,6 +54,7 @@ internal sealed partial class BranchesTab
         var tip = snap.HeadHash ?? "";
         var current = snap.Branches.FirstOrDefault(b => b.IsCurrent);
         var cached = current is null ? null : CachedLayout(snap, current);
+        _app.Digest.Dismiss();
         LoadForNameBox(
             () => Or(cached ?? (current is null ? null : _app.TryLoadLayout(snap, current)), snap, cur, tip),
             loaded => OpenNameForm(rename: false, cur, tip, loaded));
@@ -74,6 +75,7 @@ internal sealed partial class BranchesTab
 
         var b = snap.Branches[_selected];
         var cached = CachedLayout(snap, b);
+        _app.Digest.Dismiss();
         LoadForNameBox(() => Or(cached ?? _app.TryLoadLayout(snap, b), snap, b.Name, b.Hash),
             loaded => OpenNameForm(rename: true, b.Name, b.Hash, loaded));
     }
