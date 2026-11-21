@@ -139,18 +139,12 @@ internal sealed partial class BranchesTab
 
         _cache.TryGetValue(CacheKey(snap, b), out var cached);
 
-        // The new look's start: the lane graph and the forecast on screen now, and HEAD. The worker only reads them.
+        // The new look's start: the lane graph and the forecast on screen now, and HEAD. The worker reads the graph only when none is on screen.
         var before = snap.HeadHash;
-        var graph = LaneGraph.Empty;
+        var shownGraph = _newUi ? LaneGraphForSnapshot() : null;
         MergeForecast? forecast = null;
-        if (_newUi)
-        {
-            var shownGraph = LaneGraphForSnapshot();
-            if (shownGraph is not null)
-                graph = shownGraph;
-            if (cached is not null)
-                forecast = CachedForecast(cached);
-        }
+        if (_newUi && cached is not null)
+            forecast = CachedForecast(cached);
 
         _app.MergeTask = Task.Run<MergeOutcome?>(() =>
         {
@@ -158,6 +152,7 @@ internal sealed partial class BranchesTab
             {
                 // The layout is read first, so that Check is the last git work before the merge.
                 var loaded = cached ?? _app.TryLoadLayout(snap, b);
+                var graph = _newUi ? MergeGraph(snap, shownGraph) : LaneGraph.Empty;
                 var start = new MergeStart(Or(loaded, snap, b.Name, b.Hash), graph, forecast, before);
                 var o = RunGated(_app.MergeOp, new MergeRequest(b.Name), () => _app.Gate.IsQuitting,
                     check =>

@@ -108,6 +108,26 @@ internal sealed partial class BranchesTab
             DrawPreview(shown);
     }
 
+    /// <summary>
+    /// The lane graph a merge starts with: the graph on screen when it is there, else one read now for the snapshot. Called on the merge's
+    /// worker, before the merge runs, so it only reads (no UI state, no git command that changes the repo). Empty when the read fails.
+    /// </summary>
+    internal LaneGraph MergeGraph(RepoSnapshot snap, LaneGraph? shown)
+    {
+        if (shown is not null)
+            return shown;
+
+        try
+        {
+            return _app.Reader.LoadLaneGraph(snap, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // Not logged: a read, not a git command the Commands pane shows. The card then has no graph, as before.
+            return LaneGraph.Empty;
+        }
+    }
+
     /// <summary>The graph of the snapshot on screen, or null when it is not read yet, failed, or has no lanes.</summary>
     private LaneGraph? LaneGraphForSnapshot()
     {

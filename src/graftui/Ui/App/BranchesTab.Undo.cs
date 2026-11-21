@@ -25,7 +25,16 @@ internal sealed partial class BranchesTab
         if (_app.Busy || layout.TooSmall)
             return;
 
+        // A merge card on screen (the new look) goes with its sheet and title: the undo runs with nothing of the card on the art until
+        // its result is drawn. The old look has no card, so its art is left as it is.
+        var hadCard = _app.Digest.Card is not null;
         _app.Digest.Dismiss();
+        if (hadCard)
+        {
+            _app.Art.ShowScene(null);
+            _app.Art.Title = "Undo";
+        }
+
         _app.ReleaseBranchWidth();
         _app.Busy = true;
         _previewCts?.Cancel();

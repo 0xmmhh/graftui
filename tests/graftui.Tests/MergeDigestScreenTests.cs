@@ -213,6 +213,43 @@ public sealed class MergeDigestScreenTests : IDisposable
         Assert.EndsWith("g play · u undo", RowText(app.Art.Sheet!(85, 30), 0));
     }
 
+    // During the hold the play is still on (the last frame is the card): Space, Esc and g each end it at once, and g does not start it again.
+    [Fact]
+    public void Space_during_the_hold_ends_the_play()
+    {
+        HoldEndsOn(Key.Space);
+    }
+
+    [Fact]
+    public void Esc_during_the_hold_ends_the_play()
+    {
+        HoldEndsOn(Key.Esc);
+    }
+
+    [Fact]
+    public void G_during_the_hold_ends_the_play_and_does_not_restart_it()
+    {
+        HoldEndsOn(Key.G);
+    }
+
+    // The play has reached its total and is holding; the key ends it, and the card is drawn again.
+    private void HoldEndsOn(Key key)
+    {
+        using var repo = TempRepo.Diverged(conflict: false);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        Merge(app, repo, snapshot, "feature");
+        app.Digest.Replay();
+        Assert.True(app.Digest.Advance(2600));
+        Assert.True(app.Digest.Replaying);
+
+        _ui.Keyboard.RaiseKeyDownEvent(key);
+
+        Assert.False(app.Digest.Replaying);
+        Assert.Equal("Merged feature → main", app.Art.Title);
+        Assert.NotNull(app.Art.Sheet);
+    }
+
     // A conflict plays too: row 0 is in the red ink, and the play ends on the stopped card.
     [Fact]
     public void A_conflict_plays_in_red_and_ends_on_the_stopped_card()
@@ -279,10 +316,70 @@ public sealed class MergeDigestScreenTests : IDisposable
 
         app.BranchesTab.StartUndo();
 
+        // The card's sheet and title leave the art with the card: nothing of the card is drawn while the undo runs.
         Assert.Null(app.Digest.Card);
+        Assert.Null(app.Art.Sheet);
+        Assert.Equal("Undo", app.Art.Title);
         Assert.NotNull(app.ChangesTask);
         await app.ChangesTask!;
         Assert.Equal(before, repo.Head);
+    }
+
+    // m reads the lane graph on screen only when it is read for this snapshot. When it is not (the read is still running, or the
+    // snapshot changed), the merge's worker reads it before the merge runs, so the card's graph does not depend on the timing.
+    [Fact]
+    public void The_merge_reads_the_graph_when_none_is_on_screen()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+
+        var graph = app.BranchesTab.MergeGraph(snapshot, null);
+
+        Assert.True(graph.Lanes.Count > 0);
+    }
+
+    // The graph on screen is the merge's graph when it is there.
+    [Fact]
+    public void The_merge_keeps_the_graph_on_screen()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        var shown = new RepoReader(repo.Git).LoadLaneGraph(snapshot, CancellationToken.None);
+
+        Assert.Same(shown, app.BranchesTab.MergeGraph(snapshot, shown));
+    }
+
+    // A conflict card draws its lane graph, and g's play draws the graph too (the stop's trail and ✕ are on it).
+    [Fact]
+    public void A_conflict_card_draws_the_lane_graph_and_plays_on_it()
+    {
+        using var repo = TempRepo.Diverged(conflict: true);
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot);
+        Merge(app, repo, snapshot, "feature");
+
+        Assert.True(GraphCells(app.Art.Sheet!(85, 30)) > 0);
+        app.Digest.Replay();
+        Assert.True(app.Digest.Replaying);
+        Assert.True(GraphCells(app.Art.Sheet!(85, 30)) > 0);
+    }
+
+    // The number of graph cells that are drawn (not blank) in a sheet's grid.
+    private static int GraphCells(PreviewSheet sheet)
+    {
+        var count = 0;
+        for (var y = 0; y < sheet.Graph.Height; y++)
+        {
+            for (var x = 0; x < sheet.Graph.Width; x++)
+            {
+                if (sheet.Graph[x, y].Ch != ' ')
+                    count++;
+            }
+        }
+
+        return count;
     }
 
     // With the new look off, m runs the old animation: no card, no mark, and the bar has no g.
