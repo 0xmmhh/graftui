@@ -1,5 +1,6 @@
 using graftui.Model;
 using graftui.Ui.Scenes;
+using graftui.Ui.Text;
 
 namespace graftui.Tests;
 
@@ -31,6 +32,28 @@ public sealed class LaneFitTests
 
     private static LanePlacement Fit(string selected, GhostKind ghost, int width, int height) =>
         LaneFit.Fit(G, selected, ghost, width, height);
+
+    // A ghost at column 10: its label starts at 12, so a width of 12 + n leaves n columns for the label.
+    [Fact]
+    public void FitGhostLabel_keeps_the_text_when_it_fits()
+    {
+        Assert.Equal("new merge commit", LaneFit.FitGhostLabel("new merge commit", 80, 10));
+    }
+
+    [Fact]
+    public void FitGhostLabel_cuts_the_text_at_eight_columns()
+    {
+        var label = LaneFit.FitGhostLabel("new merge commit", 20, 10);
+
+        Assert.Equal(8, TextFit.Columns(label));
+        Assert.EndsWith("…", label);
+    }
+
+    [Fact]
+    public void FitGhostLabel_drops_the_text_below_eight_columns()
+    {
+        Assert.Equal("", LaneFit.FitGhostLabel("new merge commit", 19, 10));
+    }
 
     private static string Describe(Lane lane) =>
         lane.Name + ": " + string.Join(" ", lane.Commits.Select(c => c.ShortHash + "@" + c.Column));

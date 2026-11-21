@@ -37,7 +37,7 @@ public static class LaneScene
 
     // The ink of a lane's line, dots and corners: its branch colour when it is on, else the faint ink. The lifted lane (after a
     // fast-forward) takes the base's colour, since it is drawn on the base row.
-    private static Style LaneStyle(LanePlacement p, int lane)
+    internal static Style LaneStyle(LanePlacement p, int lane)
     {
         if (lane == p.LiftedLane)
             return LaneStyle(p, 0);
@@ -78,6 +78,10 @@ public static class LaneScene
         for (var lane = 0; lane < p.Graph.Lanes.Count; lane++)
         {
             if (!p.IsKept(lane))
+                continue;
+
+            // A sliding lane (g's fast-forward) that has reached the base row's line would put its hashes on the base row: no hashes then.
+            if (lane == p.ShiftLane && p.LineYOf(lane) - 1 <= p.YOf(0))
                 continue;
 
             var style = new Style(p.IsOn(lane) ? Ink.Hash : Ink.Faint);
@@ -205,7 +209,7 @@ public static class LaneScene
     }
 
     // Where a lane's line stops: its newest commit, or the left edge of the graph when that commit is cut off.
-    private static int LastX(LanePlacement p, Lane info)
+    internal static int LastX(LanePlacement p, Lane info)
     {
         var column = info.Commits[info.Commits.Count - 1].Column;
         if (column < p.FirstColumn)
@@ -417,7 +421,7 @@ public static class LaneScene
     }
 
     // The width of the base's chip in columns.
-    private static int ChipWidth(LanePlacement p) => TextFit.Columns(" " + p.Graph.BaseName + " ");
+    internal static int ChipWidth(LanePlacement p) => TextFit.Columns(" " + p.Graph.BaseName + " ");
 
     private static Ink GhostInk(GhostKind kind)
     {
