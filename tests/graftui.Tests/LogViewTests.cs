@@ -432,4 +432,53 @@ public class LogViewTests
 
         Assert.Equal(" l full list · v simplified ", text);
     }
+
+    [Fact]
+    public void FollowTop_cuts_the_oldest_lines_that_do_not_fit()
+    {
+        Assert.Equal(7, LogView.FollowTop(10, rows: 3));
+    }
+
+    [Fact]
+    public void FollowTop_starts_at_the_top_when_everything_fits()
+    {
+        Assert.Equal(0, LogView.FollowTop(3, rows: 5));
+    }
+
+    [Fact]
+    public void FollowTop_treats_a_zero_page_as_one_row()
+    {
+        Assert.Equal(9, LogView.FollowTop(10, rows: 0));
+        Assert.Equal(0, LogView.FollowTop(0, rows: 0));
+    }
+
+    [Fact]
+    public void ScrollTop_moves_one_line_in_both_directions()
+    {
+        Assert.Equal(6, LogView.ScrollTop(7, -1, rows: 3, lineCount: 10));
+        Assert.Equal(7, LogView.ScrollTop(6, 1, rows: 3, lineCount: 10));
+    }
+
+    [Fact]
+    public void ScrollTop_clamps_at_the_oldest_line_and_at_the_newest()
+    {
+        Assert.Equal(0, LogView.ScrollTop(0, -1, rows: 3, lineCount: 10));
+        Assert.Equal(0, LogView.ScrollTop(3, -5, rows: 3, lineCount: 10));
+        Assert.Equal(7, LogView.ScrollTop(6, 5, rows: 3, lineCount: 10));
+        Assert.Equal(7, LogView.ScrollTop(7, 3, rows: 3, lineCount: 10));
+    }
+
+    [Fact]
+    public void ScrollTop_pages_a_page_at_a_time()
+    {
+        Assert.Equal(4, LogView.ScrollTop(7, -3, rows: 3, lineCount: 10));
+        Assert.Equal(7, LogView.ScrollTop(4, 3, rows: 3, lineCount: 10));
+    }
+
+    [Fact]
+    public void ScrollTop_in_a_list_that_fits_stays_at_the_top()
+    {
+        Assert.Equal(0, LogView.ScrollTop(0, -1, rows: 5, lineCount: 3));
+        Assert.Equal(0, LogView.ScrollTop(0, 1, rows: 5, lineCount: 3));
+    }
 }

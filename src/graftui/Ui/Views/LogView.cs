@@ -1,4 +1,5 @@
 using graftui.Ui.Text;
+using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Drawing;
 
@@ -9,7 +10,9 @@ namespace graftui.Ui.Views;
 /// or refusal, else the newest line that is not git's output (see <see cref="StripLine"/>). Given 3 rows or more (the new look's dock,
 /// see <see cref="IsDock"/>), closed, it is a framed list of the newest lines, as the open list is. Open (<see cref="Open"/>, toggled
 /// with l), it is a framed list over the bottom rows of the top panes: the newest lines, unless an anchor is set. Then the anchor entry
-/// is at the top as far as the end of the log allows (v1's rule, computed at draw time so it survives a resize).
+/// is at the top as far as the end of the log allows (v1's rule, computed at draw time so it survives a resize). The open list scrolls
+/// (↑/↓ a line, PgUp/PgDn a page, Home the oldest, End the newest again): while it is scrolled up the anchor is ignored and commands
+/// arriving do not move the view; l, Esc and End follow the newest lines again. The closed dock always shows the newest lines.
 /// Each git invocation is one <see cref="LogEntry"/>. The list shows either the simplified lines or the exact lines
 /// (<see cref="ShowExact"/>, toggled with v); the entries and the anchor are the same in both.
 /// Message lines wrap to the pane width, so a long refusal or failure is read in full; command and output lines are cut,
@@ -36,6 +39,8 @@ public sealed class LogView : PaneView
     private int _dropped;       // entries trimmed from the front so far
     private int _exactLines;    // lines held in the exact lists, for the limit
     private int _stepStart;     // the Position when the last key was pressed: the entries from here on are the current step
+    private bool _follow = true; // the open list follows the newest lines until a scroll key moves it up
+    private int _scrollTop;     // the first visible line while the open list is scrolled (entries only append, so it stays put)
 
     public LogView()
     {
@@ -51,17 +56,20 @@ public sealed class LogView : PaneView
     /// <summary>True when the full list is open over the top panes. False: the one-row strip.</summary>
     public bool Open { get; private set; }
 
-    /// <summary>Opens the full list, or closes it when it is open.</summary>
+    /// <summary>Opens the full list, or closes it when it is open. Closing follows the newest lines again.</summary>
     public void Toggle()
     {
         Open = !Open;
+        if (!Open)
+            _follow = true;
         SetNeedsDraw();
     }
 
-    /// <summary>Closes the full list. The strip stays.</summary>
+    /// <summary>Closes the full list. The strip stays, and the next open follows the newest lines again.</summary>
     public void Close()
     {
         Open = false;
+        _follow = true;
         SetNeedsDraw();
     }
 
@@ -199,6 +207,68 @@ public sealed class LogView : PaneView
         return !(line.Kind == LogKind.Message && line.Text.StartsWith(" ", StringComparison.Ordinal));
     }
 
+    /// <summary>True while the open list follows the newest lines (it has not been scrolled up).</summary>
+    internal bool FollowsNewest => _follow;
+
+    /// <summary>The first visible line of the open list after scrolling. Read while <see cref="FollowsNewest"/> is false.</summary>
+    internal int ScrolledTop => _scrollTop;
+
+    /// <summary>
+    /// One scroll key of the open list: ↑/↓ a line, PgUp/PgDn the page, Home the oldest, End the newest again. True when the
+    /// key was one of them. A scroll that reaches the bottom follows the newest lines again, and a command arriving while the
+    /// list is scrolled up does not move the view: entries only append, so the top line keeps its place.
+    /// </summary>
+    internal bool ScrollKey(Key key)
+    {
+        var page = Math.Max(1, Viewport.Height - 2);
+        if (key == Key.CursorUp)
+            Scroll(-1, page);
+        else if (key == Key.CursorDown)
+            Scroll(1, page);
+        else if (key == Key.PageUp)
+            Scroll(-page, page);
+        else if (key == Key.PageDown)
+            Scroll(page, page);
+        else if (key == Key.Home)
+        {
+            _scrollTop = 0;
+            _follow = FollowTop(VisibleLines().Count, page) == 0;
+            SetNeedsDraw();
+        }
+        else if (key == Key.End)
+        {
+            _follow = true;
+            SetNeedsDraw();
+        }
+        else
+            return false;
+        return true;
+    }
+
+    /// <summary>Moves the open list by step lines (negative = older). Scrolling up leaves the newest lines; reaching the bottom follows them again.</summary>
+    private void Scroll(int step, int page)
+    {
+        var count = VisibleLines().Count;
+        var newest = FollowTop(count, page);
+        var top = _follow ? newest : _scrollTop;
+        top = ScrollTop(top, step, page, count);
+        _scrollTop = top;
+        _follow = top >= newest;
+        SetNeedsDraw();
+    }
+
+    /// <summary>
+    /// The first visible line after a scroll of step lines (negative = older) in a page of rows: never above the oldest line,
+    /// never below where the newest lines begin. Lines are counted as one row each; the drawing clamps again with the real
+    /// wrapped heights, so a wrapped message can show one line less than the page promised.
+    /// </summary>
+    internal static int ScrollTop(int top, int step, int rows, int lineCount) =>
+        Math.Clamp(top + step, 0, FollowTop(lineCount, rows));
+
+    /// <summary>The first visible line while the newest lines are followed: the page holds them all, or the oldest ones are cut.</summary>
+    internal static int FollowTop(int lineCount, int rows) =>
+        Math.Max(0, lineCount - Math.Max(1, rows));
+
     // The newest line from first on that matches the test, or null. Written out per rule so each one reads on its own.
     private static LogLine? NewestInStep(IReadOnlyList<LogLine> lines, int first, Func<LogLine?, bool> matches)
     {
@@ -322,7 +392,13 @@ public sealed class LogView : PaneView
 
         var rowsOf = flat.Select(f => Rows(f.Line, maxCols)).ToList();
         var entries = flat.Select(f => f.Entry).ToList();
-        var top = ListTop(entries, rowsOf.Select(r => r.Count).ToList(), rows, _anchor, useAnchor);
+        var heights = rowsOf.Select(r => r.Count).ToList();
+        // While the open list is scrolled up, the view stays where the scroll put it: the anchor and the newest lines are
+        // ignored until End (or l, or Esc) follows them again. The clamp uses the real wrapped heights, so no blank rows
+        // are left below the log.
+        var top = Open && !_follow
+            ? Math.Clamp(_scrollTop, 0, TopLine(heights, rows, -1))
+            : ListTop(entries, heights, rows, _anchor, useAnchor);
         var y = 0;
         for (var i = top; i < rowsOf.Count && y < rows; i++)
             foreach (var row in rowsOf[i])
