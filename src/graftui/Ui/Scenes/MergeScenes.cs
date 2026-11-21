@@ -26,7 +26,6 @@ public static class MergeScenes
     private static readonly Style Bad = new(Ink.Bad), BadB = new(Ink.Bad, true);
     private static readonly Style Warn = new(Ink.Warn), WarnB = new(Ink.Warn, true);
 
-    private const string SpinFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
     internal const string WaitingText = "! git is still running (waiting for a password prompt or hook?)";
 
     /// <summary>
@@ -319,7 +318,12 @@ public static class MergeScenes
 
     internal static Style Blink(long t, Style a, Style b, int ms = 110) => (t / ms) % 2 == 1 ? b : a;
 
-    internal static char Spin(long t) => SpinFrames[(int)((t / 80) % SpinFrames.Length)];
+    // The frames come from the glyph set: ten braille dots by default, |/-\ with --glyphs basic.
+    internal static char Spin(long t)
+    {
+        var frames = Glyphs.Current.Spinner;
+        return frames[(int)((t / 80) % frames.Length)];
+    }
 
     private static int Round(double x) => (int)Math.Round(x, MidpointRounding.AwayFromZero);
 

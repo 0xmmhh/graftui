@@ -56,7 +56,7 @@ internal sealed class MergeDigest
         _app.BranchesTab.ForgetShown();
         _app.Art.Title = "Merging " + layout.Selected + " → " + into;
         _app.Art.ShowSheet((w, h) => PreviewSheets.BuildRunning(new PreviewSheetInput(layout, start.Forecast, start.Graph, true), w, h,
-            Glyphs.Unicode));
+            Glyphs.Current));
         _app.Art.SetNeedsDraw();
     }
 
@@ -201,11 +201,11 @@ internal sealed class MergeDigest
     {
         var play = _play;
         if (play is not null && _clock is not null)
-            return play.Sheet(_clock.ElapsedMilliseconds, w, h, Glyphs.Unicode);
+            return play.Sheet(_clock.ElapsedMilliseconds, w, h, Glyphs.Current);
 
         var shown = _shown;
         if (shown is not null)
-            return PreviewSheets.BuildDigest(new DigestSheetInput(shown.Start.Layout, shown.Start.Graph, shown.Card), w, h, Glyphs.Unicode);
+            return PreviewSheets.BuildDigest(new DigestSheetInput(shown.Start.Layout, shown.Start.Graph, shown.Card), w, h, Glyphs.Current);
         return new PreviewSheet(new List<SheetLine>(), new ArtGrid(w + 1, 0), PreviewSheets.HeadRows);
     }
 
@@ -220,7 +220,7 @@ internal sealed class MergeDigest
         var start = shown.Start;
         _app.BranchesTab.ForgetShown();
         _app.Art.Title = DigestText.Title(card);
-        _app.Art.ShowSheet((w, h) => PreviewSheets.BuildDigest(new DigestSheetInput(start.Layout, start.Graph, card), w, h, Glyphs.Unicode));
+        _app.Art.ShowSheet((w, h) => PreviewSheets.BuildDigest(new DigestSheetInput(start.Layout, start.Graph, card), w, h, Glyphs.Current));
         _app.BranchList.MergedName = MergedNameOf(card);
         _app.Keys.CanPlay = card.CanPlay;
         _app.Art.SetNeedsDraw();

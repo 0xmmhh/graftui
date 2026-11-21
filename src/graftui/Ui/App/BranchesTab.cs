@@ -368,7 +368,7 @@ internal sealed partial class BranchesTab
     {
         var input = new PreviewSheetInput(layout, forecast, graph, _app.Snapshot.Clean);
         _app.Art.Title = PreviewText.Title(layout);
-        _app.Art.ShowSheet((w, h) => PreviewSheets.Build(input, w, h, Glyphs.Unicode));
+        _app.Art.ShowSheet((w, h) => PreviewSheets.Build(input, w, h, Glyphs.Current));
         _app.Art.SetNeedsDraw();
     }
 

@@ -15,7 +15,7 @@ internal static class Paint
     public static void Put(View v, int x, int y, char ch, Attribute attr)
     {
         v.SetAttribute(attr);
-        v.AddRune(x, y, new Rune(ch));
+        v.AddRune(x, y, Glyphs.Drawn(new Rune(ch)));
     }
 
     public static void Fill(View v, int x, int y, int cols, Attribute attr)
@@ -45,7 +45,7 @@ internal static class Paint
             var cols = rune.GetColumns();
             if (cols <= 0)
                 continue; // zero-width runes would otherwise land on the previous cell
-            v.AddRune(x + used, y, rune);
+            v.AddRune(x + used, y, Glyphs.Drawn(rune)); // the plain stand-in is one column too, so the columns do not move
             used += cols;
         }
         return used;

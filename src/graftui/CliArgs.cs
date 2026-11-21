@@ -7,7 +7,7 @@ namespace graftui;
 /// The parsed command line. Help and Version are acted on by Program in that order; neither needs a repo.
 /// MakeEdits is the hidden developer flag (see CONTRIBUTING.md); it is left out of HelpText on purpose.
 /// </summary>
-internal sealed record CliOptions(bool Help, bool Version, bool Sandbox, bool MakeEdits, string? Theme, string? RepoPath, bool NewUi = false);
+internal sealed record CliOptions(bool Help, bool Version, bool Sandbox, bool MakeEdits, string? Theme, string? RepoPath, bool NewUi = false, bool BasicGlyphs = false);
 
 /// <summary>Either the options, or the one stderr line for a bad command line (Program adds "Try 'graftui --help'.").</summary>
 internal sealed record CliParse(CliOptions? Options, string? Error);
@@ -25,6 +25,7 @@ Usage:
 Options:
   --theme <name>   colours: default, lifted, muted, high-contrast, light
   --new-ui         the new look, still being built (same as GRAFTUI_UI=new)
+  --glyphs <set>   basic (plain ASCII) or unicode (default); also GRAFTUI_GLYPHS
   --version        print the version
   --help           show this help
 
@@ -40,9 +41,15 @@ Both tabs: v all commands · Esc quit
     /// Reads the arguments left to right. Help beats Version, and both beat any error. Otherwise the first error wins.
     /// `--` ends the options; anything after it is a path. `--theme` takes the next argument, or `--theme=name`.
     /// </summary>
-    public static CliParse Parse(IReadOnlyList<string> args)
+    public static CliParse Parse(IReadOnlyList<string> args) => Parse(args, null);
+
+    /// <summary>
+    /// The same, with the value of GRAFTUI_GLYPHS passed in (null or empty when unset). A --glyphs flag wins over that value;
+    /// the value is only checked when no flag gave a set.
+    /// </summary>
+    public static CliParse Parse(IReadOnlyList<string> args, string? glyphsEnvironment)
     {
-        var p = new Parser();
+        var p = new Parser(glyphsEnvironment);
         var queue = new Queue<string>(args);
         while (queue.TryDequeue(out var arg))
             p.Read(arg, queue);
@@ -53,8 +60,14 @@ Both tabs: v all commands · Esc quit
     private sealed class Parser
     {
         private readonly List<string> _errors = [];
-        private bool _help, _version, _sandbox, _makeEdits, _newUi, _themeSeen, _pathsOnly;
+        private readonly string? _glyphsEnvironment;
+        private bool _help, _version, _sandbox, _makeEdits, _newUi, _themeSeen, _pathsOnly, _glyphsSeen, _basicGlyphs;
         private string? _theme, _path;
+
+        public Parser(string? glyphsEnvironment)
+        {
+            _glyphsEnvironment = glyphsEnvironment;
+        }
 
         public void Read(string arg, Queue<string> rest)
         {
@@ -66,6 +79,11 @@ Both tabs: v all commands · Esc quit
             if (arg.StartsWith("--theme=", StringComparison.Ordinal))
             {
                 SetTheme(arg["--theme=".Length..]);
+                return;
+            }
+            if (arg.StartsWith("--glyphs=", StringComparison.Ordinal))
+            {
+                SetGlyphs(arg["--glyphs=".Length..]);
                 return;
             }
 
@@ -94,6 +112,10 @@ Both tabs: v all commands · Esc quit
                     // The name is the next argument unless that is another option, in which case it is missing.
                     SetTheme(rest.TryPeek(out var next) && !next.StartsWith('-') ? rest.Dequeue() : null);
                     break;
+                case "--glyphs":
+                    // The same rule as --theme: the set is the next argument unless that is another option.
+                    SetGlyphs(rest.TryPeek(out var glyphName) && !glyphName.StartsWith('-') ? rest.Dequeue() : null);
+                    break;
                 default:
                     if (arg.StartsWith('-'))
                         _errors.Add($"graftui: unknown option '{arg}'");
@@ -106,7 +128,7 @@ Both tabs: v all commands · Esc quit
         public CliParse Result()
         {
             if (_help || _version)
-                return new CliParse(new CliOptions(_help, _version, _sandbox, _makeEdits, _theme, _path, _newUi), null);
+                return new CliParse(new CliOptions(_help, _version, _sandbox, _makeEdits, _theme, _path, _newUi, _basicGlyphs), null);
 
             if (_sandbox && _path is not null)
                 _errors.Add("graftui: --sandbox opens ~/.graftui/sandbox; it can't be combined with a path");
@@ -115,9 +137,36 @@ Both tabs: v all commands · Esc quit
             if (_sandbox && _makeEdits)
                 _errors.Add("graftui: --make-edits can't be combined with --sandbox; run them one after the other");
 
+            // The environment is read only when no --glyphs flag was given: the flag wins over it.
+            if (!_glyphsSeen && !string.IsNullOrEmpty(_glyphsEnvironment))
+            {
+                if (TryGlyphSet(_glyphsEnvironment, out var fromEnvironment))
+                    _basicGlyphs = fromEnvironment;
+                else
+                    _errors.Add($"graftui: GRAFTUI_GLYPHS is '{_glyphsEnvironment}'; choose basic or unicode");
+            }
+
             return _errors.Count == 0
-                ? new CliParse(new CliOptions(false, false, _sandbox, _makeEdits, _theme, _path, _newUi), null)
+                ? new CliParse(new CliOptions(false, false, _sandbox, _makeEdits, _theme, _path, _newUi, _basicGlyphs), null)
                 : new CliParse(null, _errors[0]);
+        }
+
+        private void SetGlyphs(string? name)
+        {
+            // A second --glyphs is an error whatever the first one held, as for --theme.
+            if (_glyphsSeen)
+            {
+                _errors.Add("graftui: --glyphs given more than once");
+                return;
+            }
+            _glyphsSeen = true;
+
+            if (string.IsNullOrEmpty(name))
+                _errors.Add(GlyphsNeedName);
+            else if (TryGlyphSet(name, out var basic))
+                _basicGlyphs = basic;
+            else
+                _errors.Add($"graftui: unknown glyph set '{name}'; choose basic or unicode");
         }
 
         private void TakePath(string arg)
@@ -171,4 +220,21 @@ Both tabs: v all commands · Esc quit
     private static string ThemeList => string.Join(", ", Themes.Names);
 
     private static string NeedsName => $"graftui: --theme needs a name: {ThemeList}";
+
+    private const string GlyphsNeedName = "graftui: --glyphs needs a name: basic or unicode";
+
+    /// <summary>
+    /// The glyph set a name picks: basic gives true, unicode false. Any other name gives false from the method and is not a set.
+    /// Case does not matter, as for theme names.
+    /// </summary>
+    private static bool TryGlyphSet(string name, out bool basic)
+    {
+        basic = false;
+        if (string.Equals(name, "basic", StringComparison.OrdinalIgnoreCase))
+        {
+            basic = true;
+            return true;
+        }
+        return string.Equals(name, "unicode", StringComparison.OrdinalIgnoreCase);
+    }
 }

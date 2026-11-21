@@ -34,7 +34,11 @@ public static class HelpOverlay
             return ("Keys — Todo", TodoRows());
         if (bar.BranchesState.Pause is not null)
             return ("Keys — Branches", PauseRows(bar.BranchesState.Pause.Value));
-        return ("Keys — Branches", BranchesRows(bar.NewLook && bar.CanPlay));
+        var rows = BranchesRows(bar.NewLook && bar.CanPlay).ToList();
+        // The glyph set is chosen at start-up (--glyphs basic or GRAFTUI_GLYPHS=basic), so this row only names the switch.
+        if (bar.NewLook)
+            rows.Add(new HelpRow("--glyphs basic", "plain ASCII marks"));
+        return ("Keys — Branches", rows);
     }
 
     /// <summary>The caption legend for the key bar's mode: only the Branches browse popup sits over the dim shared-history dots.</summary>
