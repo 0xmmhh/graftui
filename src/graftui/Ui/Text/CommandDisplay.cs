@@ -4,10 +4,12 @@ using graftui.Git;
 namespace graftui.Ui.Text;
 
 /// <summary>
-/// What the operation knows about a command that git does not: the commit message, for `git commit -m`; and for a rebase, the branch it
-/// is rebased onto and whether it was started as an interactive one.
+/// What the operation knows about a command that git does not: the commit message, for `git commit -m`; for a rebase, the branch
+/// it is rebased onto and whether it was started as an interactive one; and Undo for an undo's plumbing, which the simplified pane
+/// replaces with the undo's own plain line.
 /// </summary>
-public sealed record CommandHints(string? Subject = null, string? Body = null, string? Onto = null, bool Interactive = false)
+public sealed record CommandHints(string? Subject = null, string? Body = null, string? Onto = null, bool Interactive = false,
+    bool Undo = false)
 {
     public static readonly CommandHints None = new();
 }
@@ -59,6 +61,12 @@ public static class CommandDisplay
         if (IsUndoStep(r))
             return new DisplayLine(DisplayKind.Note, UndoSavedNote, Exact: false);
 
+        // The plumbing an undo runs (reset, update-ref, read-tree, stash store, rev-parse…) is not what the user did: the
+        // undo's own plain line says what went back, so the simplified pane hides it all. The exact pane (v) keeps every
+        // command, and a failure is still shown exactly (checked first above).
+        if (h.Undo)
+            return null;
+
         if (IsHidden(r))
             return null;
 
@@ -85,6 +93,13 @@ public static class CommandDisplay
         };
         return new LogEntry(exact, simple);
     }
+
+    /// <summary>
+    /// The plain line an undo adds to the simplified pane ("↶ undo: put the stash back"). The exact pane keeps only the
+    /// commands that ran, so the note is simplified-only: its exact list is empty.
+    /// </summary>
+    public static LogEntry UndoNote(string text) =>
+        new([], [new LogLine(LogKind.Message, text, 0, new Style(Ink.Dim))]);
 
     /// <summary>The non-empty lines of a result's stdout and stderr, each as an output line.</summary>
     internal static List<LogLine> OutputLines(GitResult r) =>

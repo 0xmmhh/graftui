@@ -16,7 +16,7 @@ internal sealed partial class BranchesTab
 
     /// <summary>What the preview shows after an undo: the layout (null for an empty art), the title, the caption and its style.</summary>
     private sealed record UndoView(GraphLayout? Layout, string Title, string Direction, string Caption, Style Style, string? Overlay,
-        IReadOnlyList<GitResult> Commands, IReadOnlyList<string> LogLines);
+        IReadOnlyList<GitResult> Commands, IReadOnlyList<string> LogLines, string? UndoNote = null, bool UndoPlumbing = false);
 
     /// <summary>Undoes the newest step on a worker, then shows the result. Busy meanwhile; the change's exit line is printed if the screen closes first.</summary>
     internal void StartUndo()
@@ -67,8 +67,9 @@ internal sealed partial class BranchesTab
                 var what = o.Step is null ? stepText : $"the {o.Step.What}";
                 var result = failed
                     ? new UndoView(LayoutFor(after ?? snapshot, selected), "Failed", what, $"✕ Undo failed: {o.Message}", BadB, null,
-                        o.Commands, [$"✕ Undo failed: {o.Message}"])
-                    : new UndoView(LayoutFor(after ?? snapshot, selected), "Undone", what, o.Caption, OkB, null, o.Commands, []);
+                        o.Commands, [$"✕ Undo failed: {o.Message}"], null, true)
+                    : new UndoView(LayoutFor(after ?? snapshot, selected), "Undone", what, o.Caption, OkB, null, o.Commands, [],
+                        UndoText.PlainLine(o.Step!), true);
 
                 _app.Ui(() =>
                 {
@@ -105,9 +106,13 @@ internal sealed partial class BranchesTab
     private void ShowUndoResult(UndoView v, string? selected)
     {
         _shown = null;
-        _app.LogCommands(v.Commands);
+        _app.LogCommands(v.Commands, hints: v.UndoPlumbing ? new CommandHints(Undo: true) : null);
         foreach (var line in v.LogLines)
             _app.LogMessage(line, v.Style);
+        // The undo's plain line, after the commands: the strip and the anchored open list both show it even though the
+        // plumbing it replaces is hidden (an anchored entry can sit above the note).
+        if (v.UndoNote is not null)
+            _app.Log.Add(CommandDisplay.UndoNote(v.UndoNote));
 
         var art = _app.Art;
         art.Title = v.Title;

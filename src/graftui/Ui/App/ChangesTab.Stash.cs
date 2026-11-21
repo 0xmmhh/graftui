@@ -22,7 +22,8 @@ internal sealed partial class ChangesTab
     private sealed record ChangeStart(IAreasAnimation Anim, Func<int, IReadOnlyList<Seg>> Direction);
 
     /// <summary>What a change shows when git has answered: the result, the log's failure line, whether it succeeded, and the exit line.</summary>
-    private sealed record ChangeFinish(AreasResult Result, IReadOnlyList<GitResult> Commands, string? FailureLog, bool Success, string ExitLine);
+    private sealed record ChangeFinish(AreasResult Result, IReadOnlyList<GitResult> Commands, string? FailureLog, bool Success, string ExitLine,
+        CommandHints? Hints = null, string? Note = null);
 
     // The stash message box is open: its field is the only one shown, and the keys go to it.
     private bool _stashForm;
@@ -312,9 +313,10 @@ internal sealed partial class ChangesTab
             },
             o => o.Kind == UndoOutcomeKind.Undone
                 ? new ChangeFinish(new AreasResult(true, AreasAfter(before), new Caption(o.Caption, OkB), "Undone"),
-                    o.Commands, null, true, $"graftui: undid the {o.Step?.What}")
+                    o.Commands, null, true, $"graftui: undid the {o.Step?.What}",
+                    new CommandHints(Undo: true), UndoText.PlainLine(o.Step!))
                 : new ChangeFinish(new AreasResult(false, before, new Caption($"✕ Undo failed: {o.Message}", BadB), FailedTitle, o.Message),
-                    o.Commands, $"Undo failed: {o.Message}", false, $"graftui: undo failed: {o.Message}"),
+                    o.Commands, $"Undo failed: {o.Message}", false, $"graftui: undo failed: {o.Message}", new CommandHints(Undo: true)),
             refused: check => _app.Ui(() => UndoRefused(check)));
     }
 
@@ -395,7 +397,7 @@ internal sealed partial class ChangesTab
                     return null;
 
                 var f = finish(o);
-                _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.FailureLog, () => AfterChange(f.Success, null, anim, direction)));
+                _app.Ui(() => animator.SetPending(f.Result, f.Commands, f.FailureLog, () => AfterChange(f.Success, null, anim, direction), f.Hints, f.Note));
                 return f.ExitLine;
             }
             catch (Exception ex)
