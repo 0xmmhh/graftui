@@ -33,9 +33,12 @@ public sealed record Glyphs(
     public static Glyphs Current { get; set; } = Unicode;
 
     /// <summary>
-    /// The text marks outside the lane set, each with one plain character so no column moves: "·" and "…" become ".", the arrows
-    /// → ← ↑ ↓ become > &lt; ^ v (⇧ becomes S), ✔ becomes + and ✕ becomes x, ▸ ▴ ▾ become > ^ v, the dashes – — become -, ± becomes +,
-    /// × becomes x, and the frame lines │ ─ ╌ and corners ┌ ┐ └ ┘ ╭ ╮ ╰ ╯ become | - and +.
+    /// The text marks outside the lane set, each with one plain character so no column moves. Every key here is drawn through Paint,
+    /// so the table covers the new look and the old look's Paint-drawn text alike. Mapping (Unicode → Basic):
+    /// · and … → . ; → > ; ← &lt; ; ↑ ^ ; ↓ v ; ⇧ S ; ↶ &lt; ; ✔ + ; ✕ x ; ▸ > ; ▴ ^ ; ▾ v ; — – -  ; ± + ; × x ;
+    /// │ | ; ─ - ; ━ - ; ┃ | ; ╌ ┄ - ; ┆ : ; ┈ . ; ╲ \ ; ╱ / ; ▶ > ; ✂ % ; ✖ x ; ┛ + ;
+    /// ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ╭ ╮ ╰ ╯ + ; ● * ; ◉ @ ; ◌ ◍ o ; ⇢ > ; ⑂ Y.
+    /// Anything not in the table (user text such as branch names, the braille spinner of the Unicode set) is drawn as it is.
     /// </summary>
     internal static readonly IReadOnlyDictionary<char, char> BasicText = new Dictionary<char, char>
     {
@@ -46,6 +49,7 @@ public sealed record Glyphs(
         ['│'] = '|', ['─'] = '-', ['╌'] = '-', ['┄'] = '-', ['┆'] = ':', ['┈'] = '.',
         ['┌'] = '+', ['┐'] = '+', ['└'] = '+', ['┘'] = '+', ['├'] = '+', ['┤'] = '+', ['┬'] = '+', ['┴'] = '+',
         ['╭'] = '+', ['╮'] = '+', ['╰'] = '+', ['╯'] = '+',
+        ['━'] = '-', ['┃'] = '|', ['┛'] = '+', ['╲'] = '\\', ['╱'] = '/', ['▶'] = '>', ['✂'] = '%', ['✖'] = 'x',
         ['●'] = '*', ['◉'] = '@', ['◌'] = 'o', ['◍'] = 'o', ['⇢'] = '>', ['⑂'] = 'Y',
     };
 
@@ -55,7 +59,7 @@ public sealed record Glyphs(
     /// <summary>The rune to draw in <paramref name="set"/>: the rune itself, or its plain stand-in in Basic. Other runes stay as they are.</summary>
     internal static Rune PlainFor(Rune rune, Glyphs set)
     {
-        if (set != Basic || rune.Value > char.MaxValue)
+        if (!ReferenceEquals(set, Basic) || rune.Value > char.MaxValue)
             return rune;
         if (BasicText.TryGetValue((char)rune.Value, out var plain))
             return new Rune(plain);

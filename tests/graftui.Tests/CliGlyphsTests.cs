@@ -96,5 +96,7 @@ public class CliGlyphsTests
     {
         Assert.Contains("--glyphs <set>", CliArgs.HelpText);
         Assert.Contains("GRAFTUI_GLYPHS", CliArgs.HelpText);
+        Assert.Contains("--new-ui", CliArgs.HelpText);
+        Assert.Contains("the old look is only partly covered", CliArgs.HelpText);
     }
 }

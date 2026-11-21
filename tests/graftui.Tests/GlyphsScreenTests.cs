@@ -1,6 +1,7 @@
 using System.Text;
 using graftui.Git;
 using graftui.Model;
+using graftui.Operations;
 using graftui.Ui.App;
 using graftui.Ui.Text;
 using Terminal.Gui.App;
@@ -94,7 +95,39 @@ public sealed class GlyphsScreenTests : IDisposable
         _ui.LayoutAndDraw();
 
         Assert.True(app.HelpOpen);
-        Assert.Contains("--glyphs basic", ScreenText());
+        Assert.Contains("--glyphs", ScreenText());
+        Assert.Empty(NonAsciiCells());
+    }
+
+    [Fact]
+    public void The_help_popup_at_80_by_24_has_the_glyphs_row_and_is_plain_ascii()
+    {
+        Glyphs.Current = Glyphs.Basic;
+        using var repo = TempRepo.Diverged(false);
+        var app = Open(repo, 80, 24);
+
+        _ui.Keyboard.RaiseKeyDownEvent(new Key('?'));
+        _ui.LayoutAndDraw();
+
+        Assert.True(app.HelpOpen);
+        Assert.Contains("--glyphs", ScreenText());
+        Assert.Empty(NonAsciiCells());
+    }
+
+    [Fact]
+    public void The_rebase_pause_screen_with_a_conflicted_file_is_plain_ascii()
+    {
+        Glyphs.Current = Glyphs.Basic;
+        using var repo = SequenceRepos.FeatureConflict();
+        var op = new RebaseOperation(repo.Git);
+        var request = new RebaseRequest("main");
+        var check = op.Check(request);
+        Assert.True(check.CanRun, check.Refusal);
+        Assert.Equal(SequenceOutcomeKind.Paused, op.Run(request, check).Kind);
+        var app = Open(repo, 120, 40);
+
+        Assert.True(app.IsPaused);
+        Assert.Contains("app.txt", ScreenText());
         Assert.Empty(NonAsciiCells());
     }
 

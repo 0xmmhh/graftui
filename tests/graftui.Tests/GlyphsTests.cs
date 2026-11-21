@@ -102,6 +102,11 @@ public class GlyphsTests
     [InlineData('│', '|')]
     [InlineData('●', '*')]
     [InlineData('⑂', 'Y')]
+    [InlineData('✖', 'x')]
+    [InlineData('━', '-')]
+    [InlineData('╲', '\\')]
+    [InlineData('▶', '>')]
+    [InlineData('✂', '%')]
     public void Basic_maps_the_marks_the_screen_uses(char from, char to)
     {
         Assert.Equal(new System.Text.Rune(to), Glyphs.PlainFor(new System.Text.Rune(from), Glyphs.Basic));

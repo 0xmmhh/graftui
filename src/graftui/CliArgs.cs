@@ -25,7 +25,8 @@ Usage:
 Options:
   --theme <name>   colours: default, lifted, muted, high-contrast, light
   --new-ui         the new look, still being built (same as GRAFTUI_UI=new)
-  --glyphs <set>   basic (plain ASCII) or unicode (default); also GRAFTUI_GLYPHS
+  --glyphs <set>   basic (plain ASCII) or unicode (default), for the new look (--new-ui);
+                   the old look is only partly covered. Also GRAFTUI_GLYPHS
   --version        print the version
   --help           show this help
 

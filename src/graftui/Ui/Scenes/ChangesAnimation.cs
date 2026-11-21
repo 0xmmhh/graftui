@@ -92,7 +92,7 @@ public sealed class ChangesAnimation(AreasOp op, AreasModel before, IReadOnlyLis
     private Caption Running(long e) =>
         Result is null && e >= MergeAnimation.WaitAfterMs
             ? new Caption(MergeScenes.WaitingText, Warn)
-            : new Caption($"{MergeScenes.Spin(e)} {runningText}", Fg);
+            : new Caption($"{MergeScenes.Spin(e, Glyphs.Current)} {runningText}", Fg);
 
     private SceneFrame Done(ArtGeometry g)
     {

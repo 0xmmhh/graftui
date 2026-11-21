@@ -22,7 +22,7 @@ public sealed class PausedAnimation(SequenceStop stop, string running, Ink branc
         var r = Result;
         if (r is null)
         {
-            var text = $"{MergeScenes.Spin(elapsedMs)} {running}";
+            var text = $"{MergeScenes.Spin(elapsedMs, Glyphs.Current)} {running}";
             var caption = MergeScenes.Running(elapsedMs >= MergeAnimation.WaitAfterMs, text);
             return new SceneFrame(RebaseScenes.Paused(g, stop, branchInk, ontoInk).Grid, caption);
         }

@@ -37,7 +37,7 @@ public static class HelpOverlay
         var rows = BranchesRows(bar.NewLook && bar.CanPlay).ToList();
         // The glyph set is chosen at start-up (--glyphs basic or GRAFTUI_GLYPHS=basic), so this row only names the switch.
         if (bar.NewLook)
-            rows.Add(new HelpRow("--glyphs basic", "plain ASCII marks"));
+            rows.Add(new HelpRow("--glyphs", "basic: plain ASCII marks"));
         return ("Keys — Branches", rows);
     }
 
