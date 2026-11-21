@@ -333,4 +333,116 @@ public sealed class PreviewSheetTests
         Assert.Equal("✕ would conflict in app.txt · the merge would be aborted, main unchanged", string.Concat(sheet.Lines[0].Segs.Select(s => s.Text)));
         Assert.Contains(rows, row => row.StartsWith(" main") && row.EndsWith("✕ no commit"));
     }
+
+    // The merged card's graph: the 86-wide golden of the done merge (see LaneSceneTests.Golden_merged_wide), 20 rows from sheet row 3.
+    private static string Sp(int n) => new string(' ', n);
+
+    private static string Dash(int n) => new string('─', n);
+
+    private static readonly string[] GoldenMergedRows =
+    [
+        "            34e4a2e 8c5ceee be0126e" + Sp(25) + "1234567",
+        " main          ●───────●───────●" + Dash(31) + "● merge commit 1234567",
+        Sp(23) + "│" + Sp(7) + "│" + Sp(31) + "│  main",
+        Sp(23) + "│" + Sp(7) + "│    8f0068a" + Sp(20) + "│",
+        " fast-forward          │       ├───────●" + Sp(23) + "│",
+        Sp(23) + "│" + Sp(7) + "│" + Sp(31) + "│",
+        Sp(23) + "│" + Sp(7) + "│    2b99ab2         810cc55    │",
+        " ff-to-merge           │       ╰───────●───────────────●       │",
+        Sp(23) + "│" + Sp(15) + "│" + Sp(15) + "│" + Sp(7) + "│",
+        Sp(23) + "│" + Sp(15) + "│    df42801    │" + Sp(7) + "│",
+        " side-for-ffm          │               ╰───────●───────╯       │",
+        Sp(23) + "│" + Sp(39) + "│",
+        Sp(23) + "│    30cc9f2" + Sp(28) + "│",
+        " conflict              ├───────●" + Sp(31) + "│",
+        Sp(23) + "│" + Sp(39) + "│",
+        Sp(23) + "│    acf4dee" + Sp(28) + "│",
+        " merge-commit          ├───────●" + Dash(31) + "╯",
+        Sp(23) + "│",
+        Sp(23) + "│    089eae5 52b7690 f6d6964",
+        " picks                 ╰───────●───────●───────●",
+    ];
+
+    // feature/merge-commit's merge as the card has it after m: a made merge commit, verified.
+    private static MergeCard MergedCard(bool verified = true) =>
+        new(DigestKind.Merged, "feature/merge-commit", "main", "1234567890abcdef", "be0126eabcdef0123456789", 1, [],
+            "merge commit created", null, verified, CanPlay: true, CanUndo: true);
+
+    private static PreviewSheet BuildDigest(MergeCard card, LaneGraph graph, int textWidth, int rows) =>
+        PreviewSheets.BuildDigest(new DigestSheetInput(MergeCommit(), graph, card), textWidth, rows, Glyphs.Unicode);
+
+    // The card's sheet at 85 × 30 (PR 5's 120×40 pane): the headline with the hint at the right edge, the detail, the done graph, and the
+    // commits that came in.
+    [Fact]
+    public void Digest_sheet_wide()
+    {
+        var sheet = BuildDigest(MergedCard(), G, 85, 30);
+
+        var head = new[]
+        {
+            " ✔ Merged feature/merge-commit into main" + Sp(31) + "g play · u undo",
+            " new merge commit 1234567 · ✔ verified: main moved, tree clean",
+            "",
+        };
+        var tail = new[]
+        {
+            "",
+            " " + DigestText.CameInTitle,
+            " acf4dee  Add other file",
+        };
+        var expected = Rows(head.Concat(GoldenMergedRows).Concat(tail).ToArray()) + new string('\n', 4);
+
+        Assert.Equal(expected, Dump(sheet, 85, 30));
+        Assert.Equal(3, sheet.GraphRow);
+    }
+
+    // While git runs: row 0 is the running line, row 1 the command, and the graph and list are the preview's.
+    [Fact]
+    public void Running_sheet()
+    {
+        var sheet = PreviewSheets.BuildRunning(Input(MergeCommit(), Clean()), 85, 30, Glyphs.Unicode);
+        var rows = Dump(sheet, 85, 30).Split('\n');
+
+        Assert.Equal(" merging feature/merge-commit into main…", rows[0]);
+        Assert.Equal(" $ git merge feature/merge-commit", rows[1]);
+        Assert.Equal(GoldenWideRows[1], rows[4]);
+        Assert.Equal(" commits that would come in (newest first)", rows[24]);
+        Assert.Equal(" acf4dee  Add other file", rows[25]);
+    }
+
+    [Fact]
+    public void Conflict_digest_lists_the_commits_that_would_come_in()
+    {
+        var layout = MergeCommit() with { Selected = "feature/conflict", SelectedTip = "30cc9f2" };
+        var card = new MergeCard(DigestKind.Stopped, "feature/conflict", "main", null, "be0126eabcdef0123456789", 1, ["app.txt"],
+            "merge aborted", "git merge --abort", true, CanPlay: true, CanUndo: false);
+        var sheet = PreviewSheets.BuildDigest(new DigestSheetInput(layout, G, card), 85, 30, Glyphs.Unicode);
+        var texts = sheet.Lines.Select(line => string.Concat(line.Segs.Select(seg => seg.Text))).ToList();
+
+        Assert.Equal("✕ Merge stopped: app.txt conflicts" + Sp(45) + "g play", texts[0]);
+        Assert.Contains(PreviewText.IncomingTitle, texts);
+    }
+
+    [Fact]
+    public void Up_to_date_digest_has_no_list()
+    {
+        var card = new MergeCard(DigestKind.UpToDate, "feature/merge-commit", "main", null, "be0126eabcdef0123456789", 0, [],
+            "already up to date", null, true, CanPlay: true, CanUndo: false);
+        var sheet = PreviewSheets.BuildDigest(new DigestSheetInput(MergeCommit(), G, card), 85, 30, Glyphs.Unicode);
+        var texts = sheet.Lines.Select(line => string.Concat(line.Segs.Select(seg => seg.Text))).ToList();
+
+        Assert.DoesNotContain(PreviewText.IncomingTitle, texts);
+        Assert.DoesNotContain(DigestText.CameInTitle, texts);
+    }
+
+    // With no lane graph (still loading, or failed) the card has its head lines and the list, which starts at row 4.
+    [Fact]
+    public void Empty_graph_digest_starts_the_list_at_row_four()
+    {
+        var sheet = BuildDigest(MergedCard(), LaneGraph.Empty, 85, 30);
+        var title = sheet.Lines.Single(line => string.Concat(line.Segs.Select(seg => seg.Text)) == DigestText.CameInTitle);
+
+        Assert.Equal(4, title.Row);
+        Assert.Equal(2, sheet.Lines.Count(line => line.Row < 2));
+    }
 }
