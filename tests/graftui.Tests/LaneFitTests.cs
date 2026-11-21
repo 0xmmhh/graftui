@@ -426,4 +426,23 @@ public sealed class LaneFitTests
 
         Assert.Equal("", p.GhostLabel);
     }
+
+    // The reviewer's nit on 6a: a stop that the verify did not confirm says "stopped" only, never "main unchanged".
+    [Fact]
+    public void An_unverified_stop_says_stopped_and_nothing_more()
+    {
+        Assert.Equal("stopped", LaneFit.GhostFullText(GhostKind.Stopped, "main", "", verified: false));
+        Assert.Equal("stopped · main unchanged", LaneFit.GhostFullText(GhostKind.Stopped, "main", "", verified: true));
+
+        var p = LaneFit.Fit(G, "feature/conflict", GhostKind.Stopped, 140, 20, "", ghostVerified: false);
+
+        Assert.Equal("stopped", p.GhostLabel);
+    }
+
+    [Fact]
+    public void Only_a_stop_depends_on_the_verify()
+    {
+        Assert.Equal("merge commit 1234567", LaneFit.GhostFullText(GhostKind.Merged, "main", "1234567", verified: false));
+        Assert.Equal("no commit", LaneFit.GhostFullText(GhostKind.Conflict, "main", "", verified: false));
+    }
 }

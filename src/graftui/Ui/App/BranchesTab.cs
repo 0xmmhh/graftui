@@ -107,6 +107,7 @@ internal sealed partial class BranchesTab
         if (_app.Busy || _app.IsPaused || _app.Snapshot.Branches.Count == 0)
             return;
 
+        _app.Digest.Dismiss();
         _app.ReleaseBranchWidth();
         var n = _app.Snapshot.Branches.Count;
         _selected = ((_selected + delta) % n + n) % n;
@@ -123,6 +124,9 @@ internal sealed partial class BranchesTab
         if (_app.Busy || layout.TooSmall || _app.Snapshot.Branches.Count == 0)
             return;
 
+        // The card of an earlier merge goes: this merge takes the art. (The old look has no card, so nothing happens there.)
+        _app.Digest.Dismiss();
+
         var snap = _app.Snapshot;
         var b = snap.Branches[_selected];
         _app.ReleaseBranchWidth();
@@ -135,23 +139,44 @@ internal sealed partial class BranchesTab
 
         _cache.TryGetValue(CacheKey(snap, b), out var cached);
 
+        // The new look's start: the lane graph and the forecast on screen now, and HEAD. The worker only reads them.
+        var before = snap.HeadHash;
+        var graph = LaneGraph.Empty;
+        MergeForecast? forecast = null;
+        if (_newUi)
+        {
+            var shownGraph = LaneGraphForSnapshot();
+            if (shownGraph is not null)
+                graph = shownGraph;
+            if (cached is not null)
+                forecast = CachedForecast(cached);
+        }
+
         _app.MergeTask = Task.Run<MergeOutcome?>(() =>
         {
             try
             {
                 // The layout is read first, so that Check is the last git work before the merge.
                 var loaded = cached ?? _app.TryLoadLayout(snap, b);
+                var start = new MergeStart(Or(loaded, snap, b.Name, b.Hash), graph, forecast, before);
                 var o = RunGated(_app.MergeOp, new MergeRequest(b.Name), () => _app.Gate.IsQuitting,
                     check =>
                     {
                         // Uncommitted changes are not a dead end: the stash-merge-pop question is offered instead of the refusal.
                         if (check.Dirty)
                             OfferStashMerge(b.Name, check, loaded);
+                        else if (_newUi)
+                            _app.Ui(() => _app.Digest.ShowRefused(check, start));
                         else
                             _app.Ui(() => _app.Animator.ShowRefused(check, b.Name, loaded));
                     },
                     check =>
                     {
+                        if (_newUi)
+                        {
+                            _app.Ui(() => _app.Digest.ShowRunning(check, start));
+                            return;
+                        }
                         var layoutNow = loaded
                             ?? GraphLayout.Minimal(snap.CurrentBranch, snap.CurrentBranch.Length == 0, b.Name, snap.HeadHash ?? "", b.Hash)
                                 .WithLanes(snap.Branches);
@@ -162,7 +187,14 @@ internal sealed partial class BranchesTab
 
                 var after = _app.TryLoadSnapshot();
                 var mergeCommit = o.Kind == MergeKind.MergeCommit && o.NewHead is { } head ? _app.TryGetCommit(head) : null;
-                _app.Ui(() => _app.Animator.SetPending(o, after, mergeCommit));
+                if (_newUi)
+                {
+                    // The verify reads the repo back on this worker: the card says "verified" only for what it has checked.
+                    var verdict = MergeVerifier.Check(_app.Git, o, before);
+                    _app.Ui(() => _app.Digest.ShowOutcome(start, o, verdict, after, mergeCommit));
+                }
+                else
+                    _app.Ui(() => _app.Animator.SetPending(o, after, mergeCommit));
                 return o;
             }
             catch (Exception ex)

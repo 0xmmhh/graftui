@@ -40,6 +40,8 @@ internal sealed partial class BranchesTab
     /// </summary>
     internal void StartWork()
     {
+        // A change takes the art, so the merge card (if one is shown) goes.
+        _app.Digest.Dismiss();
         _app.ReleaseBranchWidth();
         _app.Busy = true;
         _previewCts?.Cancel();
@@ -191,6 +193,8 @@ internal sealed partial class BranchesTab
     /// </summary>
     private void ShowBranchRefused(IReadOnlyList<GitResult> commands, string reason, GraphLayout? layout, Func<int, IReadOnlyList<Seg>> direction)
     {
+        // The refusal takes the art: a merge card under it could not be replayed over it.
+        _app.Digest.Dismiss();
         _shown = null;
         _app.LogCommands(commands);
         foreach (var line in RefusalText.LogLines(reason))

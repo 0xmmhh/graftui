@@ -75,7 +75,8 @@ public static class PreviewSheets
         // A merge that did nothing has no list; the others list the commits the branch brought (or would bring).
         var listShown = card.Kind != DigestKind.UpToDate && !PreviewText.IsCurrent(L);
         var hash = card.Hash ?? "";
-        return Compose(lines, L, input.Graph, DigestText.Ghost(card), hash, listShown, DigestText.ListTitle(card), textWidth, rows, glyphs);
+        return Compose(lines, L, input.Graph, DigestText.Ghost(card), hash, listShown, DigestText.ListTitle(card), textWidth, rows, glyphs,
+            card.Verified);
     }
 
     /// <summary>
@@ -99,7 +100,7 @@ public static class PreviewSheets
     /// listShown, the branch has commits to list, and there is room for its blank row, title and one commit.
     /// </summary>
     private static PreviewSheet Compose(List<SheetLine> lines, GraphLayout L, LaneGraph graph, GhostKind ghost, string ghostHash,
-        bool listShown, string listTitle, int textWidth, int rows, Glyphs glyphs)
+        bool listShown, string listTitle, int textWidth, int rows, Glyphs glyphs, bool ghostVerified = true)
     {
         // The grid is one column wider than the text: its column 0 is the pad column.
         var gridWidth = textWidth + 1;
@@ -107,7 +108,7 @@ public static class PreviewSheets
         if (budget < 1)
             return new PreviewSheet(lines, new ArtGrid(gridWidth, 0), HeadRows);
 
-        var placement = FitGraph(graph, L.Selected, ghost, gridWidth, budget, ghostHash);
+        var placement = FitGraph(graph, L.Selected, ghost, gridWidth, budget, ghostHash, ghostVerified);
         var grid = LaneScene.Render(placement, glyphs, ghostHash);
 
         // The incoming list: not for the current branch, and only when there is room for its blank row, title and one commit.
@@ -129,13 +130,14 @@ public static class PreviewSheets
     /// otherwise it takes the closer spacing that keeps the same rows. The spacing does not depend on the selection, so the graph
     /// does not move while the branches are browsed.
     /// </summary>
-    internal static LanePlacement FitGraph(LaneGraph g, string selected, GhostKind ghost, int gridWidth, int budget, string ghostHash = "")
+    internal static LanePlacement FitGraph(LaneGraph g, string selected, GhostKind ghost, int gridWidth, int budget, string ghostHash = "",
+        bool ghostVerified = true)
     {
-        var full = LaneFit.Fit(g, selected, ghost, gridWidth, budget, ghostHash);
+        var full = LaneFit.Fit(g, selected, ghost, gridWidth, budget, ghostHash, ghostVerified);
         if (budget - full.Height >= ListReserve)
             return full;
 
-        var close = LaneFit.Fit(g, selected, ghost, gridWidth, budget - ListReserve, ghostHash);
+        var close = LaneFit.Fit(g, selected, ghost, gridWidth, budget - ListReserve, ghostHash, ghostVerified);
         if (close.Height > 0 && close.Rows.Count == full.Rows.Count)
             return close;
         return full;

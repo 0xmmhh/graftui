@@ -62,6 +62,7 @@ public sealed class AppController
         ChangesAnimator = new ChangesAnimator(this);
         BranchAnimator = new BranchAnimator(this);
         Animator = new Animator(this);
+        Digest = new MergeDigest(this);
     }
 
     /// <summary>The tab the left pane shows. Branches is the start tab.</summary>
@@ -185,6 +186,9 @@ public sealed class AppController
     internal ChangesAnimator ChangesAnimator { get; }
     internal BranchAnimator BranchAnimator { get; }
     internal Animator Animator { get; }
+
+    /// <summary>The new look's merge card and its replay (--new-ui only). The old look never shows it.</summary>
+    internal MergeDigest Digest { get; }
 
     /// <summary>
     /// The layout of the screen now. The new look (--new-ui) and the old one are chosen once, here, by NewUi; no view asks again.
@@ -434,6 +438,7 @@ public sealed class AppController
 
     private string _helpTitle = "";
     private Func<ArtGeometry, SceneFrame>? _helpScene;
+    private Func<int, int, PreviewSheet>? _helpSheet;
     private bool _helpSingleLine;
     private bool _helpHideArt;
 
@@ -461,6 +466,7 @@ public sealed class AppController
         var named = HelpOverlay.ForBar(Keys);
         _helpTitle = Art.Title;
         _helpScene = Art.Scene;
+        _helpSheet = Art.Sheet;
         _helpSingleLine = Art.SingleLine;
         _helpHideArt = Art.HideArt;
         HelpOpen = true;
@@ -550,7 +556,12 @@ public sealed class AppController
             return;
         HelpOpen = false;
         Art.Title = _helpTitle;
-        Art.ShowScene(_helpScene, _helpSingleLine);
+        // A browse sheet (the merge card) comes back as a sheet; every other screen is a scene, as before.
+        if (_helpSheet is not null)
+            Art.ShowSheet(_helpSheet);
+        else
+            Art.ShowScene(_helpScene, _helpSingleLine);
+        _helpSheet = null;
         Art.HideArt = _helpHideArt;
         // The todo list's art follows the pane's height, which may have changed while the popup was open (its refresh waited).
         BranchesTab.RefreshTodoArt();
@@ -616,6 +627,18 @@ public sealed class AppController
         {
             e.Handled = true;
             return;
+        }
+
+        // g's replay only draws: Space, Esc and g end it and show the card again; any other key ends it and is then handled as usual.
+        if (Digest.Replaying)
+        {
+            var skip = e == Key.Space || e == Key.Esc || e == Key.G;
+            Digest.StopReplay();
+            if (skip)
+            {
+                e.Handled = true;
+                return;
+            }
         }
 
         // Every key but v, l and ? starts a step of git work, and so does not leave the strip showing the last step's failure. While git
@@ -759,11 +782,17 @@ public sealed class AppController
             e.Handled = true;
             BranchesTab.StartUndo();
         }
+        else if (e == Key.G && NewUi)
+        {
+            e.Handled = true;
+            Digest.Replay();
+        }
     }
 
     /// <summary>Switches the left pane between Branches and Changes. Only the view and the key bar change; each tab loads its own data.</summary>
     private void ToggleTab()
     {
+        Digest.Dismiss();
         Result = null;
         BranchesTab.ForgetPauseNote();
         ReleaseBranchWidth();

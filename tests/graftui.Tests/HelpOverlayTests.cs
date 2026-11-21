@@ -257,4 +257,16 @@ public class HelpOverlayTests
         }
         return string.Join("\n", lines);
     }
+
+    [Fact]
+    public void The_new_look_lists_g_replay_after_u_and_the_old_list_does_not()
+    {
+        var withPlay = HelpOverlay.BranchesRows(withPlay: true).Select(r => r.Key).ToList();
+        var without = HelpOverlay.BranchesRows().Select(r => r.Key).ToList();
+
+        Assert.Equal(withPlay.IndexOf("u") + 1, withPlay.IndexOf("g"));
+        Assert.Equal("replay the merge", HelpOverlay.BranchesRows(withPlay: true)[withPlay.IndexOf("g")].Text);
+        Assert.DoesNotContain("g", without);
+        Assert.Equal(without.Count + 1, withPlay.Count);
+    }
 }

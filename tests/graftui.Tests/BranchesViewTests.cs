@@ -148,4 +148,17 @@ public class BranchesViewTests
         Assert.Equal(new Style(Ink.Lane3, true), BranchesView.NameStyle(first[0], lanesFirst[0]));
         Assert.Equal(new Style(Ink.Lane3), BranchesView.NameStyle(moved[0], lanesMoved[0]));
     }
+
+    [Fact]
+    public void The_merged_marker_ends_on_the_last_inner_column_where_the_ab_column_ends()
+    {
+        var branches = new[] { new Branch("main", "c111111", "c111111", true), new Branch("feature/merge-commit", "h", "h", false) };
+        var counts = new Dictionary<string, (int Ahead, int Behind)> { ["feature/merge-commit"] = (1, 1) };
+        var innerW = BranchesView.WantedWidth(branches, counts) - 2;
+
+        // The name gives up room for "merged" (6 columns) in place of the ↑↓ column; the marker ends on the last inner column.
+        var nameW = BranchesView.NameWidth(innerW, Math.Max(4, 6));
+
+        Assert.Equal(innerW, BranchesView.AbX(nameW) + 6 - 1);
+    }
 }

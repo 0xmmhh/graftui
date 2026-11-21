@@ -119,9 +119,11 @@ public static class LaneFit
     /// <summary>
     /// The placement of the graph for a grid of width × height, with <paramref name="selected"/> highlighted and the ghost of kind
     /// <paramref name="ghost"/>. <paramref name="ghostHash"/> is the merge commit's hash for the Merged ghost ("" when there is none).
+    /// <paramref name="ghostVerified"/> is false when graftui could not verify a stopped merge: its label then says "stopped" only.
     /// An empty placement (no lanes, too narrow, or no height) has no rows.
     /// </summary>
-    public static LanePlacement Fit(LaneGraph graph, string selected, GhostKind ghost, int width, int height, string ghostHash = "")
+    public static LanePlacement Fit(LaneGraph graph, string selected, GhostKind ghost, int width, int height, string ghostHash = "",
+        bool ghostVerified = true)
     {
         if (graph.Lanes.Count == 0 || width < MinWidth || height < 1)
             return EmptyPlacement(graph, selected);
@@ -180,7 +182,7 @@ public static class LaneFit
             "", more, showMore);
 
         // The ghost label goes last: it depends on where the ghost sits.
-        var ghostLabel = GhostLabelFor(graph, shownGhost, width, placement.GhostX, ghostHash);
+        var ghostLabel = GhostLabelFor(graph, shownGhost, width, placement.GhostX, ghostHash, ghostVerified);
         return placement with { GhostLabel = ghostLabel };
     }
 
@@ -212,6 +214,17 @@ public static class LaneFit
         if (kind == GhostKind.Stopped)
             return "stopped · " + baseName + " unchanged";
         return "";
+    }
+
+    /// <summary>
+    /// The full text of the ghost's label. A stop that graftui could not verify says "stopped" only: "main unchanged" is a claim that
+    /// only a verified merge makes. Every other case is <see cref="GhostText"/>.
+    /// </summary>
+    internal static string GhostFullText(GhostKind kind, string baseName, string hash, bool verified)
+    {
+        if (kind == GhostKind.Stopped && !verified)
+            return GhostShortText(kind, baseName);
+        return GhostText(kind, baseName, hash);
     }
 
     /// <summary>
@@ -444,13 +457,13 @@ public static class LaneFit
 
     // The ghost's label: the whole text when it fits to the right of the ghost, else the short text when that fits, else the short
     // text cut when at least GhostLabelMin columns are left, else none.
-    private static string GhostLabelFor(LaneGraph graph, GhostKind kind, int width, int ghostX, string hash)
+    private static string GhostLabelFor(LaneGraph graph, GhostKind kind, int width, int ghostX, string hash, bool verified)
     {
         if (kind == GhostKind.None)
             return "";
 
         var avail = width - (ghostX + 2);
-        var text = GhostText(kind, graph.BaseName, hash);
+        var text = GhostFullText(kind, graph.BaseName, hash, verified);
         if (TextFit.Columns(text) <= avail)
             return text;
 

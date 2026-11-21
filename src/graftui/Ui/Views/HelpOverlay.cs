@@ -34,7 +34,7 @@ public static class HelpOverlay
             return ("Keys — Todo", TodoRows());
         if (bar.BranchesState.Pause is not null)
             return ("Keys — Branches", PauseRows(bar.BranchesState.Pause.Value));
-        return ("Keys — Branches", BranchesRows());
+        return ("Keys — Branches", BranchesRows(bar.NewLook));
     }
 
     /// <summary>The caption legend for the key bar's mode: only the Branches browse popup sits over the dim shared-history dots.</summary>
@@ -47,23 +47,32 @@ public static class HelpOverlay
         return SharedLegend;
     }
 
-    /// <summary>The Branches tab's keys in browse mode. The bar shows only Tab, m, s, u and ? (r only in the new look); the rest still work.</summary>
-    internal static IReadOnlyList<HelpRow> BranchesRows() =>
-    [
-        new HelpRow("Tab", "switch tab"),
-        new HelpRow("↑↓", "select branch"),
-        new HelpRow("m", "merge into current"),
-        new HelpRow("s", "switch to branch"),
-        new HelpRow("n", "new branch"),
-        new HelpRow("R", "rename branch"),
-        new HelpRow("D", "delete branch"),
-        new HelpRow("r", "rebase onto selected"),
-        new HelpRow("i", "interactive rebase"),
-        new HelpRow("u", "undo"),
-        new HelpRow("v", "exact commands"),
-        new HelpRow("l", "commands list"),
-        new HelpRow("Esc", "quit"),
-    ];
+    /// <summary>
+    /// The Branches tab's keys in browse mode. The bar shows only Tab, m, s, u and ? (r only in the new look); the rest still work.
+    /// <paramref name="withPlay"/> (the new look) adds g after u: the replay of the merge's animation.
+    /// </summary>
+    internal static IReadOnlyList<HelpRow> BranchesRows(bool withPlay = false)
+    {
+        var rows = new List<HelpRow>
+        {
+            new HelpRow("Tab", "switch tab"),
+            new HelpRow("↑↓", "select branch"),
+            new HelpRow("m", "merge into current"),
+            new HelpRow("s", "switch to branch"),
+            new HelpRow("n", "new branch"),
+            new HelpRow("R", "rename branch"),
+            new HelpRow("D", "delete branch"),
+            new HelpRow("r", "rebase onto selected"),
+            new HelpRow("i", "interactive rebase"),
+            new HelpRow("u", "undo"),
+        };
+        if (withPlay)
+            rows.Add(new HelpRow("g", "replay the merge"));
+        rows.Add(new HelpRow("v", "exact commands"));
+        rows.Add(new HelpRow("l", "commands list"));
+        rows.Add(new HelpRow("Esc", "quit"));
+        return rows;
+    }
 
     /// <summary>The Changes tab's keys in browse mode. The bar shows only Tab, Space, c, u and ?; the rest still work.</summary>
     internal static IReadOnlyList<HelpRow> ChangesRows(ChangesKeyState s)

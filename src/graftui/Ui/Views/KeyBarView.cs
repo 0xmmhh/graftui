@@ -37,6 +37,9 @@ public sealed class KeyBarView : View
     /// <summary>What the Branches tab's keys depend on.</summary>
     public BranchesKeyState BranchesState { get; set; } = BranchesKeyState.Empty;
 
+    /// <summary>The new look: true while the merge card is on screen, so g (replay the merge) is listed in the Branches bar.</summary>
+    public bool CanPlay { get; set; }
+
     /// <summary>In the commit form: the body field has the focus (the subject does not). Decides which keys the bar lists.</summary>
     public bool BodyFocused { get; set; }
 
@@ -107,7 +110,7 @@ public sealed class KeyBarView : View
                     ("Esc", CancelLabel, 5),
                 ];
             default:
-                return BranchesItems(BranchesState, NewLook);
+                return BranchesItems(BranchesState, NewLook, NewLook && CanPlay);
         }
     }
 
@@ -189,9 +192,11 @@ public sealed class KeyBarView : View
     /// <summary>
     /// The Branches tab's main keys in the order they are listed: the rest (new, rename, delete, interactive, the arrows) still work and
     /// are listed in the ? popup. Priority decides what is dropped first when the bar is narrow (higher is kept): Esc, Tab, ?, m, s, u.
-    /// <paramref name="withRebase"/> (the new look) adds r rebase after s switch, with the lowest priority: it goes first on a narrow bar.
+    /// <paramref name="withRebase"/> (the new look) adds r rebase after s switch, with the second lowest priority: it goes second on a narrow bar.
+    /// <paramref name="withPlay"/> (the new look, with a merge card) adds g play after r, with the lowest priority: it goes first.
     /// </summary>
-    internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s, bool withRebase = false)
+    internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s, bool withRebase = false,
+        bool withPlay = false)
     {
         if (s.Pause is not null)
             return PauseItems(s.Pause.Value);
@@ -203,6 +208,8 @@ public sealed class KeyBarView : View
             items.Add(("s", " switch", 8));
         if (withRebase && s.CanRebase)
             items.Add(("r", " rebase", 6));
+        if (withPlay)
+            items.Add(("g", " play", 5));
         if (s.HasUndo)
             items.Add(("u", " undo", 7));
         items.Add(("?", " help", 10));
