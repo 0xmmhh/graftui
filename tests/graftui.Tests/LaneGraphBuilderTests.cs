@@ -444,6 +444,24 @@ public sealed class LaneGraphBuilderTests
     public void SideName_reads_the_branch_from_a_merge_subject(string subject, string expected) =>
         Assert.Equal(expected, LaneGraphBuilder.SideName(subject));
 
+    [Theory]
+    [InlineData("Merge branch 'x' into y", "x")]
+    [InlineData("Merge tag 'v1'", "Merge tag 'v1'")]
+    [InlineData("", "")]
+    public void SideLabel_is_the_branch_name_or_else_the_whole_subject(string subject, string expected) =>
+        Assert.Equal(expected, LaneGraphBuilder.SideLabel(subject));
+
+    // A merged-in lane with no branch name in its merge subject is still labelled, from the subject (decided 2026-11-21).
+    [Fact]
+    public void An_unnamed_side_lane_is_labelled_from_its_merge_subject()
+    {
+        var graph = Build(Chain("a3", "a2", "a1"),
+            [C("b1", "a3"), C("s1", "b1"), Commit("m", "Merge tag 'v1'", "b1", "s1")],
+            Br("feature", "m"));
+
+        Assert.Equal("Merge tag 'v1'", graph.Lanes.Single(l => l.Kind == LaneKind.Side).Name);
+    }
+
     // Every lane's columns rise along it, and every link goes from a lower column to a higher one.
     private static void AssertColumnsRise(LaneGraph graph)
     {

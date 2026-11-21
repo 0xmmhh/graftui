@@ -376,4 +376,54 @@ public sealed class LaneFitTests
     {
         Assert.Equal(expected, LaneFit.MoreText(count));
     }
+
+    [Fact]
+    public void Merged_ghost_text_has_the_hash_cut_to_seven()
+    {
+        Assert.Equal("merge commit 1234567", LaneFit.GhostText(GhostKind.Merged, "main", "1234567890"));
+        Assert.Equal("merge commit 1234567", LaneFit.GhostText(GhostKind.Merged, "main", "1234567"));
+        Assert.Equal("merge commit", LaneFit.GhostText(GhostKind.Merged, "main", ""));
+    }
+
+    [Fact]
+    public void Done_ghost_texts_are_the_fast_forward_no_text_and_the_stopped_words()
+    {
+        Assert.Equal("", LaneFit.GhostText(GhostKind.FastForwarded, "main"));
+        Assert.Equal("stopped · main unchanged", LaneFit.GhostText(GhostKind.Stopped, "main"));
+    }
+
+    [Fact]
+    public void Short_texts_drop_the_hash_and_the_base_name()
+    {
+        Assert.Equal("merge commit", LaneFit.GhostShortText(GhostKind.Merged, "main"));
+        Assert.Equal("stopped", LaneFit.GhostShortText(GhostKind.Stopped, "main"));
+        Assert.Equal("new merge commit", LaneFit.GhostShortText(GhostKind.Merge, "main"));
+    }
+
+    [Fact]
+    public void The_merged_label_carries_the_hash_when_it_fits()
+    {
+        var p = LaneFit.Fit(G, "feature/merge-commit", GhostKind.Merged, 86, 20, "1234567");
+
+        Assert.Equal("merge commit 1234567", p.GhostLabel);
+    }
+
+    // At 84 columns the full label no longer fits to the right of the ghost, so the label falls back to "merge commit" (and no hash).
+    [Fact]
+    public void The_merged_label_falls_back_to_the_short_words()
+    {
+        var p = LaneFit.Fit(G, "feature/merge-commit", GhostKind.Merged, 84, 20, "1234567");
+
+        Assert.True(84 - (p.GhostX + 2) < "merge commit 1234567".Length);
+        Assert.Equal("merge commit", p.GhostLabel);
+    }
+
+    // A done ghost with no room for its words has no label, as the preview ghosts have none.
+    [Fact]
+    public void A_done_ghost_with_no_room_has_no_label()
+    {
+        var p = Fit("feature/merge-commit", GhostKind.Merged, 47, 8);
+
+        Assert.Equal("", p.GhostLabel);
+    }
 }

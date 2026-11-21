@@ -572,5 +572,168 @@ public sealed class LaneSceneTests
         Assert.Equal('●', g[p.GraphX, p.YOf(0)].Ch);
     }
 
+    // Spaces and box-drawing runs, so a golden row can say how wide a gap is.
+    private static string Sp(int n) => new string(' ', n);
+
+    private static string Dash(int n) => new string('─', n);
+
+    // The done merge at 86 × 20: Golden_wide with feature/merge-commit's merge drawn in. The dashed trail is solid, the merge commit is a
+    // solid dot with its hash above and the base's chip below, and the tip's line comes up into it.
+    [Fact]
+    public void Golden_merged_wide()
+    {
+        var expected = Rows(
+            "            34e4a2e 8c5ceee be0126e" + Sp(25) + "1234567",
+            " main          ●───────●───────●" + Dash(31) + "● merge commit 1234567",
+            Sp(23) + "│" + Sp(7) + "│" + Sp(31) + "│  main",
+            Sp(23) + "│" + Sp(7) + "│    8f0068a" + Sp(20) + "│",
+            " fast-forward          │       ├───────●" + Sp(23) + "│",
+            Sp(23) + "│" + Sp(7) + "│" + Sp(31) + "│",
+            Sp(23) + "│" + Sp(7) + "│    2b99ab2         810cc55    │",
+            " ff-to-merge           │       ╰───────●───────────────●       │",
+            Sp(23) + "│" + Sp(15) + "│" + Sp(15) + "│" + Sp(7) + "│",
+            Sp(23) + "│" + Sp(15) + "│    df42801    │" + Sp(7) + "│",
+            " side-for-ffm          │               ╰───────●───────╯       │",
+            Sp(23) + "│" + Sp(39) + "│",
+            Sp(23) + "│    30cc9f2" + Sp(28) + "│",
+            " conflict              ├───────●" + Sp(31) + "│",
+            Sp(23) + "│" + Sp(39) + "│",
+            Sp(23) + "│    acf4dee" + Sp(28) + "│",
+            " merge-commit          ├───────●" + Dash(31) + "╯",
+            Sp(23) + "│",
+            Sp(23) + "│    089eae5 52b7690 f6d6964",
+            " picks                 ╰───────●───────●───────●"
+        );
+
+        var p = LaneFit.Fit(G, "feature/merge-commit", GhostKind.Merged, 86, 20, "1234567");
+        Assert.Equal(expected, Dump(LaneScene.Render(p, Glyphs.Unicode, "1234567")));
+    }
+
+    // The fast-forward at 86 × 20: feature/fast-forward's lane is drawn on the base row, with the base's name as a chip after its tip.
+    // No dashes, no ghost glyph, no label; the hash of the lifted lane sits above the base row.
+    [Fact]
+    public void Golden_fast_forwarded_wide()
+    {
+        var expected = Rows(
+            "            34e4a2e 8c5ceee be0126e 8f0068a",
+            " main          ●───────●───────●───────●  main",
+            Sp(23) + "│" + Sp(7) + "│",
+            Sp(23) + "│" + Sp(7) + "│",
+            " fast-forward          │       │",
+            Sp(23) + "│" + Sp(7) + "│",
+            Sp(23) + "│" + Sp(7) + "│    2b99ab2         810cc55",
+            " ff-to-merge           │       ╰───────●───────────────●",
+            Sp(23) + "│" + Sp(15) + "│" + Sp(15) + "│",
+            Sp(23) + "│" + Sp(15) + "│    df42801    │",
+            " side-for-ffm          │               ╰───────●───────╯",
+            Sp(23) + "│",
+            Sp(23) + "│    30cc9f2",
+            " conflict              ├───────●",
+            Sp(23) + "│",
+            Sp(23) + "│    acf4dee",
+            " merge-commit          ├───────●",
+            Sp(23) + "│",
+            Sp(23) + "│    089eae5 52b7690 f6d6964",
+            " picks                 ╰───────●───────●───────●"
+        );
+
+        Assert.Equal(expected, Dump(R("feature/fast-forward", GhostKind.FastForwarded, 86, 20)));
+    }
+
+    // A conflict that stopped: the same drawing as the conflict's preview, with "stopped" where the preview says "no commit".
+    [Fact]
+    public void Stopped_wide_is_the_conflict_with_stopped_for_no_commit()
+    {
+        var preview = Dump(R("feature/conflict", GhostKind.Conflict, 86, 20));
+
+        Assert.Contains("no commit", preview);
+        Assert.Equal(preview.Replace("no commit", "stopped"), Dump(R("feature/conflict", GhostKind.Stopped, 86, 20)));
+    }
+
+    // The full words fit to the right of the ghost when the pane is wide enough: 24 columns after the ghost and its gap.
+    [Fact]
+    public void Stopped_label_is_in_full_when_it_fits()
+    {
+        var p = LaneFit.Fit(G, "feature/conflict", GhostKind.Stopped, 140, 20);
+
+        Assert.True(140 - (p.GhostX + 2) >= 24);
+        Assert.Equal("stopped · main unchanged", p.GhostLabel);
+    }
+
+    // The done merge in an 80-column pane: no hash row, no chip, the merge commit's solid dot at the ghost, and no dashes or dotted trail.
+    [Fact]
+    public void Merged_at_80_columns_has_no_hash_row_or_chip()
+    {
+        var p = LaneFit.Fit(G, "feature/merge-commit", GhostKind.Merged, 47, 7, "1234567");
+        var g = LaneScene.Render(p, Glyphs.Unicode, "1234567");
+
+        Assert.Equal(0, p.HashWidth);
+        Assert.Equal('●', g[p.GhostX, p.YOf(0)].Ch);
+        Assert.Equal(0, Count(g, '┄') + Count(g, '┆') + Count(g, '◌'));
+        for (var y = 0; y < g.Height; y++)
+        {
+            for (var x = 0; x < g.Width; x++)
+                Assert.NotEqual(CellBg.Chip, g[x, y].Bg);
+        }
+    }
+
+    // A done state never moves the graph: the rows, the spacing and the columns are those of its preview at each size.
+    [Fact]
+    public void Done_ghosts_do_not_move_the_graph()
+    {
+        var pairs = new[]
+        {
+            (GhostKind.Merge, GhostKind.Merged, "feature/merge-commit"),
+            (GhostKind.Conflict, GhostKind.Stopped, "feature/conflict"),
+            (GhostKind.FastForward, GhostKind.FastForwarded, "feature/fast-forward"),
+        };
+        var sizes = new[] { (86, 20), (47, 7), (37, 14) };
+
+        foreach (var pair in pairs)
+        {
+            foreach (var size in sizes)
+            {
+                var preview = LaneFit.Fit(G, pair.Item3, pair.Item1, size.Item1, size.Item2);
+                var done = LaneFit.Fit(G, pair.Item3, pair.Item2, size.Item1, size.Item2, "1234567");
+
+                Assert.Equal(preview.RowY, done.RowY);
+                Assert.Equal(preview.Step, done.Step);
+                Assert.Equal(preview.GraphX, done.GraphX);
+                Assert.Equal(preview.GhostX, done.GhostX);
+            }
+        }
+    }
+
+    // A pointer branch has no lane of its own, so a fast-forward lifts nothing: no lane on the base row, no chip.
+    [Fact]
+    public void A_pointer_branch_is_not_lifted()
+    {
+        var graph = Graph(Chain("m3", "m2", "m1"), [C("f1", "m3")], Br("feature", "f1"), Br("ptr", "m2"));
+        var p = LaneFit.Fit(graph, "ptr", GhostKind.FastForwarded, 86, 20);
+        var g = LaneScene.Render(p, Glyphs.Unicode);
+
+        Assert.Equal(-1, p.LiftedLane);
+        Assert.Equal(p.YOf(graph.LaneOf("feature")), p.LineYOf(graph.LaneOf("feature")));
+        for (var y = 0; y < g.Height; y++)
+        {
+            for (var x = 0; x < g.Width; x++)
+                Assert.NotEqual(CellBg.Chip, g[x, y].Bg);
+        }
+    }
+
+    // feature/ff-to-merge is lifted with its side lane: its own dots sit on the base row, and side-for-ffm still merges into it.
+    [Fact]
+    public void Ff_to_merge_lifts_with_its_side_lane()
+    {
+        var p = LaneFit.Fit(G, "feature/ff-to-merge", GhostKind.FastForwarded, 86, 20);
+        var g = LaneScene.Render(p, Glyphs.Unicode);
+
+        Assert.Equal(2, p.LiftedLane);
+        Assert.Equal(p.YOf(0), p.LineYOf(2));
+        Assert.Equal('●', g[p.XOf(3), p.YOf(0)].Ch);
+        Assert.Equal('●', g[p.XOf(5), p.YOf(0)].Ch);
+        Assert.Equal('╯', g[p.XOf(5), p.YOf(3)].Ch);
+    }
+
     private static Ink InkAt(ArtGrid grid, int x, int y) => grid[x, y].Style.Ink;
 }
