@@ -126,7 +126,9 @@ public sealed class BranchesView : PaneView
 
             if (merged)
             {
-                DrawText(AbX(rowNameW), row, MergedText, MergedCols, Ok, isSel);
+                // the marker ends on the column's last cell, also when the ↑↓ column is wider than the marker.
+                var colW = Math.Max(abW, MergedCols);
+                DrawText(AbX(rowNameW) + (colW - MergedCols), row, MergedText, MergedCols, Ok, isSel);
             }
             else if (showAb && !b.IsCurrent && Counts.TryGetValue(b.Name, out var c))
             {

@@ -192,8 +192,8 @@ public sealed class KeyBarView : View
     /// <summary>
     /// The Branches tab's main keys in the order they are listed: the rest (new, rename, delete, interactive, the arrows) still work and
     /// are listed in the ? popup. Priority decides what is dropped first when the bar is narrow (higher is kept): Esc, Tab, ?, m, s, u.
-    /// <paramref name="withRebase"/> (the new look) adds r rebase after s switch, with the lowest priority: it goes first on a narrow bar.
-    /// <paramref name="withPlay"/> (the new look, with a merge card) adds g play after r, with the next lowest priority.
+    /// <paramref name="withRebase"/> (the new look) adds r rebase after s switch, with the second lowest priority: it goes second on a narrow bar.
+    /// <paramref name="withPlay"/> (the new look, with a merge card) adds g play after r, with the lowest priority: it goes first.
     /// </summary>
     internal static IReadOnlyList<(string Key, string Label, int Priority)> BranchesItems(BranchesKeyState s, bool withRebase = false,
         bool withPlay = false)
