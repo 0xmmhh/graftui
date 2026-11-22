@@ -9,7 +9,7 @@ using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
 // Every error exit prints its message and returns at once, so awaiting the write never moves code below it onto another thread.
-var parsed = CliArgs.Parse(args);
+var parsed = CliArgs.Parse(args, Environment.GetEnvironmentVariable("GRAFTUI_GLYPHS"));
 if (parsed.Options is not { } options)
 {
     await Console.Error.WriteLineAsync(parsed.Error);
@@ -37,6 +37,9 @@ if (options.MakeEdits)
 // The theme was checked by CliArgs, so TryGet finds it; the default is used when no --theme was given.
 Themes.TryGet(options.Theme ?? Themes.Default.Name, out var theme);
 Palette.Apply(theme);
+
+// The glyph set is read by every new-look drawing call, so it is set here too, before the screen starts.
+Glyphs.Current = options.BasicGlyphs ? Glyphs.Basic : Glyphs.Unicode;
 
 // Repo to operate on: the given path, the practice sandbox, or the current directory.
 // During development, point this at the sandbox (graftui --sandbox), not at graftui itself.

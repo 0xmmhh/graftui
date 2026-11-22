@@ -4,6 +4,7 @@ using graftui.Ui.Text;
 
 namespace graftui.Tests;
 
+[Collection("TerminalGui")]
 public class StashMergeAnimationTests
 {
     private static readonly ArtGeometry Geo = ArtGeometry.For(80, 11)!;
@@ -37,7 +38,7 @@ public class StashMergeAnimationTests
 
         // The fast-forward takes 1600 ms from the end of the stash (500 ms), then the pop takes 500 ms.
         Assert.False(anim.IsDone(2_599));
-        Assert.Equal($"{MergeScenes.Spin(2_200)} Popping your changes back…", anim.Render(Geo, 2_200).Caption?.Text);
+        Assert.Equal($"{MergeScenes.Spin(2_200, Glyphs.Unicode)} Popping your changes back…", anim.Render(Geo, 2_200).Caption?.Text);
         Assert.True(anim.IsDone(2_600));
         Assert.Equal(result.Caption.Text, anim.Render(Geo, 3_000).Caption?.Text);
         Assert.Equal("Fast-forwarded", anim.Title(3_000));

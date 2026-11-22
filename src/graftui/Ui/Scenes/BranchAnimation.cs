@@ -96,7 +96,7 @@ public sealed class BranchAnimation(BranchOp op, GraphLayout before, string name
     private Caption Running(long elapsedMs) =>
         Result is null && elapsedMs >= MergeAnimation.WaitAfterMs
             ? new Caption(MergeScenes.WaitingText, Warn)
-            : new Caption($"{MergeScenes.Spin(elapsedMs)} {runningText}", Fg);
+            : new Caption($"{MergeScenes.Spin(elapsedMs, Glyphs.Current)} {runningText}", Fg);
 
     private SceneFrame Done(ArtGeometry g)
     {

@@ -26,7 +26,6 @@ public static class MergeScenes
     private static readonly Style Bad = new(Ink.Bad), BadB = new(Ink.Bad, true);
     private static readonly Style Warn = new(Ink.Warn), WarnB = new(Ink.Warn, true);
 
-    private const string SpinFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
     internal const string WaitingText = "! git is still running (waiting for a password prompt or hook?)";
 
     /// <summary>
@@ -168,7 +167,7 @@ public static class MergeScenes
         for (var y = g.B - 1; y > g.A; y--)
             fp.Add(new PathCell(mx, y, '┃', '│'));
 
-        var running = Running(waiting, $"{Spin(t)} Merging {L.Selected} into {L.Current}…");
+        var running = Running(waiting, $"{Spin(t, Glyphs.Current)} Merging {L.Selected} into {L.Current}…");
 
         if (o is null || te < MergeAnimation.MergeGrow)
         {
@@ -259,7 +258,7 @@ public static class MergeScenes
         SelLabel(grid, g, tip, g.A, L);
         CurLabel(grid, g, px, g.A, L);
 
-        var running = Running(waiting, $"{Spin(t)} Fast-forwarding {L.Current} to {L.Selected}…");
+        var running = Running(waiting, $"{Spin(t, Glyphs.Current)} Fast-forwarding {L.Current} to {L.Selected}…");
         if (o is null || te < MergeAnimation.FfGrow)
             return new SceneFrame(grid, running);
 
@@ -291,7 +290,7 @@ public static class MergeScenes
         {
             var baseCommit = L.Kind == GraphKind.Same ? L.CurrentTipCommit : L.SelectedTipCommit;
             grid.Put(g.XB, g.A, Dot(baseCommit), Blink(t, selB, curB, 150));
-            return new SceneFrame(grid, Running(waiting, $"{Spin(t)} Merging {L.Selected} into {L.Current}…"));
+            return new SceneFrame(grid, Running(waiting, $"{Spin(t, Glyphs.Current)} Merging {L.Selected} into {L.Current}…"));
         }
 
         return new SceneFrame(grid, new Caption($"Already up to date: {L.Selected} is already part of {L.Current}", Dim));
@@ -319,7 +318,12 @@ public static class MergeScenes
 
     internal static Style Blink(long t, Style a, Style b, int ms = 110) => (t / ms) % 2 == 1 ? b : a;
 
-    internal static char Spin(long t) => SpinFrames[(int)((t / 80) % SpinFrames.Length)];
+    // The frame comes from the glyph set the caller passes: ten braille dots in Unicode, |/-\ in Basic.
+    internal static char Spin(long t, Glyphs set)
+    {
+        var frames = set.Spinner;
+        return frames[(int)((t / 80) % frames.Length)];
+    }
 
     private static int Round(double x) => (int)Math.Round(x, MidpointRounding.AwayFromZero);
 

@@ -4,6 +4,7 @@ using graftui.Ui.Text;
 
 namespace graftui.Tests;
 
+[Collection("TerminalGui")]
 public class RebaseAnimationTests
 {
     private static readonly ArtGeometry G = ArtGeometry.For(62, 9)!;
@@ -33,7 +34,7 @@ public class RebaseAnimationTests
     {
         var caption = new RebaseAnimation(L, Rows).Render(G, 100).Caption!;
 
-        Assert.Equal($"{MergeScenes.Spin(100)} Rebasing feature/picks onto main…", caption.Text);
+        Assert.Equal($"{MergeScenes.Spin(100, Glyphs.Unicode)} Rebasing feature/picks onto main…", caption.Text);
     }
 
     [Fact]

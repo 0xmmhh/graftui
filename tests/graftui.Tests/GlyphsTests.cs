@@ -4,19 +4,30 @@ namespace graftui.Tests;
 
 public class GlyphsTests
 {
-    // The glyphs that Basic replaces: every field except the nine box-drawing lines.
-    private static char[] ReplacedFields(Glyphs g) =>
-        [g.Dot, g.Pulse, g.GhostEmpty, g.GhostHalf, g.DashH, g.DashV, g.Gap, g.FastForward, g.Conflict, g.MergeMark];
+    // Every lane field of a set: the marks, the dashes and the nine box-drawing lines.
+    private static char[] LaneFields(Glyphs g) =>
+        [g.Dot, g.Pulse, g.GhostEmpty, g.GhostHalf, g.DashH, g.DashV, g.Gap, g.FastForward, g.Conflict, g.MergeMark,
+         g.Line, g.VLine, g.ForkMid, g.ForkEnd, g.MergeUp, g.MergeDown, g.TeeUp, g.TeeDown, g.MergeMid];
 
     [Fact]
-    public void Unicode_uses_the_mock_glyphs()
+    public void Unicode_round_marks_are_the_mock_glyphs()
     {
         Assert.Equal('●', Glyphs.Unicode.Dot);
         Assert.Equal('◉', Glyphs.Unicode.Pulse);
         Assert.Equal('◌', Glyphs.Unicode.GhostEmpty);
+    }
+
+    [Fact]
+    public void Unicode_dashes_and_fast_forward_are_the_mock_glyphs()
+    {
         Assert.Equal('┄', Glyphs.Unicode.DashH);
         Assert.Equal('┆', Glyphs.Unicode.DashV);
         Assert.Equal('⇢', Glyphs.Unicode.FastForward);
+    }
+
+    [Fact]
+    public void Unicode_conflict_and_merge_mark_are_the_mock_glyphs()
+    {
         Assert.Equal('✕', Glyphs.Unicode.Conflict);
         Assert.Equal('⑂', Glyphs.Unicode.MergeMark);
     }
@@ -28,24 +39,39 @@ public class GlyphsTests
     }
 
     [Fact]
-    public void Basic_uses_plain_ascii_for_the_round_dashed_and_arrow_glyphs()
+    public void Basic_round_marks_are_plain_ascii()
     {
         Assert.Equal('*', Glyphs.Basic.Dot);
         Assert.Equal('@', Glyphs.Basic.Pulse);
         Assert.Equal('o', Glyphs.Basic.GhostEmpty);
+    }
+
+    [Fact]
+    public void Basic_half_ghost_and_dashes_are_plain_ascii()
+    {
         Assert.Equal('o', Glyphs.Basic.GhostHalf);
         Assert.Equal('-', Glyphs.Basic.DashH);
         Assert.Equal(':', Glyphs.Basic.DashV);
+    }
+
+    [Fact]
+    public void Basic_gap_and_fast_forward_are_plain_ascii()
+    {
         Assert.Equal('.', Glyphs.Basic.Gap);
         Assert.Equal('>', Glyphs.Basic.FastForward);
+    }
+
+    [Fact]
+    public void Basic_conflict_and_merge_mark_are_plain_ascii()
+    {
         Assert.Equal('x', Glyphs.Basic.Conflict);
         Assert.Equal('Y', Glyphs.Basic.MergeMark);
     }
 
     [Fact]
-    public void Every_replaced_field_of_Basic_is_ascii()
+    public void Every_lane_field_of_Basic_is_ascii()
     {
-        foreach (var c in ReplacedFields(Glyphs.Basic))
+        foreach (var c in LaneFields(Glyphs.Basic))
             Assert.True(c < 128, $"'{c}' is not ASCII");
     }
 
@@ -57,17 +83,86 @@ public class GlyphsTests
     }
 
     [Fact]
-    public void The_box_drawing_lines_are_the_same_in_both_sets()
+    public void Basic_line_bar_and_fork_are_dash_bar_and_plus()
     {
-        Assert.Equal(Glyphs.Unicode.Line, Glyphs.Basic.Line);
-        Assert.Equal(Glyphs.Unicode.VLine, Glyphs.Basic.VLine);
-        Assert.Equal(Glyphs.Unicode.ForkMid, Glyphs.Basic.ForkMid);
-        Assert.Equal(Glyphs.Unicode.ForkEnd, Glyphs.Basic.ForkEnd);
-        Assert.Equal(Glyphs.Unicode.MergeUp, Glyphs.Basic.MergeUp);
-        Assert.Equal(Glyphs.Unicode.MergeDown, Glyphs.Basic.MergeDown);
-        Assert.Equal(Glyphs.Unicode.TeeUp, Glyphs.Basic.TeeUp);
-        Assert.Equal(Glyphs.Unicode.TeeDown, Glyphs.Basic.TeeDown);
+        Assert.Equal('-', Glyphs.Basic.Line);
+        Assert.Equal('|', Glyphs.Basic.VLine);
+        Assert.Equal('+', Glyphs.Basic.ForkMid);
+    }
+
+    [Fact]
+    public void Basic_corners_and_merge_ends_are_plus()
+    {
+        Assert.Equal('+', Glyphs.Basic.ForkEnd);
+        Assert.Equal('+', Glyphs.Basic.MergeUp);
+        Assert.Equal('+', Glyphs.Basic.MergeDown);
+    }
+
+    [Fact]
+    public void Basic_tees_and_merge_middle_are_plus()
+    {
+        Assert.Equal('+', Glyphs.Basic.TeeUp);
+        Assert.Equal('+', Glyphs.Basic.TeeDown);
+        Assert.Equal('+', Glyphs.Basic.MergeMid);
+    }
+
+    [Fact]
+    public void Unicode_keeps_the_line_bar_and_fork()
+    {
+        Assert.Equal('─', Glyphs.Unicode.Line);
+        Assert.Equal('│', Glyphs.Unicode.VLine);
+        Assert.Equal('├', Glyphs.Unicode.ForkMid);
+    }
+
+    [Fact]
+    public void Unicode_keeps_the_corner_and_the_merge_middle()
+    {
+        Assert.Equal('╰', Glyphs.Unicode.ForkEnd);
         Assert.Equal('┤', Glyphs.Unicode.MergeMid);
-        Assert.Equal(Glyphs.Unicode.MergeMid, Glyphs.Basic.MergeMid);
+    }
+
+    [Fact]
+    public void Every_text_mark_in_the_table_maps_to_one_plain_character()
+    {
+        foreach (var pair in Glyphs.BasicText)
+        {
+            Assert.True(pair.Key > 127, $"'{pair.Key}' is already ASCII");
+            Assert.True(pair.Value < 128, $"'{pair.Key}' maps to '{pair.Value}', not ASCII");
+        }
+    }
+
+    [Theory]
+    [InlineData('✔', '+')]
+    [InlineData('✕', 'x')]
+    [InlineData('→', '>')]
+    [InlineData('↑', '^')]
+    [InlineData('↓', 'v')]
+    [InlineData('·', '.')]
+    [InlineData('…', '.')]
+    [InlineData('│', '|')]
+    [InlineData('●', '*')]
+    [InlineData('⑂', 'Y')]
+    [InlineData('✖', 'x')]
+    [InlineData('━', '-')]
+    [InlineData('╲', '\\')]
+    [InlineData('▶', '>')]
+    [InlineData('✂', '%')]
+    public void Basic_maps_the_marks_the_screen_uses(char from, char to)
+    {
+        Assert.Equal(new System.Text.Rune(to), Glyphs.PlainFor(new System.Text.Rune(from), Glyphs.Basic));
+    }
+
+    [Fact]
+    public void Basic_leaves_plain_text_and_user_text_alone()
+    {
+        Assert.Equal(new System.Text.Rune('a'), Glyphs.PlainFor(new System.Text.Rune('a'), Glyphs.Basic));
+        Assert.Equal(new System.Text.Rune('é'), Glyphs.PlainFor(new System.Text.Rune('é'), Glyphs.Basic));
+    }
+
+    [Fact]
+    public void The_unicode_set_changes_no_rune()
+    {
+        Assert.Equal(new System.Text.Rune('✔'), Glyphs.PlainFor(new System.Text.Rune('✔'), Glyphs.Unicode));
+        Assert.Equal(new System.Text.Rune('→'), Glyphs.PlainFor(new System.Text.Rune('→'), Glyphs.Unicode));
     }
 }

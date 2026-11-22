@@ -4,6 +4,7 @@ using graftui.Ui.Text;
 
 namespace graftui.Tests;
 
+[Collection("TerminalGui")]
 public class BranchAnimationTests
 {
     private static readonly ArtGeometry Geo = ArtGeometry.For(80, 11)!;

@@ -58,7 +58,7 @@ public sealed class StashMergeAnimation(GraphLayout layout, int changed) : IBran
 
         if (elapsedMs < StashMs)
         {
-            var stashing = new Caption($"{MergeScenes.Spin(elapsedMs)} Stashing your {MergeScenes.Plural(changed, "changed file")}…", Fg);
+            var stashing = new Caption($"{MergeScenes.Spin(elapsedMs, Glyphs.Current)} Stashing your {MergeScenes.Plural(changed, "changed file")}…", Fg);
             return new SceneFrame(MergeScenes.Preview(g, layout).Grid, stashing);
         }
 
@@ -66,7 +66,7 @@ public sealed class StashMergeAnimation(GraphLayout layout, int changed) : IBran
             return _merge.Render(g, elapsedMs - StashMs);
 
         // The merge is done: its final frame stays up while the changes are popped back.
-        var popping = new Caption($"{MergeScenes.Spin(elapsedMs)} Popping your changes back…", Fg);
+        var popping = new Caption($"{MergeScenes.Spin(elapsedMs, Glyphs.Current)} Popping your changes back…", Fg);
         return new SceneFrame(_merge.Render(g, _mergeOwnEnd).Grid, popping);
     }
 

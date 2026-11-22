@@ -103,7 +103,7 @@ public sealed class StashAnimation(StashOp op, AreasModel before, IReadOnlyList<
     private Caption Running(long elapsedMs) =>
         Result is null && elapsedMs >= MergeAnimation.WaitAfterMs
             ? new Caption(MergeScenes.WaitingText, Warn)
-            : new Caption($"{MergeScenes.Spin(elapsedMs)} {runningText}", Fg);
+            : new Caption($"{MergeScenes.Spin(elapsedMs, Glyphs.Current)} {runningText}", Fg);
 
     private SceneFrame Done(ArtGeometry g)
     {

@@ -22,7 +22,7 @@ public sealed class RebaseAnimation(GraphLayout layout, IReadOnlyList<RebaseRow>
         var r = Result;
         if (r is null)
         {
-            var text = $"{MergeScenes.Spin(elapsedMs)} {RebaseText.Running(layout.Current, layout.Selected)}";
+            var text = $"{MergeScenes.Spin(elapsedMs, Glyphs.Current)} {RebaseText.Running(layout.Current, layout.Selected)}";
             var caption = MergeScenes.Running(elapsedMs >= MergeAnimation.WaitAfterMs, text);
             return new SceneFrame(RebaseScenes.Preview(g, layout, rows, -1, dim: true).Grid, caption);
         }

@@ -402,7 +402,7 @@ public sealed class MergeDigestScreenTests : IDisposable
 
     // Runs m the way StartMerge's worker does, step by step, and hands each result to the screen: Check, the running line when the
     // merge can start, Run, the verify, and the card. A refusal is handed over as a refused card.
-    private static void Merge(AppController app, TempRepo repo, RepoSnapshot snapshot, string name)
+    internal static void Merge(AppController app, TempRepo repo, RepoSnapshot snapshot, string name)
     {
         var start = StartOf(repo, snapshot, name);
         app.Busy = true;

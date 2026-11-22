@@ -439,9 +439,9 @@ public sealed class LaneSceneTests
         var x = p.XOf(merges[0].ToColumn);
         var y = p.YOf(lane);
 
-        Assert.Equal('┤', grid[x, y].Ch);
-        Assert.Equal('│', grid[x, y - 1].Ch);
-        Assert.Equal('│', grid[x, y + 1].Ch);
+        Assert.Equal(basic ? '+' : '┤', grid[x, y].Ch);
+        Assert.Equal(basic ? '|' : '│', grid[x, y - 1].Ch);
+        Assert.Equal(basic ? '|' : '│', grid[x, y + 1].Ch);
         Assert.Equal(BranchInks.Of(graph.Lanes[lane].ColorLane), grid[x, y].Style.Ink);
     }
 

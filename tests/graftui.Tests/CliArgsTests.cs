@@ -14,7 +14,7 @@ public class CliArgsTests
     [Fact]
     public void No_arguments_means_a_plain_run_with_nothing_set()
     {
-        Assert.Equal(new CliOptions(false, false, false, false, null, null), Ok());
+        Assert.Equal(new CliOptions(), Ok());
     }
 
     [Theory]

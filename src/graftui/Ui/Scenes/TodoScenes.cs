@@ -419,17 +419,17 @@ public static class TodoScenes
             return new Caption("✕ " + RebaseText.Aborting, Bad);
         if (waiting)
             return MergeScenes.Running(true, "");
-        var running = $"{MergeScenes.Spin(t)} {RebaseText.Running(L.Current, L.Selected)}";
+        var running = $"{MergeScenes.Spin(t, Glyphs.Current)} {RebaseText.Running(L.Current, L.Selected)}";
         if (flying < 0 || te < Cut)
             return new Caption(running, Fg);
 
         var row = rows[flying];
         var n = rows.Count;
         if (row.Action == RebaseAction.Drop)
-            return new Caption($"{MergeScenes.Spin(t)} {RebaseText.Dropping(row)}", Bad);
+            return new Caption($"{MergeScenes.Spin(t, Glyphs.Current)} {RebaseText.Dropping(row)}", Bad);
         if (RebasePlan.IsFold(row.Action))
-            return new Caption($"{MergeScenes.Spin(t)} {RebaseText.Squashing(row, flying + 1, n)}", Mrg);
-        return new Caption($"{MergeScenes.Spin(t)} {RebaseText.Replaying(row, flying + 1, n)}", Fg);
+            return new Caption($"{MergeScenes.Spin(t, Glyphs.Current)} {RebaseText.Squashing(row, flying + 1, n)}", Mrg);
+        return new Caption($"{MergeScenes.Spin(t, Glyphs.Current)} {RebaseText.Replaying(row, flying + 1, n)}", Fg);
     }
 
     // The most commits row A has room for: the commits between the base and the right edge.

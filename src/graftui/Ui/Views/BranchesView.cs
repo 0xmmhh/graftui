@@ -113,7 +113,7 @@ public sealed class BranchesView : PaneView
             DrawText(1, row, arrow, 1, FgB, isSel);
             if (NewLook)
             {
-                var (mark, markStyle) = BranchMarks.Cell(b.Name, current, detached, style, Marks, Glyphs.Unicode);
+                var (mark, markStyle) = BranchMarks.Cell(b.Name, current, detached, style, Marks, Glyphs.Current);
                 DrawText(2, row, mark, 1, markStyle, isSel);
             }
             else
