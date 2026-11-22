@@ -10,14 +10,24 @@ public class GlyphsTests
          g.Line, g.VLine, g.ForkMid, g.ForkEnd, g.MergeUp, g.MergeDown, g.TeeUp, g.TeeDown, g.MergeMid];
 
     [Fact]
-    public void Unicode_uses_the_mock_glyphs()
+    public void Unicode_round_marks_are_the_mock_glyphs()
     {
         Assert.Equal('●', Glyphs.Unicode.Dot);
         Assert.Equal('◉', Glyphs.Unicode.Pulse);
         Assert.Equal('◌', Glyphs.Unicode.GhostEmpty);
+    }
+
+    [Fact]
+    public void Unicode_dashes_and_fast_forward_are_the_mock_glyphs()
+    {
         Assert.Equal('┄', Glyphs.Unicode.DashH);
         Assert.Equal('┆', Glyphs.Unicode.DashV);
         Assert.Equal('⇢', Glyphs.Unicode.FastForward);
+    }
+
+    [Fact]
+    public void Unicode_conflict_and_merge_mark_are_the_mock_glyphs()
+    {
         Assert.Equal('✕', Glyphs.Unicode.Conflict);
         Assert.Equal('⑂', Glyphs.Unicode.MergeMark);
     }
@@ -29,16 +39,31 @@ public class GlyphsTests
     }
 
     [Fact]
-    public void Basic_uses_plain_ascii_for_the_round_dashed_and_arrow_glyphs()
+    public void Basic_round_marks_are_plain_ascii()
     {
         Assert.Equal('*', Glyphs.Basic.Dot);
         Assert.Equal('@', Glyphs.Basic.Pulse);
         Assert.Equal('o', Glyphs.Basic.GhostEmpty);
+    }
+
+    [Fact]
+    public void Basic_half_ghost_and_dashes_are_plain_ascii()
+    {
         Assert.Equal('o', Glyphs.Basic.GhostHalf);
         Assert.Equal('-', Glyphs.Basic.DashH);
         Assert.Equal(':', Glyphs.Basic.DashV);
+    }
+
+    [Fact]
+    public void Basic_gap_and_fast_forward_are_plain_ascii()
+    {
         Assert.Equal('.', Glyphs.Basic.Gap);
         Assert.Equal('>', Glyphs.Basic.FastForward);
+    }
+
+    [Fact]
+    public void Basic_conflict_and_merge_mark_are_plain_ascii()
+    {
         Assert.Equal('x', Glyphs.Basic.Conflict);
         Assert.Equal('Y', Glyphs.Basic.MergeMark);
     }
@@ -58,25 +83,40 @@ public class GlyphsTests
     }
 
     [Fact]
-    public void Basic_draws_the_box_lines_and_corners_as_dash_bar_and_plus()
+    public void Basic_line_bar_and_fork_are_dash_bar_and_plus()
     {
         Assert.Equal('-', Glyphs.Basic.Line);
         Assert.Equal('|', Glyphs.Basic.VLine);
         Assert.Equal('+', Glyphs.Basic.ForkMid);
+    }
+
+    [Fact]
+    public void Basic_corners_and_merge_ends_are_plus()
+    {
         Assert.Equal('+', Glyphs.Basic.ForkEnd);
         Assert.Equal('+', Glyphs.Basic.MergeUp);
         Assert.Equal('+', Glyphs.Basic.MergeDown);
+    }
+
+    [Fact]
+    public void Basic_tees_and_merge_middle_are_plus()
+    {
         Assert.Equal('+', Glyphs.Basic.TeeUp);
         Assert.Equal('+', Glyphs.Basic.TeeDown);
         Assert.Equal('+', Glyphs.Basic.MergeMid);
     }
 
     [Fact]
-    public void Unicode_keeps_the_box_lines()
+    public void Unicode_keeps_the_line_bar_and_fork()
     {
         Assert.Equal('─', Glyphs.Unicode.Line);
         Assert.Equal('│', Glyphs.Unicode.VLine);
         Assert.Equal('├', Glyphs.Unicode.ForkMid);
+    }
+
+    [Fact]
+    public void Unicode_keeps_the_corner_and_the_merge_middle()
+    {
         Assert.Equal('╰', Glyphs.Unicode.ForkEnd);
         Assert.Equal('┤', Glyphs.Unicode.MergeMid);
     }

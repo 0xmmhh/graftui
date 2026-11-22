@@ -87,31 +87,13 @@ public sealed class GlyphsScreenTests : IDisposable
     [Fact]
     public void The_help_popup_is_plain_ascii()
     {
-        Glyphs.Current = Glyphs.Basic;
-        using var repo = TempRepo.Diverged(false);
-        var app = Open(repo, 120, 40);
-
-        _ui.Keyboard.RaiseKeyDownEvent(new Key('?'));
-        _ui.LayoutAndDraw();
-
-        Assert.True(app.HelpOpen);
-        Assert.Contains("--glyphs", ScreenText());
-        Assert.Empty(NonAsciiCells());
+        AssertHelpPopupIsPlainAscii(120, 40);
     }
 
     [Fact]
     public void The_help_popup_at_80_by_24_has_the_glyphs_row_and_is_plain_ascii()
     {
-        Glyphs.Current = Glyphs.Basic;
-        using var repo = TempRepo.Diverged(false);
-        var app = Open(repo, 80, 24);
-
-        _ui.Keyboard.RaiseKeyDownEvent(new Key('?'));
-        _ui.LayoutAndDraw();
-
-        Assert.True(app.HelpOpen);
-        Assert.Contains("--glyphs", ScreenText());
-        Assert.Empty(NonAsciiCells());
+        AssertHelpPopupIsPlainAscii(80, 24);
     }
 
     [Fact]
@@ -128,6 +110,21 @@ public sealed class GlyphsScreenTests : IDisposable
 
         Assert.True(app.IsPaused);
         Assert.Contains("app.txt", ScreenText());
+        Assert.Empty(NonAsciiCells());
+    }
+
+    // Opens the help popup on the basic set at the given size: it must show the --glyphs row and draw no non-ASCII cell.
+    private void AssertHelpPopupIsPlainAscii(int cols, int rows)
+    {
+        Glyphs.Current = Glyphs.Basic;
+        using var repo = TempRepo.Diverged(false);
+        var app = Open(repo, cols, rows);
+
+        _ui.Keyboard.RaiseKeyDownEvent(new Key('?'));
+        _ui.LayoutAndDraw();
+
+        Assert.True(app.HelpOpen);
+        Assert.Contains("--glyphs", ScreenText());
         Assert.Empty(NonAsciiCells());
     }
 
