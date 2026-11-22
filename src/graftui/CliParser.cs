@@ -80,8 +80,20 @@ internal sealed class CliParser
 
     private CliParse OptionsResult() => new CliParse(BuildOptions(), null);
 
-    private CliOptions BuildOptions() =>
-        new CliOptions(_help, _version, _sandbox, _makeEdits, _theme, _path, _newUi, _basicGlyphs);
+    private CliOptions BuildOptions()
+    {
+        return new CliOptions
+        {
+            Help = _help,
+            Version = _version,
+            Sandbox = _sandbox,
+            MakeEdits = _makeEdits,
+            Theme = _theme,
+            RepoPath = _path,
+            NewUi = _newUi,
+            BasicGlyphs = _basicGlyphs,
+        };
+    }
 
     // --theme=name and --glyphs=set. Returns false when the argument has neither prefix.
     private bool TryReadEqualsForm()
