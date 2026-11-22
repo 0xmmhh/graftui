@@ -116,17 +116,35 @@ internal sealed class CliParser
     // The options that take no value. Returns false when the argument is not one of them.
     private bool TryReadFlag()
     {
+        if (TryReadInformationFlag())
+            return true;
+        return TryReadModeFlag();
+    }
+
+    // --help and --version: they are acted on by Program and beat any error.
+    private bool TryReadInformationFlag()
+    {
         switch (_arg)
         {
-            case "--":
-                _pathsOnly = true;
-                return true;
             case "--help":
             case "-h":
                 _help = true;
                 return true;
             case "--version":
                 _version = true;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // The flags that change how the run goes, and the end of the options.
+    private bool TryReadModeFlag()
+    {
+        switch (_arg)
+        {
+            case "--":
+                _pathsOnly = true;
                 return true;
             case "--sandbox":
                 _sandbox = true;
