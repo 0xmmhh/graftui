@@ -14,9 +14,10 @@ internal sealed class CliParser
 {
     private readonly Queue<string> _queue;
     private readonly string? _glyphsEnvironment;
+    private readonly string? _motionEnvironment;
     private readonly List<string> _errors = [];
     private readonly HashSet<ValueOption> _valuesGiven = [];
-    private bool _help, _version, _sandbox, _makeEdits, _newUi, _pathsOnly, _basicGlyphs;
+    private bool _help, _version, _sandbox, _makeEdits, _newUi, _pathsOnly, _basicGlyphs, _calm;
     private string? _theme, _path;
 
     // The argument being read, and the value of the option being read (or of GRAFTUI_GLYPHS). Each is set just before a helper uses it.
@@ -30,10 +31,11 @@ internal sealed class CliParser
         Glyphs,
     }
 
-    public CliParser(IReadOnlyList<string> args, string? glyphsEnvironment)
+    public CliParser(IReadOnlyList<string> args, string? glyphsEnvironment, string? motionEnvironment)
     {
         _queue = new Queue<string>(args);
         _glyphsEnvironment = glyphsEnvironment;
+        _motionEnvironment = motionEnvironment;
     }
 
     /// <summary>Reads every argument, then checks the combinations and the environment, and returns the result.</summary>
@@ -57,6 +59,8 @@ internal sealed class CliParser
             return;
         if (TryReadFlag())
             return;
+        if (TryReadCalm())
+            return;
         if (TryReadValueOption())
             return;
         ReadUnknownOrPath();
@@ -72,6 +76,7 @@ internal sealed class CliParser
 
         CheckCombinations();
         CheckGlyphsEnvironment();
+        CheckMotionEnvironment();
 
         if (_errors.Count > 0)
             return new CliParse(null, _errors[0]);
@@ -92,7 +97,17 @@ internal sealed class CliParser
             RepoPath = _path,
             NewUi = _newUi,
             BasicGlyphs = _basicGlyphs,
+            Calm = _calm,
         };
+    }
+
+    // --calm: the merge does not play by itself (the new look). Returns false for any other argument.
+    private bool TryReadCalm()
+    {
+        if (_arg != "--calm")
+            return false;
+        _calm = true;
+        return true;
     }
 
     // --theme=name and --glyphs=set. Returns false when the argument has neither prefix.
@@ -240,6 +255,13 @@ internal sealed class CliParser
         _value = _glyphsEnvironment;
         if (!TrySetGlyphSetFromValue())
             _errors.Add($"graftui: GRAFTUI_GLYPHS is '{_glyphsEnvironment}'; choose basic or unicode");
+    }
+
+    // GRAFTUI_MOTION=calm turns Calm on whatever the flags say, so the flag and the variable only ever add up. Spaces around it are ignored.
+    private void CheckMotionEnvironment()
+    {
+        if (string.Equals(_motionEnvironment?.Trim(), "calm", StringComparison.OrdinalIgnoreCase))
+            _calm = true;
     }
 
     private void SetGlyphs()

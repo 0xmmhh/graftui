@@ -17,6 +17,8 @@ Options:
   --new-ui         the new look, still being built (same as GRAFTUI_UI=new)
   --glyphs <set>   basic (plain ASCII) or unicode (default), for the new look (--new-ui);
                    the old look is only partly covered. Also GRAFTUI_GLYPHS
+  --calm           new look only: the merge does not play by itself; g plays it
+                   (same as GRAFTUI_MOTION=calm)
   --version        print the version
   --help           show this help
 
@@ -38,8 +40,14 @@ Both tabs: v all commands · Esc quit
     /// The same, with the value of GRAFTUI_GLYPHS passed in (null or empty when unset). A --glyphs flag wins over that value;
     /// the value is only checked when no flag gave a set.
     /// </summary>
-    public static CliParse Parse(IReadOnlyList<string> args, string? glyphsEnvironment) =>
-        new CliParser(args, glyphsEnvironment).ReadAll();
+    public static CliParse Parse(IReadOnlyList<string> args, string? glyphsEnvironment) => Parse(args, glyphsEnvironment, null);
+
+    /// <summary>
+    /// The same, with the value of GRAFTUI_MOTION passed in too (null or empty when unset). "calm" (any case, spaces around it ignored)
+    /// turns Calm on, as --calm does; any other value leaves Calm off and is not an error.
+    /// </summary>
+    public static CliParse Parse(IReadOnlyList<string> args, string? glyphsEnvironment, string? motionEnvironment) =>
+        new CliParser(args, glyphsEnvironment, motionEnvironment).ReadAll();
 
     /// <summary>
     /// Whether the new look is on: the --new-ui flag, or GRAFTUI_UI=new in the environment. The environment value is passed in, so this
