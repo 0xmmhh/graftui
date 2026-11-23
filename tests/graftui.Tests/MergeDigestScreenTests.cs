@@ -405,12 +405,9 @@ public sealed class MergeDigestScreenTests : IDisposable
     public void Autoplay_plays_a_clean_merge_without_g()
     {
         using var repo = TempRepo.Diverged(conflict: false);
-        var snapshot = ReadSnapshot(repo);
-        var app = OpenApp(repo, snapshot, autoPlay: true);
+        var app = MergeWithAutoplay(repo, "feature", autoPlay: true);
 
-        Merge(app, repo, snapshot, "feature");
-
-        Assert.True(app.Digest.Replaying);
+        AssertPlaying(app);
         Assert.Equal("Merging feature → main", app.Art.Title);
         Assert.Equal(DigestKind.Merged, app.Digest.Card!.Kind);
     }
@@ -420,13 +417,10 @@ public sealed class MergeDigestScreenTests : IDisposable
     public void Autoplay_plays_a_fast_forward()
     {
         using var repo = TempRepo.FastForwardable();
-        var snapshot = ReadSnapshot(repo);
-        var app = OpenApp(repo, snapshot, autoPlay: true);
-
-        Merge(app, repo, snapshot, "feature");
+        var app = MergeWithAutoplay(repo, "feature", autoPlay: true);
 
         Assert.Equal(DigestKind.FastForwarded, app.Digest.Card!.Kind);
-        Assert.True(app.Digest.Replaying);
+        AssertPlaying(app);
     }
 
     // A conflict plays by itself too, in red, and ends on the stopped card with the repo back to clean.
@@ -434,12 +428,9 @@ public sealed class MergeDigestScreenTests : IDisposable
     public void Autoplay_plays_a_conflict_in_red()
     {
         using var repo = TempRepo.Diverged(conflict: true);
-        var snapshot = ReadSnapshot(repo);
-        var app = OpenApp(repo, snapshot, autoPlay: true);
+        var app = MergeWithAutoplay(repo, "feature", autoPlay: true);
 
-        Merge(app, repo, snapshot, "feature");
-
-        Assert.True(app.Digest.Replaying);
+        AssertPlaying(app);
         Assert.Equal(Ink.Bad, app.Art.Sheet!(85, 30).Lines[0].Segs[0].Style.Ink);
         Assert.True(repo.IsClean);
     }
@@ -449,14 +440,12 @@ public sealed class MergeDigestScreenTests : IDisposable
     public void Autoplay_does_not_play_up_to_date()
     {
         using var repo = TempRepo.Diverged(conflict: false);
-        var snapshot = ReadSnapshot(repo);
-        var app = OpenApp(repo, snapshot, autoPlay: true);
-        Merge(app, repo, snapshot, "feature");
+        var app = MergeWithAutoplay(repo, "feature", autoPlay: true);
 
         Merge(app, repo, ReadSnapshot(repo), "feature");
 
         Assert.Equal(DigestKind.UpToDate, app.Digest.Card!.Kind);
-        Assert.False(app.Digest.Replaying);
+        AssertCardOnly(app);
     }
 
     // A failed merge has no play, so nothing starts by itself.
@@ -474,7 +463,7 @@ public sealed class MergeDigestScreenTests : IDisposable
         app.Digest.ShowOutcome(start, outcome, verdict, snapshot, null);
 
         Assert.Equal(DigestKind.Failed, app.Digest.Card!.Kind);
-        Assert.False(app.Digest.Replaying);
+        AssertCardOnly(app);
     }
 
     // A refusal is never played, with autoplay on or off.
@@ -483,13 +472,10 @@ public sealed class MergeDigestScreenTests : IDisposable
     {
         using var repo = TempRepo.Diverged(conflict: false);
         repo.Run("switch", "-q", "--detach");
-        var snapshot = ReadSnapshot(repo);
-        var app = OpenApp(repo, snapshot, autoPlay: true);
-
-        Merge(app, repo, snapshot, "feature");
+        var app = MergeWithAutoplay(repo, "feature", autoPlay: true);
 
         Assert.Equal(DigestKind.Refused, app.Digest.Card!.Kind);
-        Assert.False(app.Digest.Replaying);
+        AssertCardOnly(app);
     }
 
     // A key during the autoplay ends it, as it ends g's replay: Space shows the card at once.
@@ -497,14 +483,12 @@ public sealed class MergeDigestScreenTests : IDisposable
     public void Space_during_autoplay_ends_it_and_shows_the_card()
     {
         using var repo = TempRepo.Diverged(conflict: false);
-        var snapshot = ReadSnapshot(repo);
-        var app = OpenApp(repo, snapshot, autoPlay: true);
-        Merge(app, repo, snapshot, "feature");
-        Assert.True(app.Digest.Replaying);
+        var app = MergeWithAutoplay(repo, "feature", autoPlay: true);
+        AssertPlaying(app);
 
         _ui.Keyboard.RaiseKeyDownEvent(Key.Space);
 
-        Assert.False(app.Digest.Replaying);
+        AssertCardOnly(app);
         Assert.Equal("Merged feature → main", app.Art.Title);
     }
 
@@ -513,14 +497,12 @@ public sealed class MergeDigestScreenTests : IDisposable
     public void Autoplay_survives_a_counts_read()
     {
         using var repo = TempRepo.Diverged(conflict: false);
-        var snapshot = ReadSnapshot(repo);
-        var app = OpenApp(repo, snapshot, autoPlay: true);
-        Merge(app, repo, snapshot, "feature");
-        Assert.True(app.Digest.Replaying);
+        var app = MergeWithAutoplay(repo, "feature", autoPlay: true);
+        AssertPlaying(app);
 
         app.CountsRead(ReadSnapshot(repo), null, app.SnapshotSeq, null);
 
-        Assert.True(app.Digest.Replaying);
+        AssertPlaying(app);
         Assert.Equal("Merging feature → main", app.Art.Title);
     }
 
@@ -529,15 +511,13 @@ public sealed class MergeDigestScreenTests : IDisposable
     public async Task U_during_autoplay_ends_it_and_undoes_the_merge()
     {
         using var repo = TempRepo.Diverged(conflict: false);
-        var snapshot = ReadSnapshot(repo);
-        var app = OpenApp(repo, snapshot, autoPlay: true);
         var before = repo.Head;
-        Merge(app, repo, snapshot, "feature");
-        Assert.True(app.Digest.Replaying);
+        var app = MergeWithAutoplay(repo, "feature", autoPlay: true);
+        AssertPlaying(app);
 
         _ui.Keyboard.RaiseKeyDownEvent(Key.U);
 
-        Assert.False(app.Digest.Replaying);
+        AssertCardOnly(app);
         Assert.Null(app.Digest.Card);
         Assert.NotNull(app.ChangesTask);
         await app.ChangesTask!;
@@ -549,17 +529,35 @@ public sealed class MergeDigestScreenTests : IDisposable
     public void Calm_leaves_the_card_until_g()
     {
         using var repo = TempRepo.Diverged(conflict: false);
-        var snapshot = ReadSnapshot(repo);
-        var app = OpenApp(repo, snapshot, autoPlay: false);
+        var app = MergeWithAutoplay(repo, "feature", autoPlay: false);
 
-        Merge(app, repo, snapshot, "feature");
-
-        Assert.False(app.Digest.Replaying);
+        AssertCardOnly(app);
         Assert.Equal("Merged feature → main", app.Art.Title);
 
         _ui.Keyboard.RaiseKeyDownEvent(Key.G);
 
+        AssertPlaying(app);
+    }
+
+    // Opens the app with autoplay on or off and runs m on the branch, as the Merge helper does. The snapshot is read after any setup in the test.
+    private AppController MergeWithAutoplay(TempRepo repo, string name, bool autoPlay)
+    {
+        var snapshot = ReadSnapshot(repo);
+        var app = OpenApp(repo, snapshot, autoPlay: autoPlay);
+        Merge(app, repo, snapshot, name);
+        return app;
+    }
+
+    // The play is on: Replaying is true.
+    private static void AssertPlaying(AppController app)
+    {
         Assert.True(app.Digest.Replaying);
+    }
+
+    // No play: the card is all there is, and nothing is replaying.
+    private static void AssertCardOnly(AppController app)
+    {
+        Assert.False(app.Digest.Replaying);
     }
 
     // Runs m the way StartMerge's worker does, step by step, and hands each result to the screen: Check, the running line when the
